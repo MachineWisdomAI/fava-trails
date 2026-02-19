@@ -1,11 +1,16 @@
-"""Tests for config.py path resolution."""
+"""Tests for config.py path resolution and trail name sanitization."""
 
 import os
 from pathlib import Path
 
 import pytest
 
-from fava_trail.config import get_fava_home, get_trails_dir
+from fava_trail.config import (
+    ensure_fava_home,
+    get_fava_home,
+    get_trails_dir,
+    sanitize_trail_name,
+)
 
 
 def test_fava_home_default(monkeypatch, tmp_path):
@@ -80,3 +85,65 @@ def test_trails_dir_env_overrides_config(monkeypatch, tmp_path):
     monkeypatch.setenv("FAVA_TRAILS_DIR", str(env_trails))
     result = get_trails_dir()
     assert result == env_trails
+
+
+# --- Trail name sanitization ---
+
+
+def test_sanitize_valid_names():
+    """Valid trail names pass sanitization."""
+    assert sanitize_trail_name("default") == "default"
+    assert sanitize_trail_name("my-project") == "my-project"
+    assert sanitize_trail_name("wise-agents-toolkit") == "wise-agents-toolkit"
+    assert sanitize_trail_name("project_v2") == "project_v2"
+    assert sanitize_trail_name("project.name") == "project.name"
+
+
+def test_sanitize_rejects_path_traversal():
+    """Path traversal attempts are rejected."""
+    with pytest.raises(ValueError, match="Invalid trail name"):
+        sanitize_trail_name("../../.ssh")
+    with pytest.raises(ValueError, match="Invalid trail name"):
+        sanitize_trail_name("../etc/passwd")
+    with pytest.raises(ValueError, match="Invalid trail name"):
+        sanitize_trail_name("foo/bar")
+    with pytest.raises(ValueError, match="Invalid trail name"):
+        sanitize_trail_name("foo\\bar")
+
+
+def test_sanitize_rejects_empty_and_special():
+    """Empty strings and special characters are rejected."""
+    with pytest.raises(ValueError, match="Invalid trail name"):
+        sanitize_trail_name("")
+    with pytest.raises(ValueError, match="Invalid trail name"):
+        sanitize_trail_name("-starts-with-dash")
+    with pytest.raises(ValueError, match="Invalid trail name"):
+        sanitize_trail_name(".hidden")
+
+
+def test_trails_dir_tilde_expansion(monkeypatch, tmp_path):
+    """FAVA_TRAILS_DIR with tilde is expanded to user home."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("FAVA_TRAIL_HOME", str(home))
+    monkeypatch.setenv("FAVA_TRAILS_DIR", "~/my-trails")
+    result = get_trails_dir()
+    expected = Path(os.path.expanduser("~/my-trails"))
+    assert result == expected
+
+
+def test_ensure_fava_home_creates_custom_trails_dir(monkeypatch, tmp_path):
+    """ensure_fava_home creates the actual configured trails directory."""
+    home = tmp_path / "home"
+    custom_trails = tmp_path / "custom-trails"
+
+    monkeypatch.setenv("FAVA_TRAIL_HOME", str(home))
+    monkeypatch.setenv("FAVA_TRAILS_DIR", str(custom_trails))
+
+    assert not home.exists()
+    assert not custom_trails.exists()
+
+    ensure_fava_home()
+
+    assert home.exists()
+    assert custom_trails.exists()
