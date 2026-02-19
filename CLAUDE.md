@@ -184,6 +184,36 @@ start_thought  →  save_thought (drafts/)  →  propose_truth  →  permanent n
 | `preferences/client/` | Client-specific stylistic preferences | `learn_preference` |
 | `preferences/firm/` | Firm architectural standards | `learn_preference` |
 
+## Agent Conventions
+
+### Agent Identity
+
+`agent_id` is a **stable role identifier**, not a runtime fingerprint. Runtime context belongs in `metadata.extra`.
+
+| Field | Contains | Example |
+|-------|----------|---------|
+| `agent_id` | Role only | `"claude-code"`, `"claude-desktop"`, `"builder-42"` |
+| `metadata.extra` | Runtime context | `{"host": "WiseMachine0002", "session_id": "abc-123", "cwd": "/home/user/project"}` |
+
+**Rationale:** OpenTelemetry Resource vs Attributes pattern. Stable IDs enable cross-session queries ("show me all decisions by claude-code"). High-cardinality IDs (model names, session IDs baked in) destroy aggregation.
+
+### Mandatory Promotion
+
+Drafts are **working memory**. Promoted thoughts are **institutional memory**.
+
+- **Always call `propose_truth`** when work is finalized — treat it as a mandatory "commit" step
+- Do NOT leave finalized work as drafts — other agents and sessions cannot distinguish "in progress" from "done" without promotion
+- **Exception:** `learn_preference` bypasses drafts entirely (user input is auto-approved truth)
+- In-progress work stays in `drafts/` — that's fine, drafts are meant for working state
+
+### SPIR Meta-Layer Pattern
+
+When using the SPIR protocol (codev/), FAVA Trail thoughts **link to** `codev/` artifacts — they don't duplicate content.
+
+- Use `source_type: observation` with tags like `["spir", "status", "phase-N"]`
+- Content is a broadcast: "Phase 0 Complete — see `codev/reviews/0-repo-separation.md`"
+- This gives cross-agent visibility: agents can see project status via `recall` without reading git
+
 ## Key Rules
 
 ### Immutability
@@ -208,7 +238,7 @@ schema_version: 1
 thought_id: "01JMKR3V8GQZX4N7P2WDCB5HYT"
 parent_id: null
 superseded_by: null
-agent_id: "claude-code-main"
+agent_id: "claude-code"
 confidence: 0.9
 source_type: "decision"
 validation_status: "draft"

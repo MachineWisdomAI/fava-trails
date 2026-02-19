@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FAVA Trail — Versioned Memory for AI Agents</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,500;0,8..60,700;1,8..60,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0C0C0E;
+    --surface: #141418;
+    --surface-raised: #1C1C22;
+    --border: #2A2A34;
+    --text: #E8E6E3;
+    --text-dim: #8A8890;
+    --accent: #E07A5F;
+    --accent-glow: rgba(224, 122, 95, 0.15);
+    --green: #81B29A;
+    --red: #E07A5F;
+    --yellow: #F2CC8F;
+    --blue: #6B9AC4;
+    --mono: 'JetBrains Mono', monospace;
+    --serif: 'Source Serif 4', Georgia, serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.7;
+    overflow-x: hidden;
+  }
+
+  /* Noise overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  .container {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 0 2rem;
+  }
+
+  /* HERO */
+  .hero {
+    padding: 6rem 0 4rem;
+    position: relative;
+  }
+
+  .hero::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+  }
+
+  .hero-eyebrow {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--accent);
+    margin-bottom: 1.5rem;
+    opacity: 0;
+    animation: fadeUp 0.8s 0.2s forwards;
+  }
+
+  .hero h1 {
+    font-family: var(--serif);
+    font-size: clamp(2.4rem, 5vw, 3.6rem);
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    margin-bottom: 1.5rem;
+    opacity: 0;
+    animation: fadeUp 0.8s 0.4s forwards;
+  }
+
+  .hero h1 em {
+    font-style: italic;
+    color: var(--accent);
+  }
+
+  .hero-sub {
+    font-size: 1.15rem;
+    color: var(--text-dim);
+    max-width: 600px;
+    line-height: 1.8;
+    opacity: 0;
+    animation: fadeUp 0.8s 0.6s forwards;
+  }
+
+  .hero-stats {
+    display: flex;
+    gap: 3rem;
+    margin-top: 3rem;
+    opacity: 0;
+    animation: fadeUp 0.8s 0.8s forwards;
+  }
+
+  .stat {
+    text-align: left;
+  }
+
+  .stat-value {
+    font-family: var(--mono);
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--accent);
+    line-height: 1;
+  }
+
+  .stat-label {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--text-dim);
+    margin-top: 0.4rem;
+  }
+
+  /* SECTIONS */
+  section {
+    padding: 4rem 0;
+    position: relative;
+  }
+
+  section + section::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+  }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.25em;
+    color: var(--text-dim);
+    margin-bottom: 1rem;
+  }
+
+  h2 {
+    font-family: var(--serif);
+    font-size: 1.8rem;
+    font-weight: 700;
+    line-height: 1.25;
+    margin-bottom: 1.5rem;
+    letter-spacing: -0.01em;
+  }
+
+  p + p { margin-top: 1rem; }
+
+  /* PROBLEM BLOCK */
+  .problem-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-top: 2rem;
+  }
+
+  .problem-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem;
+    transition: border-color 0.3s, transform 0.3s;
+  }
+
+  .problem-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+  }
+
+  .problem-card h3 {
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--red);
+    margin-bottom: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .problem-card p {
+    font-size: 0.9rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  /* SOLUTION FLOW */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-top: 2rem;
+    position: relative;
+  }
+
+  .flow::before {
+    content: '';
+    position: absolute;
+    left: 1.25rem;
+    top: 2.5rem;
+    bottom: 2.5rem;
+    width: 2px;
+    background: linear-gradient(180deg, var(--accent), var(--green));
+    opacity: 0.3;
+  }
+
+  .flow-step {
+    display: flex;
+    gap: 1.5rem;
+    align-items: flex-start;
+    padding: 1.25rem 0;
+  }
+
+  .flow-dot {
+    flex-shrink: 0;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    background: var(--surface-raised);
+    border: 2px solid var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--accent);
+    position: relative;
+    z-index: 1;
+  }
+
+  .flow-content h3 {
+    font-family: var(--mono);
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 0.3rem;
+  }
+
+  .flow-content p {
+    font-size: 0.9rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  /* COMPARISON TABLE */
+  .comparison {
+    margin-top: 2rem;
+    overflow-x: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+
+  th {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    text-align: left;
+    padding: 0.8rem 1rem;
+    border-bottom: 2px solid var(--border);
+    color: var(--text-dim);
+  }
+
+  td {
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  tr:hover td { background: var(--surface); }
+
+  td:first-child {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+  }
+
+  .check { color: var(--green); font-weight: 700; }
+  .cross { color: var(--red); opacity: 0.5; }
+  .partial { color: var(--yellow); }
+  .fava-col { background: rgba(224, 122, 95, 0.06); }
+
+  /* CODE BLOCK */
+  .code-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-top: 2rem;
+    overflow-x: auto;
+  }
+
+  .code-block pre {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    line-height: 1.8;
+    color: var(--text-dim);
+  }
+
+  .code-block .kw { color: var(--accent); }
+  .code-block .str { color: var(--green); }
+  .code-block .comment { color: #555; font-style: italic; }
+  .code-block .fn { color: var(--blue); }
+  .code-block .val { color: var(--yellow); }
+
+  /* CTA */
+  .cta-section {
+    text-align: center;
+    padding: 5rem 0;
+  }
+
+  .cta-section h2 {
+    font-size: 2rem;
+  }
+
+  .cta-section p {
+    color: var(--text-dim);
+    max-width: 500px;
+    margin: 0 auto 2rem;
+  }
+
+  .cta-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.85rem 2rem;
+    border-radius: 6px;
+    text-decoration: none;
+    letter-spacing: 0.05em;
+    transition: all 0.3s;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: var(--bg);
+  }
+
+  .btn-primary:hover {
+    background: #c96a51;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px var(--accent-glow);
+  }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
+  .btn-secondary:hover {
+    border-color: var(--text-dim);
+    transform: translateY(-1px);
+  }
+
+  /* AUDIENCE CARDS */
+  .audience-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-top: 2rem;
+  }
+
+  .audience-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 2rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .audience-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+  }
+
+  .audience-card:nth-child(1)::before { background: var(--accent); }
+  .audience-card:nth-child(2)::before { background: var(--green); }
+  .audience-card:nth-child(3)::before { background: var(--blue); }
+  .audience-card:nth-child(4)::before { background: var(--yellow); }
+
+  .audience-card h3 {
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .audience-card ul {
+    list-style: none;
+    padding: 0;
+  }
+
+  .audience-card li {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    padding: 0.3rem 0;
+    padding-left: 1.2rem;
+    position: relative;
+  }
+
+  .audience-card li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: var(--text-dim);
+    opacity: 0.5;
+  }
+
+  /* FOOTER */
+  footer {
+    padding: 3rem 0;
+    text-align: center;
+    border-top: 1px solid var(--border);
+  }
+
+  footer p {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
+  }
+
+  /* QUOTE */
+  blockquote {
+    border-left: 3px solid var(--accent);
+    padding: 1rem 0 1rem 1.5rem;
+    margin: 2rem 0;
+    font-style: italic;
+    color: var(--text-dim);
+  }
+
+  blockquote cite {
+    display: block;
+    font-style: normal;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    margin-top: 0.5rem;
+    opacity: 0.7;
+  }
+
+  /* ANIMATIONS */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .reveal {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.6s, transform 0.6s;
+  }
+
+  .reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* RESPONSIVE */
+  @media (max-width: 640px) {
+    .problem-grid, .audience-grid { grid-template-columns: 1fr; }
+    .hero-stats { flex-direction: column; gap: 1.5rem; }
+    .flattening-grid { grid-template-columns: 1fr !important; }
+    .terminal { font-size: 0.7rem !important; }
+  }
+
+  /* TERMINAL MOCK */
+  .terminal {
+    background: #0A0A0C;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-top: 2.5rem;
+    opacity: 0;
+    animation: fadeUp 0.8s 1.0s forwards;
+  }
+
+  .terminal-bar {
+    background: #1A1A20;
+    padding: 0.5rem 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .terminal-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #3A3A44;
+  }
+
+  .terminal-dot.red { background: #E07A5F; opacity: 0.7; }
+  .terminal-dot.yellow { background: #F2CC8F; opacity: 0.7; }
+  .terminal-dot.green { background: #81B29A; opacity: 0.7; }
+
+  .terminal-title {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    margin-left: 0.5rem;
+    letter-spacing: 0.05em;
+  }
+
+  .terminal-body {
+    padding: 1.2rem 1.5rem;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    line-height: 1.8;
+    color: var(--text-dim);
+    overflow-x: auto;
+  }
+
+  .terminal-body .prompt { color: var(--green); }
+  .terminal-body .cmd { color: var(--text); }
+  .terminal-body .output { color: var(--text-dim); }
+  .terminal-body .accent { color: var(--accent); }
+  .terminal-body .success { color: var(--green); }
+  .terminal-body .dim { opacity: 0.5; }
+  .terminal-body .rejected { color: var(--red); }
+
+  /* CONTEXTUAL FLATTENING VISUALIZER */
+  .flattening-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    margin-top: 2rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .flattening-col {
+    padding: 1.5rem;
+  }
+
+  .flattening-col.problem {
+    background: rgba(224, 122, 95, 0.04);
+    border-right: 1px solid var(--border);
+  }
+
+  .flattening-col.solution {
+    background: rgba(129, 178, 154, 0.04);
+  }
+
+  .flattening-col h3 {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    margin-bottom: 1rem;
+  }
+
+  .flattening-col.problem h3 { color: var(--red); }
+  .flattening-col.solution h3 { color: var(--green); }
+
+  .flattening-node {
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.6rem 0.8rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.8rem;
+    position: relative;
+  }
+
+  .flattening-node.active {
+    border-color: var(--green);
+  }
+
+  .flattening-node.superseded {
+    opacity: 0.35;
+    text-decoration: line-through;
+    border-style: dashed;
+  }
+
+  .flattening-node .tag {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    display: inline-block;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    margin-left: 0.5rem;
+    vertical-align: middle;
+  }
+
+  .tag.current { background: rgba(129, 178, 154, 0.2); color: var(--green); }
+  .tag.stale { background: rgba(224, 122, 95, 0.2); color: var(--red); }
+  .tag.tombstoned { background: rgba(138, 136, 144, 0.2); color: var(--text-dim); }
+
+  .flattening-arrow {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    padding: 0.2rem 0;
+    text-align: center;
+  }
+
+  .flattening-caption {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    margin-top: 0.8rem;
+    line-height: 1.5;
+  }
+
+  /* IP BULLET */
+  .ip-bullet {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--green);
+    border-radius: 0 6px 6px 0;
+    padding: 1rem 1.2rem;
+    margin-top: 1.5rem;
+  }
+
+  .ip-bullet .icon {
+    font-size: 1.1rem;
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+  }
+
+  .ip-bullet p {
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--text-dim);
+  }
+
+  .ip-bullet strong {
+    color: var(--text);
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-eyebrow">Federated Agentic Versioned Audit Trail</div>
+    <h1>Your agents forget.<br>FAVA Trail makes them <em>remember.</em></h1>
+    <p class="hero-sub">
+      Version-controlled memory for AI agents. Crash-safe persistence, hallucination containment through gated promotion, and multi-agent coordination through shared ground truth.
+    </p>
+    <div class="hero-stats">
+      <div class="stat">
+        <div class="stat-value">Crash-safe</div>
+        <div class="stat-label">Atomic local draft writes</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">Governed</div>
+        <div class="stat-label">Gated promotion to shared truth</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">Auditable</div>
+        <div class="stat-label">Full write + promotion provenance</div>
+      </div>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar">
+        <div class="terminal-dot red"></div>
+        <div class="terminal-dot yellow"></div>
+        <div class="terminal-dot green"></div>
+        <span class="terminal-title">agent session — MCP tool calls</span>
+      </div>
+      <div class="terminal-body">
+<span class="prompt">▸</span> <span class="cmd">save_thought</span> <span class="output">"ResNet-50 is optimal for this dataset"</span><br>
+<span class="dim">  ✓ Draft saved (12ms) · branch: agent/ml-researcher · id: 01JMK…</span><br>
+<br>
+<span class="prompt">▸</span> <span class="cmd">propose_truth</span> <span class="output">thought_ids=["01JMK…"]</span><br>
+<span class="rejected">  ✗ Trust Gate rejected: "Contradicts benchmark data in shared truth"</span><br>
+<span class="dim">  → Draft preserved for revision. Shared truth uncontaminated.</span><br>
+<br>
+<span class="prompt">▸</span> <span class="cmd">save_thought</span> <span class="output">"ViT-Large outperforms ResNet-50 by 3%"</span> <span class="dim">supersedes: 01JMK…</span><br>
+<span class="dim">  ✓ Draft saved (9ms) · id: 01JML…</span><br>
+<span class="prompt">▸</span> <span class="cmd">propose_truth</span> <span class="output">thought_ids=["01JML…"]</span><br>
+<span class="success">  ✓ Accepted. Promoted to shared truth. Old claim superseded.</span><br>
+<br>
+<span class="prompt">▸</span> <span class="cmd">recall</span> <span class="output">"model architecture decisions"</span><br>
+<span class="success">  → ViT-Large decision (01JML…)</span> <span class="dim">· ResNet-50 claim hidden (superseded)</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROBLEM -->
+  <section class="reveal">
+    <div class="section-label">The Problem</div>
+    <h2>Current agent memory is architecturally broken</h2>
+    <p>Vector databases optimize for similarity. Production agents require correctness. The gap between "semantically close" and "actually right" is where agents fail in high-stakes deployment.</p>
+
+    <div class="problem-grid">
+      <div class="problem-card">
+        <h3>Contextual Flattening</h3>
+        <p>When Thought A is corrected by Thought A', vector search retrieves both — because they're semantically identical. The agent now holds contradictory beliefs with no way to distinguish current truth from invalidated history.</p>
+      </div>
+      <div class="problem-card">
+        <h3>Memory Poisoning</h3>
+        <p>Without governance gates, every agent write immediately becomes shared "truth." A hallucinated fact propagates to every downstream agent. Current systems offer cleanup after contamination — not containment at the source.</p>
+      </div>
+      <div class="problem-card">
+        <h3>Session Fragility</h3>
+        <p>Raw agent sessions max out at ~1 hour. Context window resets destroy accumulated reasoning. Crashes lose uncommitted work. Agents waste tokens re-discovering what they already knew.</p>
+      </div>
+      <div class="problem-card">
+        <h3>No Provenance</h3>
+        <p>In regulated industries, "the AI said so" is a liability. Current memory systems cannot answer: What did the agent believe? When? Why did it change? Who approved the change?</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTEXTUAL FLATTENING VISUALIZER -->
+  <section class="reveal">
+    <div class="section-label">The Core Failure Mode</div>
+    <h2>Contextual Flattening: why vector recall breaks agents</h2>
+
+    <div class="flattening-grid">
+      <div class="flattening-col problem">
+        <h3>Vector RAG recall</h3>
+        <div class="flattening-node">
+          "ResNet-50 is optimal" <span class="tag stale">similarity: 0.94</span>
+        </div>
+        <div class="flattening-node">
+          "ViT-Large outperforms ResNet-50" <span class="tag stale">similarity: 0.92</span>
+        </div>
+        <div class="flattening-caption">Both returned. Agent holds contradictory beliefs. No signal which is current. The correction <em>and</em> the mistake look identical to cosine similarity.</div>
+      </div>
+      <div class="flattening-col solution">
+        <h3>FAVA Trail recall</h3>
+        <div class="flattening-node superseded">
+          "ResNet-50 is optimal" <span class="tag tombstoned">superseded</span>
+        </div>
+        <div class="flattening-arrow">↓ superseded by</div>
+        <div class="flattening-node active">
+          "ViT-Large outperforms ResNet-50" <span class="tag current">current</span>
+        </div>
+        <div class="flattening-caption">Only the current belief is returned by default. The superseded claim is tombstoned — hidden from recall but preserved in lineage for audit.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SOLUTION -->
+  <section class="reveal">
+    <div class="section-label">The Architecture</div>
+    <h2>Memory as a governed, versioned workflow</h2>
+    <p>FAVA Trail borrows the primitives that let teams of 10,000+ engineers coordinate through a shared monorepo — and applies them to AI agent memory.</p>
+
+    <div class="flow">
+      <div class="flow-step">
+        <div class="flow-dot">1</div>
+        <div class="flow-content">
+          <h3>Draft Isolation</h3>
+          <p>Every agent works in an isolated branch. Drafts are crash-proof, queryable by the owning agent, and invisible to everyone else. No "dirty working copy" — every state change is persisted before the operation returns.</p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-dot">2</div>
+        <div class="flow-content">
+          <h3>Trust Gate</h3>
+          <p>Promotion from draft to shared truth requires passing a validation gate — a Critic Agent, a human reviewer, or both. Hallucinations stay contained in draft. They never become shared "truth." This is containment at the source, not cleanup after the fact.</p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-dot">3</div>
+        <div class="flow-content">
+          <h3>Pull Daemon</h3>
+          <p>A sidecar process continuously syncs each agent's context with shared truth. Accepted findings propagate to all agents within 30 seconds. Conflicts are surfaced as structured data, not swallowed silently.</p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-dot">4</div>
+        <div class="flow-content">
+          <h3>Supersession Tracking</h3>
+          <p>When a belief is invalidated, the old memory is tombstoned — hidden from default retrieval but preserved in history. Agents don't re-discover dead ends. The full lineage is available for audit.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- COMPARISON -->
+  <section class="reveal">
+    <div class="section-label">Competitive Landscape</div>
+    <h2>What FAVA Trail provides that alternatives don't</h2>
+
+    <div class="comparison">
+      <table>
+        <thead>
+          <tr>
+            <th>Capability</th>
+            <th class="fava-col">FAVA Trail</th>
+            <th>Vector DB</th>
+            <th>Dolt / Beads</th>
+            <th>Graph DB</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Crash-safe persistence</td>
+            <td class="check fava-col">✓</td>
+            <td class="cross">✗</td>
+            <td class="check">✓</td>
+            <td class="cross">✗</td>
+          </tr>
+          <tr>
+            <td>Draft isolation</td>
+            <td class="check fava-col">✓</td>
+            <td class="cross">✗</td>
+            <td class="check">✓</td>
+            <td class="cross">✗</td>
+          </tr>
+          <tr>
+            <td>Trust Gate (gated merge)</td>
+            <td class="check fava-col">✓ Built-in</td>
+            <td class="cross">✗</td>
+            <td class="partial">Custom workflow</td>
+            <td class="cross">✗</td>
+          </tr>
+          <tr>
+            <td>Supersession tracking</td>
+            <td class="check fava-col">✓ Built-in</td>
+            <td class="cross">✗</td>
+            <td class="partial">Custom workflow</td>
+            <td class="check">✓</td>
+          </tr>
+          <tr>
+            <td>Conflict-as-data</td>
+            <td class="check fava-col">✓</td>
+            <td class="cross">✗</td>
+            <td class="cross">✗</td>
+            <td class="cross">✗</td>
+          </tr>
+          <tr>
+            <td>Semantic retrieval</td>
+            <td class="check fava-col">✓</td>
+            <td class="check">✓</td>
+            <td class="partial">Custom workflow</td>
+            <td class="check">✓</td>
+          </tr>
+          <tr>
+            <td>Temporal queries</td>
+            <td class="check fava-col">✓</td>
+            <td class="cross">✗</td>
+            <td class="check">✓</td>
+            <td class="partial">Custom workflow</td>
+          </tr>
+          <tr>
+            <td>Agents read/write natively</td>
+            <td class="check fava-col">Markdown</td>
+            <td class="check">Embeddings</td>
+            <td class="partial">SQL</td>
+            <td class="partial">Triples</td>
+          </tr>
+          <tr>
+            <td>MCP integration</td>
+            <td class="check fava-col">✓</td>
+            <td class="partial">Some</td>
+            <td class="cross">✗</td>
+            <td class="cross">✗</td>
+          </tr>
+        </tbody>
+      </table>
+      <p style="font-family: var(--mono); font-size: 0.65rem; color: var(--text-dim); margin-top: 0.8rem; opacity: 0.7;">✓ Built-in = first-class workflow primitive with audit hooks and defaults. Custom workflow = achievable with bespoke schema/tooling.</p>
+    </div>
+  </section>
+
+  <!-- FOR WHO -->
+  <section class="reveal">
+    <div class="section-label">Built For</div>
+    <h2>Who FAVA Trail is designed for</h2>
+
+    <div class="audience-grid">
+      <div class="audience-card">
+        <h3>ML Engineering Agents</h3>
+        <ul>
+          <li>12+ hour Kaggle competition sessions without context drift</li>
+          <li>Branch three model hypotheses in parallel</li>
+          <li>Mark dead-end hyperparameter searches so they're never re-explored</li>
+          <li>Full audit trail for experiment reproducibility</li>
+        </ul>
+      </div>
+      <div class="audience-card">
+        <h3>Agent Framework Authors</h3>
+        <ul>
+          <li>MCP-native integration — config change, not code change</li>
+          <li>Drop-in memory backend for any MCP-compatible framework</li>
+          <li>50ms draft writes won't bottleneck your agent loop</li>
+          <li>Substrate-agnostic API — agents call recall, not git log</li>
+        </ul>
+      </div>
+      <div class="audience-card">
+        <h3>Multi-Agent Orchestrators</h3>
+        <ul>
+          <li>Shared ground truth with 30-second eventual consistency</li>
+          <li>Draft isolation prevents inter-agent contamination</li>
+          <li>Trust Gate blocks hallucination propagation at the source</li>
+          <li>Structured conflict resolution for contradictory findings</li>
+        </ul>
+      </div>
+      <div class="audience-card">
+        <h3>Regulated Industries</h3>
+        <ul>
+          <li>100% audit coverage — every state change traceable</li>
+          <li>Temporal reconstruction for compliance review</li>
+          <li>Namespace isolation between clients, projects, sensitivity levels</li>
+          <li>SOC 2 / ISO 27001 exportable audit trails</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- MCP -->
+  <section class="reveal">
+    <div class="section-label">Integration</div>
+    <h2>MCP-native. Six tools. Five minutes.</h2>
+    <p>FAVA Trail exposes all operations as Model Context Protocol tools. If your framework speaks MCP, integration is a configuration change. The hero terminal above shows the core save→gate→recall loop. Here's the full surface:</p>
+
+    <div class="code-block">
+<pre><span class="comment"># Core loop (shown above): save_thought, propose_truth, recall</span>
+
+<span class="comment"># Multi-agent sync — pull latest shared truth into this agent's context</span>
+<span class="fn">sync</span>()
+<span class="comment"># → Rebases agent's draft on shared truth. Conflicts surfaced as data.</span>
+<span class="comment"># → Pull Daemon does this automatically every 30s; manual call for on-demand.</span>
+
+<span class="comment"># Atomic branch discard — abandon a dead-end investigation</span>
+<span class="fn">forget</span>(branch=<span class="str">"hypothesis/resnet-variants"</span>)
+<span class="comment"># → 50 thoughts gone. Zero residue. One operation.</span>
+<span class="comment"># → Future recall never surfaces this abandoned line of reasoning.</span>
+
+<span class="comment"># Human-in-the-loop feedback — capture preferences as versioned memory</span>
+<span class="fn">learn_preference</span>(
+    feedback=<span class="str">"Always use PyTorch Lightning, not raw PyTorch"</span>,
+    namespace=<span class="str">"user/style"</span>,
+    source=<span class="str">"human"</span>)
+<span class="comment"># → Versioned, auditable. Can be superseded. Never silently overwritten.</span></pre>
+    </div>
+  </section>
+
+  <!-- SECURITY + PERFORMANCE -->
+  <section class="reveal">
+    <div class="section-label">Enterprise Objections, Answered</div>
+    <h2>Your data never leaves your infrastructure</h2>
+    <p>FAVA Trail follows an <strong style="color: var(--accent);">Engine vs. Fuel</strong> architecture. The MCP server (<code style="font-family: var(--mono); font-size: 0.85em; color: var(--green);">fava-trail</code>) is a stateless, open-source engine. Your actual memory graph and versioned repository live entirely in a local-first or privately hosted directory that you control. Context never leaks into the tool's source code. No telemetry. No cloud dependency. Your corporate IP stays on your infrastructure.</p>
+
+    <div class="ip-bullet">
+      <span class="icon">🔒</span>
+      <p><strong>Stateless MCP engine guarantees zero IP leakage</strong> — your corporate memory stays on your hardware. The engine (<code style="font-family: var(--mono); font-size: 0.8em;">fava-trail</code>) holds no state between calls. Your data repository is a separate, isolated directory governed by your access controls and retention policies.</p>
+    </div>
+
+    <h2 style="margin-top: 2.5rem;">No VCS overhead in your agent's context window</h2>
+    <p>Agents never see raw VCS stdout, commit hashes, or tree algebra. A <strong style="color: var(--accent);">Semantic Translation Layer</strong> intercepts every operation: the MCP server handles git-backend work locally at sub-second latency, then returns token-optimized, JSON-formatted semantic summaries to the agent. Your agent gets structured recall results — not a <code style="font-family: var(--mono); font-size: 0.85em; color: var(--text-dim);">jj log</code> dump.</p>
+  </section>
+
+  <!-- EVIDENCE -->
+  <section class="reveal">
+    <div class="section-label">Validation</div>
+    <h2>The pattern is already proven at scale</h2>
+
+    <blockquote>
+      "The longest session we've observed is twelve hours, where useful work was produced at the end. Raw coding agent sessions max out at about an hour."
+      <cite>— DoltHub independent testing of Steve Yegge's Beads system (versioned memory on Dolt)</cite>
+    </blockquote>
+
+    <blockquote>
+      "Agents use version control very effectively… The version control model of recall is in the base model. No additional context is necessary to get an agent to use version control effectively."
+      <cite>— DoltHub, Agentic Memory research (January 2026)</cite>
+    </blockquote>
+
+    <p>Three independent teams — Yegge's Beads, DoltHub's research, OpenAI's Agents SDK memory architecture — converged on the same insight: agents need versioned, structured, governed memory. FAVA Trail provides it as a reusable MCP-native infrastructure primitive, with governance and containment semantics that flat storage substrates require custom engineering to achieve.</p>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta-section reveal">
+    <h2>Stop building memory from scratch.</h2>
+    <p>FAVA Trail gives your agents crash-safe, governed, auditable memory — so you can focus on what they do with it.</p>
+    <div class="cta-buttons">
+      <a href="https://github.com/MachineWisdomAI/fava-trail" class="btn btn-primary">View on GitHub</a>
+      <a href="https://github.com/MachineWisdomAI/fava-trail/blob/main/docs/FAQ.md" class="btn btn-secondary">Read the FAQ</a>
+    </div>
+  </section>
+
+  <footer>
+    <p>Machine Wisdom Solutions Inc. · FAVA Trail · Prototype · February 2026</p>
+  </footer>
+
+</div>
+
+<script>
+  // Intersection Observer for scroll reveals
+  const reveals = document.querySelectorAll('.reveal');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.1 });
+
+  reveals.forEach(el => observer.observe(el));
+</script>
+
+</body>
+</html>
