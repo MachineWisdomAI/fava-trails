@@ -15,7 +15,7 @@ uv sync
 uv run pytest -v
 
 # Run server
-FAVA_TRAIL_HOME=/path/to/trail-data uv run fava-trail-server
+FAVA_TRAIL_DATA_REPO=/path/to/trail-data uv run fava-trail-server
 ```
 
 ## MCP Registration
@@ -30,7 +30,7 @@ Add to Claude Desktop `claude_desktop_config.json` or `~/.claude.json`:
       "command": "uv",
       "args": ["run", "--directory", "/path/to/fava-trail", "fava-trail-server"],
       "env": {
-        "FAVA_TRAIL_HOME": "/path/to/your/trail-data"
+        "FAVA_TRAIL_DATA_REPO": "/path/to/your/trail-data"
       }
     }
   }
@@ -41,16 +41,16 @@ Add to Claude Desktop `claude_desktop_config.json` or `~/.claude.json`:
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `FAVA_TRAIL_HOME` | Root directory for trail data | `~/.fava-trail` |
-| `FAVA_TRAILS_DIR` | Override trails directory location (absolute path) | `$FAVA_TRAIL_HOME/trails` |
+| `FAVA_TRAIL_DATA_REPO` | Root directory for trail data | `~/.fava-trail` |
+| `FAVA_TRAILS_DIR` | Override trails directory location (absolute path) | `$FAVA_TRAIL_DATA_REPO/trails` |
 
-The server reads `$FAVA_TRAIL_HOME/config.yaml` for global settings and manages trails under `$FAVA_TRAIL_HOME/trails/`.
+The server reads `$FAVA_TRAIL_DATA_REPO/config.yaml` for global settings and manages trails under `$FAVA_TRAIL_DATA_REPO/trails/`.
 
 ## Architecture
 
 - **MCP Server**: stdio transport
 - **VCS Backend**: JJ colocated mode (`.jj/` + `.git/` in each trail)
-- **Storage**: `$FAVA_TRAIL_HOME/trails/{trail-name}/thoughts/{namespace}/{ulid}.md`
+- **Storage**: `$FAVA_TRAIL_DATA_REPO/trails/{trail-name}/thoughts/{namespace}/{ulid}.md`
 - **All responses**: Structured JSON — raw VCS output is never returned
 
 ## Tools Reference

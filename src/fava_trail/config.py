@@ -36,8 +36,20 @@ def sanitize_trail_name(name: str) -> str:
 
 
 def get_fava_home() -> Path:
-    """Get the FAVA Trail home directory from env or default."""
-    return Path(os.environ.get("FAVA_TRAIL_HOME", DEFAULT_FAVA_HOME))
+    """Get the FAVA Trail data repo directory from env or default.
+
+    Checks FAVA_TRAIL_DATA_REPO first, falls back to deprecated FAVA_TRAIL_HOME.
+    """
+    data_repo = os.environ.get("FAVA_TRAIL_DATA_REPO")
+    if data_repo:
+        return Path(data_repo)
+    legacy = os.environ.get("FAVA_TRAIL_HOME")
+    if legacy:
+        logger.warning(
+            "FAVA_TRAIL_HOME is deprecated, use FAVA_TRAIL_DATA_REPO instead"
+        )
+        return Path(legacy)
+    return Path(DEFAULT_FAVA_HOME)
 
 
 def get_trails_dir() -> Path:
@@ -45,8 +57,8 @@ def get_trails_dir() -> Path:
 
     Priority:
     1. FAVA_TRAILS_DIR env var (highest — absolute path override, tilde-expanded)
-    2. config.yaml trails_dir (absolute path used directly, relative resolved from FAVA_TRAIL_HOME)
-    3. Default: $FAVA_TRAIL_HOME/trails
+    2. config.yaml trails_dir (absolute path used directly, relative resolved from FAVA_TRAIL_DATA_REPO)
+    3. Default: $FAVA_TRAIL_DATA_REPO/trails
     """
     env_override = os.environ.get("FAVA_TRAILS_DIR")
     if env_override:
