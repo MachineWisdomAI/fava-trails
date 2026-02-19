@@ -62,7 +62,7 @@ MachineWisdomAI's versioned agentic memory — the actual trail data.
 │  ├── tests/                             │
 │  └── codev/                 (SPIR docs) │
 └──────────────┬──────────────────────────┘
-               │ FAVA_TRAIL_HOME env var
+               │ FAVA_TRAIL_DATA_REPO env var
                │ points to ↓
 ┌──────────────▼──────────────────────────┐
 │  wise-fava-trail (internal)             │
@@ -82,10 +82,10 @@ MachineWisdomAI's versioned agentic memory — the actual trail data.
 The `fava-trail` server discovers trail data via environment variable:
 
 ```
-FAVA_TRAIL_HOME=/path/to/wise-fava-trail
+FAVA_TRAIL_DATA_REPO=/path/to/wise-fava-trail
 ```
 
-The server reads `$FAVA_TRAIL_HOME/config.yaml` and manages trails under `$FAVA_TRAIL_HOME/trails/`. This is already how `config.py` works — the only change needed is ensuring `trails_dir` in config supports absolute paths.
+The server reads `$FAVA_TRAIL_DATA_REPO/config.yaml` and manages trails under `$FAVA_TRAIL_DATA_REPO/trails/`. This is already how `config.py` works — the only change needed is ensuring `trails_dir` in config supports absolute paths.
 
 ### Bootstrap Flow (internal repo)
 
@@ -96,7 +96,7 @@ git clone git@github.com:MachineWisdomAI/wise-fava-trail.git
 # 2. Install the MCP server
 uv tool install fava-trail  # or: pip install fava-trail
 
-# 3. Set FAVA_TRAIL_HOME (bootstrap does this)
+# 3. Set FAVA_TRAIL_DATA_REPO (bootstrap does this)
 make setup  # sets env var, creates initial trail if needed
 ```
 
@@ -149,7 +149,7 @@ __pycache__/
 
 1. `fava-trail` repo has all Python source, tests pass (`pytest`), and is pip-installable
 2. `wise-fava-trail` repo has config.yaml + Makefile + CLAUDE.md + trails/ structure
-3. `FAVA_TRAIL_HOME` env var correctly points server to internal repo
+3. `FAVA_TRAIL_DATA_REPO` env var correctly points server to internal repo
 4. No company-specific data exists in the OSS repo
 5. `make setup` in internal repo bootstraps a working FAVA Trail environment
 6. All 30 existing tests pass against the restructured code

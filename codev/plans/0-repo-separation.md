@@ -54,7 +54,7 @@
 
 ## Phase 0.4: Wire together and verify
 
-- Set `FAVA_TRAIL_HOME` to point to `wise-fava-trail/`
+- Set `FAVA_TRAIL_DATA_REPO` to point to `wise-fava-trail/`
 - Run `fava-trail-server` from `fava-trail/` repo
 - Verify all 13 tools respond
 - Create a test trail, save a thought, recall it

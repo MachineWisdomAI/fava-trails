@@ -33,7 +33,7 @@ Any MCP client ───┘     │            └── toolkit (P2)
                    /          \
              JjBackend    GitBackend
                    \          /
-              FAVA_TRAIL_HOME env var
+              FAVA_TRAIL_DATA_REPO env var
                         │
                    trails/ dir
 ```

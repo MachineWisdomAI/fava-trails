@@ -15,13 +15,13 @@ if not Path(jj_bin).exists():
 
 @pytest.fixture
 def tmp_fava_home(tmp_path):
-    """Create a temporary FAVA_TRAIL_HOME directory."""
+    """Create a temporary FAVA_TRAIL_DATA_REPO directory."""
     home = tmp_path / "fava-trail"
     home.mkdir()
     (home / "trails").mkdir()
-    os.environ["FAVA_TRAIL_HOME"] = str(home)
+    os.environ["FAVA_TRAIL_DATA_REPO"] = str(home)
     yield home
-    os.environ.pop("FAVA_TRAIL_HOME", None)
+    os.environ.pop("FAVA_TRAIL_DATA_REPO", None)
 
 
 @pytest_asyncio.fixture
