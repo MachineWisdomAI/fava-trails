@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from pathlib import Path
 
 import yaml
@@ -13,6 +14,25 @@ from .models import GlobalConfig, TrailConfig
 logger = logging.getLogger(__name__)
 
 DEFAULT_FAVA_HOME = os.path.expanduser("~/.fava-trail")
+
+# Trail names must be simple slugs: lowercase alphanumeric + hyphens
+_TRAIL_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
+
+
+def sanitize_trail_name(name: str) -> str:
+    """Validate trail name is a safe filesystem slug.
+
+    Rejects path traversal attempts (../, /, \\) and non-slug characters.
+    """
+    if not name or not _TRAIL_NAME_RE.match(name):
+        raise ValueError(
+            f"Invalid trail name: {name!r}. "
+            "Trail names must be alphanumeric with hyphens/dots/underscores, "
+            "starting with an alphanumeric character."
+        )
+    if ".." in name or "/" in name or "\\" in name:
+        raise ValueError(f"Invalid trail name: {name!r}. Path traversal not allowed.")
+    return name
 
 
 def get_fava_home() -> Path:
@@ -24,13 +44,13 @@ def get_trails_dir() -> Path:
     """Get the directory containing all trails.
 
     Priority:
-    1. FAVA_TRAILS_DIR env var (highest — absolute path override)
+    1. FAVA_TRAILS_DIR env var (highest — absolute path override, tilde-expanded)
     2. config.yaml trails_dir (absolute path used directly, relative resolved from FAVA_TRAIL_HOME)
     3. Default: $FAVA_TRAIL_HOME/trails
     """
     env_override = os.environ.get("FAVA_TRAILS_DIR")
     if env_override:
-        return Path(env_override)
+        return Path(os.path.expanduser(env_override))
 
     home = get_fava_home()
     config = load_global_config()
@@ -60,7 +80,8 @@ def save_global_config(config: GlobalConfig) -> None:
 
 def load_trail_config(trail_name: str) -> TrailConfig:
     """Load trail-specific configuration."""
-    trail_dir = get_trails_dir() / trail_name
+    safe_name = sanitize_trail_name(trail_name)
+    trail_dir = get_trails_dir() / safe_name
     config_path = trail_dir / ".fava-trail.yaml"
     if config_path.exists():
         with open(config_path) as f:
@@ -72,7 +93,8 @@ def load_trail_config(trail_name: str) -> TrailConfig:
 
 def save_trail_config(trail_name: str, config: TrailConfig) -> None:
     """Save trail-specific configuration."""
-    trail_dir = get_trails_dir() / trail_name
+    safe_name = sanitize_trail_name(trail_name)
+    trail_dir = get_trails_dir() / safe_name
     config_path = trail_dir / ".fava-trail.yaml"
     trail_dir.mkdir(parents=True, exist_ok=True)
     with open(config_path, "w") as f:
@@ -80,8 +102,9 @@ def save_trail_config(trail_name: str, config: TrailConfig) -> None:
 
 
 def ensure_fava_home() -> Path:
-    """Ensure the FAVA Trail home directory exists."""
+    """Ensure the FAVA Trail home and trails directories exist."""
     home = get_fava_home()
     home.mkdir(parents=True, exist_ok=True)
-    (home / "trails").mkdir(exist_ok=True)
+    trails_dir = get_trails_dir()
+    trails_dir.mkdir(parents=True, exist_ok=True)
     return home

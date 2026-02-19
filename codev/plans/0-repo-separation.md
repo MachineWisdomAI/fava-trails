@@ -1,6 +1,6 @@
 # Plan 0: Repository Separation — Engine vs. Data
 
-**Status:** draft
+**Status:** integrated
 **Spec:** `codev/specs/0-repo-separation.md`
 
 ---

@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from .config import get_trails_dir, load_trail_config, save_trail_config
+from .config import get_trails_dir, load_trail_config, sanitize_trail_name, save_trail_config
 from .models import (
     DEFAULT_NAMESPACE,
     NAMESPACE_ROUTES,
@@ -38,8 +38,8 @@ class TrailManager:
     """Manages a single trail: VCS ops, thought CRUD, namespace routing, GC."""
 
     def __init__(self, trail_name: str, vcs: Optional[VcsBackend] = None):
-        self.trail_name = trail_name
-        self.trail_path = get_trails_dir() / trail_name
+        self.trail_name = sanitize_trail_name(trail_name)
+        self.trail_path = get_trails_dir() / self.trail_name
         self.vcs = vcs or JjBackend(self.trail_path)
         self._lock = asyncio.Lock()
         self._config: Optional[TrailConfig] = None

@@ -1,6 +1,6 @@
 # Spec 0: Repository Separation — Engine vs. Data
 
-**Status:** draft
+**Status:** integrated
 **Author:** Claude (with 3-way consensus: GPT-5.1 Codex, Gemini 3 Pro, O3)
 **Continuation ID:** `16cf1bcf-6d6c-41fc-98ee-3da62dd1a011`
 
