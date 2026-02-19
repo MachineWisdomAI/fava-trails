@@ -21,9 +21,22 @@ def get_fava_home() -> Path:
 
 
 def get_trails_dir() -> Path:
-    """Get the directory containing all trails."""
+    """Get the directory containing all trails.
+
+    Priority:
+    1. FAVA_TRAILS_DIR env var (highest — absolute path override)
+    2. config.yaml trails_dir (absolute path used directly, relative resolved from FAVA_TRAIL_HOME)
+    3. Default: $FAVA_TRAIL_HOME/trails
+    """
+    env_override = os.environ.get("FAVA_TRAILS_DIR")
+    if env_override:
+        return Path(env_override)
+
     home = get_fava_home()
     config = load_global_config()
+    trails_path = Path(config.trails_dir)
+    if trails_path.is_absolute():
+        return trails_path
     return home / config.trails_dir
 
 
