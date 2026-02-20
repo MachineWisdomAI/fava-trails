@@ -1,6 +1,6 @@
 # Spec 1b: Storage Substrate Amendments
 
-**Status:** approved
+**Status:** integrated
 **Author:** Claude (SPIR with 3-way consensus)
 **Amends:** Spec 0 (`0-repo-separation.md`), Spec 1 (`1-wise-fava-trail.md`)
 **Mutability Consensus:** GPT 5.2 (8/10 FOR), Gemini 3 Pro (9/10 AGAINST), Grok (8/10 NEUTRAL) — Unanimous support

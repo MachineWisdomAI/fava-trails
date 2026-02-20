@@ -1,6 +1,6 @@
 # Plan 1b: Storage Substrate Amendments
 
-**Status:** plan-approval
+**Status:** integrated
 **Spec:** `codev/specs/1b-storage-substrate-amendments.md`
 
 ---
