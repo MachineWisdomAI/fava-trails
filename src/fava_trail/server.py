@@ -352,19 +352,30 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
         if name in write_ops:
             active_conflicts = await trail.get_conflicts()
             if active_conflicts:
-                conflict_result = {
-                    "status": "blocked",
-                    "message": (
-                        f"Operation '{name}' blocked: {len(active_conflicts)} active conflict(s). "
-                        "Resolve conflicts before continuing. Use the 'conflicts' tool to see details, "
-                        "or 'rollback' to restore a previous state."
-                    ),
-                    "conflicts": [
-                        {"file": c.file_path, "description": c.description}
-                        for c in active_conflicts
-                    ],
-                }
-                return [TextContent(type="text", text=json.dumps(conflict_result, indent=2, default=str))]
+                # Exception: allow update_thought when target thought_id matches a conflicted file
+                # This enables conflict resolution via update_thought
+                allow_through = False
+                if name == "update_thought":
+                    target_id = arguments.get("thought_id", "")
+                    if target_id:
+                        conflicted_files = {c.file_path for c in active_conflicts}
+                        # Check if any conflicted file contains the target thought_id
+                        allow_through = any(target_id in fp for fp in conflicted_files)
+
+                if not allow_through:
+                    conflict_result = {
+                        "status": "blocked",
+                        "message": (
+                            f"Operation '{name}' blocked: {len(active_conflicts)} active conflict(s). "
+                            "Resolve conflicts before continuing. Use the 'conflicts' tool to see details, "
+                            "or 'rollback' to restore a previous state."
+                        ),
+                        "conflicts": [
+                            {"file": c.file_path, "description": c.description}
+                            for c in active_conflicts
+                        ],
+                    }
+                    return [TextContent(type="text", text=json.dumps(conflict_result, indent=2, default=str))]
 
         # Route to handler
         handlers = {
