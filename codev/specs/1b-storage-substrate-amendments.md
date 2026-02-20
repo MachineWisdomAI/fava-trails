@@ -1,6 +1,6 @@
 # Spec 1b: Storage Substrate Amendments
 
-**Status:** spec-approval
+**Status:** approved
 **Author:** Claude (SPIR with 3-way consensus)
 **Amends:** Spec 0 (`0-repo-separation.md`), Spec 1 (`1-wise-fava-trail.md`)
 **Mutability Consensus:** GPT 5.2 (8/10 FOR), Gemini 3 Pro (9/10 AGAINST), Grok (8/10 NEUTRAL) — Unanimous support
@@ -30,7 +30,7 @@ You could replace JJ with `mkdir` + `cp` + a timestamp and get the same behavior
 
 ### Problem 2: Per-Trail Repos Have No Remote Storage
 
-Every trail at `wise-fava-trail/trails/{name}/` is currently an independent JJ colocated repo with its own `.git/` and `.jj/`. None have a git remote configured. The data is entirely local — 20+ changes in the default trail with zero backup. Machine death = total data loss.
+Every trail at `wise-fava-trail/trails/{name}/` (being renamed to `fava-trail-data/` — see Naming section) is currently an independent JJ colocated repo with its own `.git/` and `.jj/`. None have a git remote configured. The data is entirely local — 20+ changes in the default trail with zero backup. Machine death = total data loss.
 
 Three approaches were evaluated for trail remote storage:
 
@@ -63,7 +63,6 @@ These fields are the thought's birth certificate. They never change after creati
 | `agent_id` | Provenance — who created this |
 | `source_type` | Classification is set at birth |
 | `created_at` | Timestamp is historical fact |
-| `relationships` | Graph edges are append-only (add new, never delete) |
 | `confidence` | Initial assessment is historical fact |
 | `schema_version` | Format identifier |
 
@@ -75,6 +74,7 @@ These fields are modified only by specific tools during lifecycle transitions. T
 |-------|------------|-------------|
 | `validation_status` | `propose_truth`, Trust Gate | draft -> proposed -> approved/rejected |
 | `superseded_by` | `supersede` | null -> ULID (one-time, irreversible) |
+| `relationships` | `supersede`, `update_thought` (future: `add_relationship`) | Append-only — new edges can be added, existing edges never removed or modified. Agents frequently discover dependencies after creation. Initial set is preserved; new `DEPENDS_ON`, `REFERENCES`, etc. edges are appended by specific tools. |
 
 #### Layer 3: Content (Mutable)
 
@@ -152,10 +152,10 @@ Proposed: `DRAFT` | `PROPOSED` | `APPROVED` | `REJECTED` | `TOMBSTONED`
 
 ### Stale Draft Handling
 
-Drafts unpromoted for a configurable period (default: 30 days) are auto-promoted to `proposed` (Trust Gate decides their fate). This preserves good information that might otherwise be lost to procedural lousiness.
+Drafts unpromoted for a configurable period are auto-promoted to `proposed` (Trust Gate decides their fate). This preserves good information that might otherwise be lost to procedural lousiness.
 
-- Configurable per trail via `TrailConfig.stale_draft_days` (default: 30, 0 = disabled)
-- Auto-promotion sets `metadata.extra.promotion_reason = "stale_timer"` — not a separate state, just metadata
+- Configurable per trail via `TrailConfig.stale_draft_days` (default: **0 = disabled**). Enable after usage data shows stale drafts are worth auto-promoting. Conservative default prevents noise in the proposed namespace.
+- When enabled (e.g., `stale_draft_days: 30`), auto-promotion sets `metadata.extra.promotion_reason = "stale_timer"` — not a separate state, just metadata
 - Trust Gate can still reject auto-promoted thoughts
 
 ### Content Freeze on Approval
@@ -197,7 +197,8 @@ With mutable content, real conflicts will occur. The conflict interception layer
 4. JJ records the resolution as a normal commit
 5. If conflict markers are unparseable, fall back to: `"Manual intervention required. Use rollback to restore pre-conflict state."`
 
-The `conflicts` tool response gains richer structure:
+The `conflicts` tool response gains richer structure. **Note:** `file_path` is always monorepo-root-relative (includes `trails/{name}/` prefix). The `thought_id` is extracted from the filename stem (the ULID), not from the directory structure. The `_find_thought_path` utility searches by ULID stem and handles both formats correctly.
+
 ```json
 {
   "status": "conflict",
@@ -304,7 +305,10 @@ The `JjBackend` is rewritten once with all changes — monorepo root as cwd, tra
 
 **Modified: `_run()` method** — Currently runs JJ commands with `cwd=self.trail_path` (the per-trail directory). In the monorepo, JJ commands must run with `cwd=self.repo_root` (where `.jj/` lives).
 
-**New: `init_monorepo()`** — Called once on first server start if `fava-trail-data/` is not yet a JJ repo. Does `jj git init --colocate` at the data repo root.
+**New: `init_monorepo()`** — Called once on first server start. Three-case detection:
+- If `.git/` exists but `.jj/` doesn't → `jj git init --colocate` (wraps existing git history — the current `fava-trail-data` repo already has git history from config.yaml commits, CLAUDE.md, etc. This history is intentionally preserved in the monorepo DAG as initial history.)
+- If both `.git/` and `.jj/` exist → already initialized, skip
+- If neither exists → `jj git init --colocate` (fresh repo)
 
 **Modified: `init_trail()`** — Creates the `trails/{name}/` directory structure and namespace subdirectories. Does NOT create a new JJ/Git repo. Commits the new directory structure as a JJ change in the existing monorepo.
 
@@ -317,10 +321,11 @@ The `JjBackend` is rewritten once with all changes — monorepo root as cwd, tra
 ```python
 async def commit_files(self, message: str, paths: list[str]) -> str:
     """Commit specific files, asserting no cross-trail pollution."""
-    # Snapshot working copy
-    status = await self._run("status")
+    # Get list of changed files using jj diff --name-only (one path per line,
+    # no decoration — most parseable format, analogous to git diff --name-only)
+    name_only_output = await self._run("diff", "--name-only")
+    dirty_paths = [line.strip() for line in name_only_output.splitlines() if line.strip()]
     # Assert only intended paths are dirty
-    dirty_paths = self._parse_dirty_paths(status)
     expected_prefix = str(self.trail_path.relative_to(self.repo_root))
     unexpected = [p for p in dirty_paths if not p.startswith(expected_prefix)]
     if unexpected:
@@ -356,6 +361,8 @@ The `VcsBackend` base class gains a `repo_root` property alongside the existing 
 **Two-tier locking (consensus refinement):**
 - **Per-trail asyncio.Lock** — Still needed. Concurrent writes to the same trail need serialization at the application level.
 - **Repo-wide asyncio.Lock** — New. Required for global operations (push, fetch, rebase, gc) that affect the entire monorepo. Held by the shared `JjBackend` instance. Per-trail operations acquire only the trail lock; global operations acquire the repo-wide lock.
+
+**Important: per-trail JJ commands (commit, describe, new) do NOT need the repo-wide lock.** JJ's operation log handles concurrent writes from multiple processes via automatic 3-way merge of divergent operation heads. Two `jj describe` + `jj new` sequences in the same repo from different processes will both succeed, and the next JJ command will auto-merge the operation heads. The repo-wide lock is ONLY for operations that must see a consistent global state (push, fetch, rebase, gc). This is validated by the JJ Workspaces research — see "Concurrent commits succeed without locking." The implementing agent should NOT add a global lock around per-trail JJ commands "for safety" — it would serialize all writes and negate JJ's concurrency model.
 
 **Startup validation (consensus refinement):** On server startup, validate that `trails_dir` is inside the monorepo root (the JJ colocated repo). Prevents misconfiguration where `FAVA_TRAILS_DIR` points outside the repo.
 
@@ -472,7 +479,7 @@ trails/new-project/
 - **MCP tool interfaces** — Unchanged. All tools still accept `trail_name`, return structured JSON.
 - **Recall, save_thought, get_thought** — File operations are the same. Only the JJ invocation paths change.
 - **Engine vs. Fuel split** — Unchanged. `fava-trail` (OSS engine) is a separate repo. `fava-trail-data` (internal fuel, renamed from `wise-fava-trail`) is the monorepo.
-- **Per-trail asyncio.Lock** — Still needed for concurrent write serialization.
+- **Two-tier locking** — Per-trail asyncio.Lock still needed. Repo-wide lock added for global ops. See TrailManager Changes for details.
 - **Conflict interception layer** — Unchanged in behavior. More useful now: two agents editing the same thought file in different workspaces can produce real JJ conflicts.
 
 ---
