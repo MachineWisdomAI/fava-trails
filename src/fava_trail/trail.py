@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from .config import get_trails_dir, load_trail_config, sanitize_trail_name, save_trail_config
+from .config import get_trails_dir, load_trail_config, sanitize_namespace, sanitize_trail_name, save_trail_config
 from .models import (
     DEFAULT_NAMESPACE,
     NAMESPACE_ROUTES,
@@ -113,6 +113,7 @@ class TrailManager:
     ) -> ThoughtRecord:
         """Save a new thought. Defaults to drafts/ namespace."""
         ns = namespace or DEFAULT_NAMESPACE
+        sanitize_namespace(ns)  # Validate namespace — prevents path traversal
 
         frontmatter = ThoughtFrontmatter(
             agent_id=agent_id,

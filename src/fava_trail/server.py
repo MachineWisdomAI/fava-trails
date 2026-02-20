@@ -69,18 +69,18 @@ async def _get_trail(trail_name: str | None = None) -> TrailManager:
     config = load_global_config()
     name = trail_name or config.default_trail
 
-    if name not in _trail_managers:
+    safe_name = sanitize_trail_name(name)
+    if safe_name not in _trail_managers:
         repo_root = get_data_repo_root()
-        safe_name = sanitize_trail_name(name)
         trail_path = get_trails_dir() / safe_name
         backend = JjBackend(repo_root=repo_root, trail_path=trail_path)
-        manager = TrailManager(name, vcs=backend)
+        manager = TrailManager(safe_name, vcs=backend)
         # Auto-initialize if trail doesn't exist (detect by thoughts/ dir, not .jj)
         if not (manager.trail_path / "thoughts").exists():
             await manager.init()
-        _trail_managers[name] = manager
+        _trail_managers[safe_name] = manager
 
-    return _trail_managers[name]
+    return _trail_managers[safe_name]
 
 
 # --- Tool Definitions ---
