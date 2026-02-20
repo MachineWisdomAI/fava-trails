@@ -157,6 +157,46 @@ async def test_recall_by_scope(trail_manager):
 
 
 @pytest.mark.asyncio
+async def test_recall_query_searches_metadata_tags(trail_manager):
+    """recall query should match metadata tags, not just content."""
+    await trail_manager.save_thought(
+        content="Some unrelated content body.",
+        agent_id="test",
+        metadata={"tags": ["cross-agent-test", "sync"]},
+    )
+
+    results = await trail_manager.recall(query="cross-agent-test")
+    assert len(results) >= 1
+    assert any("cross-agent-test" in r.frontmatter.metadata.tags for r in results)
+
+
+@pytest.mark.asyncio
+async def test_recall_query_searches_metadata_project(trail_manager):
+    """recall query should match metadata project."""
+    await trail_manager.save_thought(
+        content="A thought with no mention of the project in body.",
+        agent_id="test",
+        metadata={"project": "wise-agents-toolkit"},
+    )
+
+    results = await trail_manager.recall(query="wise-agents-toolkit")
+    assert len(results) >= 1
+
+
+@pytest.mark.asyncio
+async def test_recall_query_searches_agent_id(trail_manager):
+    """recall query should match agent_id."""
+    await trail_manager.save_thought(
+        content="Content that does not mention the agent.",
+        agent_id="claude-desktop",
+    )
+
+    results = await trail_manager.recall(query="claude-desktop")
+    assert len(results) >= 1
+    assert any(r.frontmatter.agent_id == "claude-desktop" for r in results)
+
+
+@pytest.mark.asyncio
 async def test_recall_with_relationships(trail_manager):
     """recall with include_relationships=True should return 1-hop related thoughts."""
     parent = await trail_manager.save_thought(

@@ -134,8 +134,8 @@ class VcsBackend(ABC):
         ...
 
     @abstractmethod
-    async def git_push(self, bookmark: str = "") -> str:
-        """Push changes to git remote."""
+    async def _git_push(self, bookmark: str = "") -> str:
+        """Low-level git push. Use push() instead — it advances bookmarks first."""
         ...
 
     @abstractmethod
