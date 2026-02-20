@@ -61,8 +61,7 @@ REMOTE_URL=$(git -C "${DATA_REPO}" remote get-url origin 2>/dev/null) || {
     exit 1
 }
 
-# Must be empty (no commits, or only an empty initial commit)
-COMMIT_COUNT=$(git -C "${DATA_REPO}" rev-list --count HEAD 2>/dev/null || echo 0)
+# Must be empty (no tracked files)
 FILE_COUNT=$(git -C "${DATA_REPO}" ls-files | wc -l)
 if [[ "${FILE_COUNT}" -gt 0 ]]; then
     echo "Error: '${DATA_REPO}' is not empty (${FILE_COUNT} tracked files found)." >&2
@@ -119,20 +118,27 @@ echo "[3/5] Committed and pushed bootstrap via git (last time git push is used)"
 
 # ─── Step 4: Initialize JJ colocated mode ───
 # jj git init doesn't support -R, must run from inside the directory
+# Capture output first, then filter — grep -v exits 1 when all lines are filtered,
+# which triggers pipefail and causes a false "failed" report.
 
-(cd "${DATA_REPO}" && jj git init --colocate 2>&1 | grep -v "^Hint:") || {
+INIT_OUT=$(cd "${DATA_REPO}" && jj git init --colocate 2>&1) || {
     echo "Error: jj git init --colocate failed." >&2
+    echo "${INIT_OUT}" >&2
     exit 1
 }
+echo "${INIT_OUT}" | grep -v "^Hint:" || true
 
 echo "[4/5] Initialized JJ colocated mode (.jj/ created)"
 
 # ─── Step 5: Track remote main bookmark ───
 
-(cd "${DATA_REPO}" && jj bookmark track main@origin 2>/dev/null) || {
-    # If main@origin doesn't exist yet (first push), create the bookmark
+if ! (cd "${DATA_REPO}" && jj bookmark track main@origin 2>/dev/null); then
+    # main@origin doesn't exist yet (first push) — create bookmark and retry tracking
     (cd "${DATA_REPO}" && jj bookmark create main -r @- 2>/dev/null) || true
-}
+    (cd "${DATA_REPO}" && jj bookmark track main@origin 2>/dev/null) || {
+        echo "Warning: could not track main@origin; auto-push may not work until you run: jj bookmark track main@origin" >&2
+    }
+fi
 
 echo "[5/5] JJ bookmark 'main' tracking origin"
 

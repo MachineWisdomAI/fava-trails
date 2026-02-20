@@ -36,6 +36,9 @@ class JjError(Exception):
 class JjBackend(VcsBackend):
     """JJ colocated mode backend. Single monorepo, trail-path scoped operations."""
 
+    # Default bookmark name — must match what bootstrap-data-repo.sh creates.
+    DEFAULT_BOOKMARK = "main"
+
     # Shared repo locks: all instances with the same repo_root share one lock.
     # This deduplicates GC and serializes global ops (push/fetch) across all trail backends.
     _repo_locks: dict[str, asyncio.Lock] = {}
@@ -456,7 +459,7 @@ class JjBackend(VcsBackend):
             return RebaseResult(success=False, pre_rebase_op_id=pre_op, summary=f"Fetch failed: {e}")
 
         try:
-            await self._run("rebase", "-d", "main@origin")
+            await self._run("rebase", "-d", f"{self.DEFAULT_BOOKMARK}@origin")
         except JjError as e:
             # Check for conflicts
             if "conflict" in str(e).lower():
@@ -483,7 +486,8 @@ class JjBackend(VcsBackend):
 
         return RebaseResult(success=True, pre_rebase_op_id=pre_op, summary="Sync complete")
 
-    async def git_push(self, bookmark: str = "") -> str:
+    async def _git_push(self, bookmark: str = "") -> str:
+        """Low-level git push. Use push() instead — it advances bookmarks first."""
         args = ["git", "push"]
         if bookmark:
             args.extend(["-b", bookmark])
@@ -502,10 +506,10 @@ class JjBackend(VcsBackend):
         async with self.repo_lock:
             # Advance main bookmark to latest committed change
             try:
-                await self._run("bookmark", "set", "main", "-r", "@-")
+                await self._run("bookmark", "set", self.DEFAULT_BOOKMARK, "-r", "@-")
             except JjError as e:
                 logger.warning(f"Could not advance main bookmark: {e}")
-            return await self.git_push()
+            return await self._git_push()
 
     async def try_push(self) -> dict:
         """Non-throwing push wrapper. Returns status dict.

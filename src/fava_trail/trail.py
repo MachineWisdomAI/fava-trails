@@ -284,6 +284,7 @@ class TrailManager:
         search_dirs = []
 
         if namespace:
+            sanitize_namespace(namespace)  # Validate — prevents path traversal
             search_dirs.append(self._thoughts_dir(namespace))
         else:
             search_dirs.append(self.trail_path / "thoughts")
@@ -296,16 +297,18 @@ class TrailManager:
                     continue
                 try:
                     record = ThoughtRecord.from_markdown(path.read_text())
-                except Exception:
+                except Exception as e:
+                    logger.debug("Failed to parse thought file %s: %s", path, e)
                     continue
 
                 # Filter superseded
                 if not include_superseded and record.is_superseded:
                     continue
 
+                meta = record.frontmatter.metadata
+
                 # Filter by scope
                 if scope:
-                    meta = record.frontmatter.metadata
                     if "project" in scope and meta.project != scope["project"]:
                         continue
                     if "branch" in scope and meta.branch != scope["branch"]:
@@ -315,16 +318,18 @@ class TrailManager:
                         if not required_tags.issubset(set(meta.tags)):
                             continue
 
-                # Filter by query (simple text match)
+                # Filter by query (simple text match across all fields)
                 if query:
                     query_lower = query.lower()
-                    searchable = (
-                        record.content.lower()
-                        + " "
-                        + record.frontmatter.thought_id.lower()
-                        + " "
-                        + (record.frontmatter.source_type.value if record.frontmatter.source_type else "")
-                    )
+                    searchable = " ".join([
+                        record.content.lower(),
+                        record.frontmatter.thought_id.lower(),
+                        (record.frontmatter.source_type.value if record.frontmatter.source_type else ""),
+                        (record.frontmatter.agent_id or "").lower(),
+                        (meta.project or "").lower(),
+                        (meta.branch or "").lower(),
+                        " ".join(t.lower() for t in meta.tags),
+                    ])
                     if query_lower not in searchable:
                         continue
 

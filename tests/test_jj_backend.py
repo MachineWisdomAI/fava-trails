@@ -1,6 +1,7 @@
 """Tests for JjBackend VCS operations."""
 
 import subprocess
+from unittest.mock import AsyncMock, call, patch
 
 import pytest
 
@@ -290,3 +291,67 @@ Some content without section headers
     assert side_a is None
     assert base is None
     assert side_b is None
+
+
+# --- Push bookmark advancement ---
+
+
+@pytest.mark.asyncio
+async def test_push_advances_bookmark_before_git_push(jj_backend):
+    """push() must advance the main bookmark to @- before calling _git_push().
+
+    This prevents the silent auto-push failure where JJ colocated mode keeps
+    HEAD detached, so the main bookmark never advances past the bootstrap commit.
+    """
+    calls = []
+
+    original_run = jj_backend._run
+
+    async def tracking_run(*args, **kwargs):
+        calls.append(args)
+        return await original_run(*args, **kwargs)
+
+    with patch.object(jj_backend, "_run", side_effect=tracking_run):
+        # push() will fail at git push (no remote), but we only care about call order
+        try:
+            await jj_backend.push()
+        except Exception:
+            pass  # Expected: no remote configured in test
+
+    # Find the bookmark set and git push calls
+    bookmark_idx = None
+    push_idx = None
+    for i, c in enumerate(calls):
+        if c[0] == "bookmark" and "set" in c:
+            bookmark_idx = i
+        if c[0] == "git" and "push" in c:
+            push_idx = i
+
+    assert bookmark_idx is not None, "push() did not call 'bookmark set'"
+    assert push_idx is not None, "push() did not call 'git push'"
+    assert bookmark_idx < push_idx, (
+        f"bookmark set (call {bookmark_idx}) must come before git push (call {push_idx})"
+    )
+
+
+@pytest.mark.asyncio
+async def test_push_uses_default_bookmark_constant(jj_backend):
+    """push() should use DEFAULT_BOOKMARK, not a hardcoded string."""
+    from fava_trail.vcs.jj_backend import JjBackend
+
+    calls = []
+    original_run = jj_backend._run
+
+    async def tracking_run(*args, **kwargs):
+        calls.append(args)
+        return await original_run(*args, **kwargs)
+
+    with patch.object(jj_backend, "_run", side_effect=tracking_run):
+        try:
+            await jj_backend.push()
+        except Exception:
+            pass
+
+    bookmark_calls = [c for c in calls if c[0] == "bookmark" and "set" in c]
+    assert len(bookmark_calls) == 1
+    assert JjBackend.DEFAULT_BOOKMARK in bookmark_calls[0]
