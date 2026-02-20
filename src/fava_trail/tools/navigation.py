@@ -47,20 +47,34 @@ async def handle_conflicts(trail, arguments: dict) -> dict[str, Any]:
             "message": "No conflicts detected. Trail is consistent.",
         }
 
+    conflict_list = []
+    for c in conflicts:
+        entry: dict = {"file": c.file_path, "description": c.description}
+        if c.side_a is not None or c.side_b is not None or c.base is not None:
+            entry["side_a"] = c.side_a
+            entry["side_b"] = c.side_b
+            entry["base"] = c.base
+            entry["resolution_hint"] = (
+                "Use update_thought on the conflicted thought ID to resolve. "
+                "Choose side_a, side_b, or write a merged version."
+            )
+        else:
+            entry["resolution_hint"] = (
+                "Manual intervention required. Use rollback to restore pre-conflict state."
+            )
+        conflict_list.append(entry)
+
     return {
         "status": "conflict",
         "has_conflicts": True,
         "count": len(conflicts),
-        "conflicts": [
-            {"file": c.file_path, "description": c.description}
-            for c in conflicts
-        ],
+        "conflicts": conflict_list,
         "message": (
             f"{len(conflicts)} conflict(s) detected. "
             "Standard operations are halted. "
-            "Resolve each conflict before continuing."
+            "Use update_thought on conflicted thoughts to resolve, "
+            "or rollback to restore a previous state."
         ),
-        "resolution_hint": "Review the conflicting thoughts and use supersede to create a resolved version.",
     }
 
 

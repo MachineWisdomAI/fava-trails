@@ -206,3 +206,87 @@ async def test_gc(jj_backend):
     """GC should complete without error."""
     result = await jj_backend.gc()
     assert "completed" in result.lower()
+
+
+# --- Phase 1b.4: Conflict content extraction ---
+
+
+def test_parse_snapshot_conflict_single():
+    """Parse a single snapshot-style conflict block."""
+    from fava_trail.vcs.jj_backend import JjBackend
+
+    text = """\
+<<<<<<< Conflict 1 of 1
++++++++ Contents of side #1
+Side A content line 1
+Side A content line 2
+------- Contents of base
+Base content line 1
++++++++ Contents of side #2
+Side B content line 1
+>>>>>>> Conflict 1 of 1
+"""
+    side_a, base, side_b = JjBackend.parse_snapshot_conflict(text)
+    assert side_a == "Side A content line 1\nSide A content line 2"
+    assert base == "Base content line 1"
+    assert side_b == "Side B content line 1"
+
+
+def test_parse_snapshot_conflict_multiple():
+    """Parse multiple conflict blocks in one file (e.g., frontmatter + content)."""
+    from fava_trail.vcs.jj_backend import JjBackend
+
+    text = """\
+Some preamble
+<<<<<<< Conflict 1 of 2
++++++++ Contents of side #1
+frontmatter side A
+------- Contents of base
+frontmatter base
++++++++ Contents of side #2
+frontmatter side B
+>>>>>>> Conflict 1 of 2
+middle text
+<<<<<<< Conflict 2 of 2
++++++++ Contents of side #1
+content side A
+------- Contents of base
+content base
++++++++ Contents of side #2
+content side B
+>>>>>>> Conflict 2 of 2
+"""
+    side_a, base, side_b = JjBackend.parse_snapshot_conflict(text)
+    # Multiple blocks concatenated
+    assert "frontmatter side A" in side_a
+    assert "content side A" in side_a
+    assert "frontmatter base" in base
+    assert "content base" in base
+    assert "frontmatter side B" in side_b
+    assert "content side B" in side_b
+
+
+def test_parse_snapshot_conflict_no_markers():
+    """File without conflict markers returns all None."""
+    from fava_trail.vcs.jj_backend import JjBackend
+
+    text = "Normal file content\nNo conflicts here."
+    side_a, base, side_b = JjBackend.parse_snapshot_conflict(text)
+    assert side_a is None
+    assert base is None
+    assert side_b is None
+
+
+def test_parse_snapshot_conflict_unparseable():
+    """Malformed markers (no section headers) return all None."""
+    from fava_trail.vcs.jj_backend import JjBackend
+
+    text = """\
+<<<<<<< Conflict 1 of 1
+Some content without section headers
+>>>>>>> Conflict 1 of 1
+"""
+    side_a, base, side_b = JjBackend.parse_snapshot_conflict(text)
+    assert side_a is None
+    assert base is None
+    assert side_b is None

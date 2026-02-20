@@ -298,11 +298,105 @@ class JjBackend(VcsBackend):
         await self._run("op", "restore", op_id)
         return f"Restored to operation {op_id}"
 
+    @staticmethod
+    def parse_snapshot_conflict(text: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
+        """Parse JJ snapshot-style conflict markers from file content.
+
+        Returns (side_a, base, side_b). All None if unparseable.
+        Handles single and multiple conflict blocks — concatenates all sides.
+
+        Expected format:
+            <<<<<<< Conflict N of M
+            +++++++ Contents of side #1
+            content from side A
+            ------- Contents of base
+            base content
+            +++++++ Contents of side #2
+            content from side B
+            >>>>>>> Conflict N of M
+        """
+        if "<<<<<<< Conflict" not in text:
+            return None, None, None
+
+        side_a_parts: list[str] = []
+        base_parts: list[str] = []
+        side_b_parts: list[str] = []
+        current_section: Optional[str] = None
+
+        for line in text.splitlines():
+            if line.startswith("<<<<<<< Conflict"):
+                current_section = None
+                continue
+            if line.startswith(">>>>>>> Conflict"):
+                current_section = None
+                continue
+            if line.startswith("+++++++ Contents of side #1"):
+                current_section = "side_a"
+                continue
+            if line.startswith("------- Contents of base"):
+                current_section = "base"
+                continue
+            if line.startswith("+++++++ Contents of side #2"):
+                current_section = "side_b"
+                continue
+
+            if current_section == "side_a":
+                side_a_parts.append(line)
+            elif current_section == "base":
+                base_parts.append(line)
+            elif current_section == "side_b":
+                side_b_parts.append(line)
+
+        # If we got nothing from any section, markers were unparseable
+        if not side_a_parts and not base_parts and not side_b_parts:
+            return None, None, None
+
+        return (
+            "\n".join(side_a_parts) if side_a_parts else None,
+            "\n".join(base_parts) if base_parts else None,
+            "\n".join(side_b_parts) if side_b_parts else None,
+        )
+
+    async def get_conflict_content(self) -> dict[str, tuple[Optional[str], Optional[str], Optional[str]]]:
+        """Read conflicted working copy files and parse snapshot-style conflict markers.
+
+        Returns dict mapping file_path -> (side_a, base, side_b).
+        Only includes files with parseable conflict markers.
+        """
+        # Get list of conflicted files via jj diff
+        stdout, _ = await self._run("diff", "--name-only", check=False)
+        if not stdout.strip():
+            return {}
+
+        result = {}
+        trail_rel = self._trail_rel_path()
+        for line in stdout.strip().splitlines():
+            file_rel = line.strip()
+            if not file_rel:
+                continue
+            # Only process files in our trail
+            if not file_rel.startswith(trail_rel):
+                continue
+            file_path = self.repo_root / file_rel
+            if not file_path.exists():
+                continue
+            try:
+                content = file_path.read_text()
+            except Exception:
+                continue
+            if "<<<<<<< Conflict" not in content:
+                continue
+            side_a, base, side_b = self.parse_snapshot_conflict(content)
+            result[file_rel] = (side_a, base, side_b)
+
+        return result
+
     async def conflicts(self) -> list[VcsConflict]:
         """Detect conflicts via jj log with conflicts() revset.
 
         CONFLICT INTERCEPTION: Raw algebraic notation is never exposed.
-        Returns structured VcsConflict objects with human-readable descriptions.
+        Returns structured VcsConflict objects with human-readable descriptions
+        including side_a/side_b/base content when available.
         """
         stdout, _ = await self._run(
             "log", "--no-graph", "-r", "conflicts()", "-T",
@@ -312,15 +406,32 @@ class JjBackend(VcsBackend):
         if not stdout.strip():
             return []
 
+        # Get conflict content from files
+        conflict_content = await self.get_conflict_content()
+
         conflicts = []
         for line in stdout.strip().splitlines():
             parts = line.split("\x1f")
             change_id = parts[0].strip() if parts else "unknown"
             desc = parts[1].strip() if len(parts) > 1 else "(no description)"
-            conflicts.append(VcsConflict(
-                file_path=f"change:{change_id}",
-                description=f"Conflict in change {change_id}: {desc}",
-            ))
+
+            if conflict_content:
+                # Create one VcsConflict per conflicted file
+                for file_path, (side_a, base, side_b) in conflict_content.items():
+                    conflicts.append(VcsConflict(
+                        file_path=file_path,
+                        description=f"Conflict in change {change_id}: {desc}",
+                        side_a=side_a,
+                        side_b=side_b,
+                        base=base,
+                    ))
+            else:
+                # No file-level detail available
+                conflicts.append(VcsConflict(
+                    file_path=f"change:{change_id}",
+                    description=f"Conflict in change {change_id}: {desc}",
+                ))
+
         return conflicts
 
     async def current_change(self) -> Optional[VcsChange]:
