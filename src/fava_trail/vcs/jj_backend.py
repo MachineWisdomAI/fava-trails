@@ -497,6 +497,20 @@ class JjBackend(VcsBackend):
         async with self.repo_lock:
             return await self.git_push()
 
+    async def try_push(self) -> dict:
+        """Non-throwing push wrapper. Returns status dict.
+
+        Returns {"status": "pushed"} on success,
+        {"status": "warning", "message": "..."} on failure.
+        Push failures never fail the calling write operation.
+        """
+        try:
+            await self.push()
+            return {"status": "pushed"}
+        except Exception as e:
+            logger.warning(f"Push failed (non-fatal): {e}")
+            return {"status": "warning", "message": str(e)}
+
     async def fetch(self) -> str:
         """Fetch from remote without rebase."""
         async with self.repo_lock:

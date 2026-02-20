@@ -16,15 +16,15 @@ Phase 0 successfully separated the FAVA Trail codebase into two repos following 
 
 1. **Created `fava-trail/` OSS repo** — Moved all Python source, tests, SPIR docs, scripts. Added Apache-2.0 LICENSE, `.gitignore`, comprehensive `CLAUDE.md`. Git initialized.
 2. **Enhanced `config.py`** — Added 3-level priority for trails directory: `FAVA_TRAILS_DIR` env > absolute config > relative config. Added 6 tests.
-3. **Created `wise-fava-trail/` internal repo** — Created `config.yaml`, `Makefile`, `CLAUDE.md`, `.gitignore`, `trails/`. Git initialized.
-4. **Wired together** — Verified all 36 tests pass with `FAVA_TRAIL_DATA_REPO` pointing to `wise-fava-trail/`.
+3. **Created `fava-trail-data/` internal repo** — Created `config.yaml`, `Makefile`, `CLAUDE.md`, `.gitignore`, `trails/`. Git initialized.
+4. **Wired together** — Verified all 36 tests pass with `FAVA_TRAIL_DATA_REPO` pointing to `fava-trail-data/`.
 
 ## Spec Compliance
 
 | Criterion | Status |
 |-----------|--------|
 | `fava-trail` has all Python source, tests pass | Pass |
-| `wise-fava-trail` has config/data files only | Pass |
+| `fava-trail-data` has config/data files only | Pass |
 | `FAVA_TRAIL_DATA_REPO` correctly points server to data repo | Pass |
 | No company-specific data in OSS repo | Pass |
 | `make setup` bootstraps working environment | Pass (prints instructions) |

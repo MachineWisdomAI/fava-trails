@@ -10,7 +10,7 @@
 **Files created:**
 ```
 /home/younes/git/MachineWisdomAI/fava-trail/
-├── pyproject.toml           # moved from wise-fava-trail
+├── pyproject.toml           # moved from fava-trail-data
 ├── uv.lock                  # moved
 ├── scripts/install-jj.sh    # moved
 ├── src/fava_trail/          # moved (all Python source)
@@ -38,11 +38,11 @@
 - New: `FAVA_TRAILS_DIR` env var override (highest priority for trails location)
 - Tests: add `test_config.py` for path resolution
 
-## Phase 0.3: Create internal `wise-fava-trail` repo
+## Phase 0.3: Create internal `fava-trail-data` repo
 
 **Files created:**
 ```
-/home/younes/git/MachineWisdomAI/wise-fava-trail/
+/home/younes/git/MachineWisdomAI/fava-trail-data/
 ├── config.yaml              # global FAVA Trail config for MachineWisdomAI
 ├── Makefile                 # setup target: install fava-trail, set env, init trail
 ├── CLAUDE.md                # company-specific agent instructions
@@ -54,7 +54,7 @@
 
 ## Phase 0.4: Wire together and verify
 
-- Set `FAVA_TRAIL_DATA_REPO` to point to `wise-fava-trail/`
+- Set `FAVA_TRAIL_DATA_REPO` to point to `fava-trail-data/`
 - Run `fava-trail-server` from `fava-trail/` repo
 - Verify all 13 tools respond
 - Create a test trail, save a thought, recall it
@@ -63,4 +63,4 @@
 
 - All 30 tests pass in `fava-trail/`
 - Both repos have clean git history
-- No Python source in `wise-fava-trail/`
+- No Python source in `fava-trail-data/`

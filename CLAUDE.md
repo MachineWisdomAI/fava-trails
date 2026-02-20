@@ -1,6 +1,6 @@
 # FAVA Trail — Versioned Agent Memory via MCP
 
-FAVA Trail (Federated Agents Versioned Audit Trail) is a Python MCP server that provides versioned, auditable memory for AI agents. Every thought, decision, and observation is stored as an immutable markdown file with YAML frontmatter, tracked in a Jujutsu (JJ) colocated git repo.
+FAVA Trail (Federated Agents Versioned Audit Trail) is a Python MCP server that provides versioned, auditable memory for AI agents. Every thought, decision, and observation is stored as a markdown file with YAML frontmatter, tracked in a Jujutsu (JJ) colocated git monorepo.
 
 ## Quick Start
 
@@ -15,7 +15,7 @@ uv sync
 uv run pytest -v
 
 # Run server
-FAVA_TRAIL_DATA_REPO=/path/to/trail-data uv run fava-trail-server
+FAVA_TRAIL_DATA_REPO=/path/to/fava-trail-data uv run fava-trail-server
 ```
 
 ## MCP Registration
@@ -30,7 +30,7 @@ Add to Claude Desktop `claude_desktop_config.json` or `~/.claude.json`:
       "command": "uv",
       "args": ["run", "--directory", "/path/to/fava-trail", "fava-trail-server"],
       "env": {
-        "FAVA_TRAIL_DATA_REPO": "/path/to/your/trail-data"
+        "FAVA_TRAIL_DATA_REPO": "/path/to/fava-trail-data"
       }
     }
   }
@@ -41,17 +41,49 @@ Add to Claude Desktop `claude_desktop_config.json` or `~/.claude.json`:
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `FAVA_TRAIL_DATA_REPO` | Root directory for trail data | `~/.fava-trail` |
+| `FAVA_TRAIL_DATA_REPO` | Root directory for trail data (monorepo root) | `~/.fava-trail` |
 | `FAVA_TRAILS_DIR` | Override trails directory location (absolute path) | `$FAVA_TRAIL_DATA_REPO/trails` |
 
 The server reads `$FAVA_TRAIL_DATA_REPO/config.yaml` for global settings and manages trails under `$FAVA_TRAIL_DATA_REPO/trails/`.
 
+### Global Config (`config.yaml`)
+
+```yaml
+default_trail: default
+trails_dir: trails          # relative to FAVA_TRAIL_DATA_REPO
+remote_url: null            # git remote URL (optional)
+push_strategy: manual       # manual | immediate
+```
+
+When `push_strategy: immediate`, the server pushes to remote after every successful write operation. Push failures are non-fatal — the write succeeds and a warning is returned.
+
 ## Architecture
 
-- **MCP Server**: stdio transport
-- **VCS Backend**: JJ colocated mode (`.jj/` + `.git/` in each trail)
-- **Storage**: `$FAVA_TRAIL_DATA_REPO/trails/{trail-name}/thoughts/{namespace}/{ulid}.md`
-- **All responses**: Structured JSON — raw VCS output is never returned
+**Monorepo model:** A single JJ colocated repo (`.jj/` + `.git/`) lives at `FAVA_TRAIL_DATA_REPO` root. Each trail is a subdirectory — NOT a separate repo. This provides:
+- Single atomic history across all trails
+- One `jj op log` for complete audit trail
+- Cross-trail pollution detection (commit_files asserts all dirty paths are within the expected trail prefix)
+
+```
+FAVA_TRAIL_DATA_REPO/           # Monorepo root (.jj/ + .git/)
+├── config.yaml                 # Global config
+└── trails/
+    ├── default/                # Trail (subdirectory, NOT a repo)
+    │   └── thoughts/
+    │       ├── drafts/
+    │       ├── decisions/
+    │       ├── observations/
+    │       ├── intents/
+    │       └── preferences/
+    │           ├── client/
+    │           └── firm/
+    └── project-x/
+        └── thoughts/...
+```
+
+**Engine vs. Fuel split:**
+- `fava-trail` (this repo) — OSS Python MCP server, Apache-2.0
+- `fava-trail-data` (separate repo) — Your organization's trail data, config, conventions
 
 ## Tools Reference
 
@@ -64,11 +96,10 @@ Begin a new reasoning branch from current truth. Creates a fresh JJ change.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `description` | string | no | Brief description of reasoning intent |
-| `trail_name` | string | no | Trail to use |
 
 ### `save_thought`
 
-Save a thought to the trail. Defaults to `drafts/` namespace.
+Save a thought to the trail. Defaults to `drafts/` namespace. Always creates a **new** thought file.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -81,6 +112,19 @@ Save a thought to the trail. Defaults to `drafts/` namespace.
 | `intent_ref` | string | no | ULID of intent document this implements |
 | `relationships` | array | no | List of `{type, target_id}` relationships |
 | `metadata` | object | no | `{project, branch, tags}` for filtering |
+
+### `update_thought`
+
+Update thought content in-place (same file, same ULID). Use for refining wording or adding detail. Frontmatter is preserved (tamper-proof). Content is frozen once approved, rejected, tombstoned, or superseded.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `thought_id` | string | **yes** | ULID of the thought to update |
+| `content` | string | **yes** | The new content (replaces existing body) |
+
+**When to use `update_thought` vs `supersede`:**
+- `update_thought` — Refine wording, add detail, fix typos. Same ULID, same file. **Use for edits.**
+- `supersede` — Replace a thought when the conclusion is wrong. Creates a new ULID, backlinks the original. **Use for corrections.**
 
 ### `get_thought`
 
@@ -103,14 +147,25 @@ Search thoughts by query, namespace, and scope. Hides superseded thoughts by def
 | `include_relationships` | bool | no | Include 1-hop related thoughts (default: false) |
 | `limit` | int | no | Max results (default: 20) |
 
-**Response format:**
-```json
-{
-  "thoughts": [...],
-  "applicable_preferences": [...]
-}
-```
-The `applicable_preferences` field is always populated — matching user preferences from the `preferences/` namespace are automatically included on every recall.
+### `propose_truth`
+
+Promote a draft thought to its permanent namespace based on `source_type`. Moves from `drafts/` to the target namespace.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `thought_id` | string | **yes** | ULID of the draft thought to promote |
+
+### `supersede`
+
+Replace a thought with a corrected version. **Atomic**: creates new thought + backlinks original in a single JJ change. Use for conceptual replacement when the conclusion is wrong. For refining wording, use `update_thought` instead.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `thought_id` | string | **yes** | ULID of the thought to supersede |
+| `content` | string | **yes** | Content of the replacement thought |
+| `reason` | string | **yes** | Why this thought is being superseded |
+| `agent_id` | string | no | ID of the agent |
+| `confidence` | float | no | 0.0 to 1.0 |
 
 ### `forget`
 
@@ -120,9 +175,21 @@ Discard current reasoning line. Abandons the current JJ change.
 |-----------|------|----------|-------------|
 | `revision` | string | no | Specific revision to abandon (default: current) |
 
+### `sync`
+
+Sync with shared truth. Fetches from remote and rebases. Aborts automatically on conflict.
+
 ### `conflicts`
 
-Surface cognitive dissonance. Returns structured conflict summaries — never raw VCS algebraic notation.
+Surface cognitive dissonance. Returns structured conflict summaries with `side_a`/`side_b`/`base` content when available — never raw VCS algebraic notation.
+
+### `rollback`
+
+Return trail to a historical state using JJ operation restore.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `op_id` | string | no | Operation ID to restore to (shows recent ops if omitted) |
 
 ### `diff`
 
@@ -136,42 +203,37 @@ Compare thought states. Shows what changed in a revision.
 
 Show all available FAVA trails.
 
-### `supersede`
+### `learn_preference`
 
-Replace a thought with a corrected version. **Atomic**: creates new thought + backlinks original in a single JJ change.
+Capture a user correction or preference. Stored in `preferences/` namespace. Bypasses Trust Gate — user input is auto-approved.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `thought_id` | string | **yes** | ULID of the thought to supersede |
-| `content` | string | **yes** | Content of the replacement thought |
-| `reason` | string | **yes** | Why this thought is being superseded |
+| `content` | string | **yes** | The preference or correction |
+| `preference_type` | enum | no | `client` \| `firm` (default: `firm`) |
 | `agent_id` | string | no | ID of the agent |
-| `confidence` | float | no | 0.0 to 1.0 |
-
-### Phase 2+ Tools (not yet active)
-
-- `propose_truth` — Promote a draft thought to permanent namespace based on `source_type`
-- `sync` — Sync with shared truth (fetch + rebase)
-- `rollback` — Return trail to a historical state via JJ operation restore
-- `learn_preference` — Capture a user correction or preference
+| `metadata` | object | no | Metadata for filtering |
 
 ## Thought Lifecycle
 
 ```
 start_thought  →  save_thought (drafts/)  →  propose_truth  →  permanent namespace
-                      ↓                                              ↓
-                  supersede (if correction needed)            decisions/
-                                                             observations/
-                                                             preferences/
+                      ↓                          ↑                     ↓
+                  update_thought          (promotion)           decisions/
+                  (refine wording)                              observations/
+                      ↓                                         preferences/
+                  supersede
+                  (if conclusion is wrong)
 ```
 
 1. **Start**: `start_thought` creates a new JJ change for your reasoning line
 2. **Save**: `save_thought` writes a thought to `drafts/` by default
-3. **Promote**: `propose_truth` moves from `drafts/` to permanent namespace:
+3. **Refine**: `update_thought` edits content in-place (same ULID)
+4. **Promote**: `propose_truth` moves from `drafts/` to permanent namespace:
    - `decision` → `decisions/`
    - `observation` / `inference` / `tool_output` → `observations/`
    - `user_input` → `preferences/`
-4. **Correct**: `supersede` atomically replaces a thought with a corrected version
+5. **Correct**: `supersede` atomically replaces a thought with a corrected version
 
 ## Namespace Conventions
 
@@ -195,8 +257,6 @@ start_thought  →  save_thought (drafts/)  →  propose_truth  →  permanent n
 | `agent_id` | Role only | `"claude-code"`, `"claude-desktop"`, `"builder-42"` |
 | `metadata.extra` | Runtime context | `{"host": "WiseMachine0002", "session_id": "abc-123", "cwd": "/home/user/project"}` |
 
-**Rationale:** OpenTelemetry Resource vs Attributes pattern. Stable IDs enable cross-session queries ("show me all decisions by claude-code"). High-cardinality IDs (model names, session IDs baked in) destroy aggregation.
-
 ### Mandatory Promotion
 
 Drafts are **working memory**. Promoted thoughts are **institutional memory**.
@@ -216,16 +276,24 @@ When using the SPIR protocol (codev/), FAVA Trail thoughts **link to** `codev/` 
 
 ## Key Rules
 
-### Immutability
-All thoughts are immutable after creation. The **single permitted exception** is `superseded_by`, which may only be written by the `supersede` tool during an atomic transaction (both the new thought and the backlink are written in a single JJ change).
+### Content Mutability
+
+Thoughts can be edited in-place via `update_thought` while in `draft` or `proposed` status. Content is **frozen** when:
+- `validation_status` is `approved`, `rejected`, or `tombstoned`
+- `superseded_by` is set (thought has been replaced)
+
+The `supersede` tool creates a **new** thought with a `parent_id` linking to the original, and sets `superseded_by` on the original — both in a single JJ change (atomic).
 
 ### Conflict Interception
-Raw JJ algebraic conflict notation is **never** exposed to agents. The MCP server intercepts conflicts and returns structured summaries. Write operations (`start_thought`, `save_thought`, `supersede`, etc.) are blocked when conflicts are active — use `conflicts` to inspect and `rollback` to recover.
+
+Raw JJ conflict notation is **never** exposed to agents. The MCP server intercepts conflicts and returns structured summaries with `side_a`/`side_b`/`base` content (parsed from JJ snapshot-style conflict markers). Write operations are blocked during conflicts **except** `update_thought` on the conflicted thought — this is the conflict resolution path.
 
 ### Semantic Translation
+
 All VCS output goes through a semantic translation layer. Raw `jj log` / `jj op log` stdout is never returned. All responses are token-optimized JSON summaries.
 
 ### Recall + Preferences
+
 Every `recall` query automatically includes matching preferences from the `preferences/` namespace in the `applicable_preferences` field. Agents don't need to opt in — relevant user corrections are always surfaced.
 
 ## Thought File Format
@@ -270,4 +338,4 @@ uv run pytest --cov=fava_trail
 
 ## SPIR Protocol
 
-This project follows the SPIR protocol (Specify → Plan → Implement → Review) from codev v2.0.13. SPIR artifacts live in `codev/`.
+This project follows the SPIR protocol (Specify, Plan, Implement, Review) from codev v2.0.13. SPIR artifacts live in `codev/`.

@@ -400,6 +400,14 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
         else:
             result = await handler()
 
+        # Post-write push hook: push after successful write operations
+        if name in write_ops and isinstance(result, dict) and result.get("status") == "ok":
+            config = load_global_config()
+            if config.push_strategy == "immediate" and _shared_backend is not None:
+                push_result = await _shared_backend.try_push()
+                if push_result.get("status") == "warning":
+                    result["push_warning"] = push_result["message"]
+
     except Exception as e:
         logger.exception(f"Tool {name} failed")
         result = {"status": "error", "message": f"Tool '{name}' failed: {str(e)}"}
