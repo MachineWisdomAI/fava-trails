@@ -330,7 +330,8 @@ class TrailManager:
                         (meta.branch or "").lower(),
                         " ".join(t.lower() for t in meta.tags),
                     ])
-                    if query_lower not in searchable:
+                    query_words = query_lower.split()
+                    if not all(word in searchable for word in query_words):
                         continue
 
                 results.append(record)
