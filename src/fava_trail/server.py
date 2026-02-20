@@ -16,7 +16,13 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
-from .config import ensure_data_repo_root, load_global_config
+from .config import (
+    ensure_data_repo_root,
+    get_data_repo_root,
+    get_trails_dir,
+    load_global_config,
+    sanitize_trail_name,
+)
 from .trail import TrailManager
 from .vcs.jj_backend import JjBackend
 
@@ -34,6 +40,29 @@ server = Server("fava-trail")
 # Trail manager cache: trail_name -> TrailManager
 _trail_managers: dict[str, TrailManager] = {}
 
+# Shared backend for monorepo init, GC, push, fetch
+_shared_backend: JjBackend | None = None
+
+
+async def _init_server() -> None:
+    """Initialize monorepo at startup. Called once before server starts."""
+    global _shared_backend
+    repo_root = get_data_repo_root()
+    trails_dir = get_trails_dir()
+
+    # Validate trails_dir is inside repo_root
+    try:
+        trails_dir.resolve().relative_to(repo_root.resolve())
+    except ValueError:
+        raise RuntimeError(
+            f"FAVA_TRAILS_DIR ({trails_dir}) must be inside data repo root ({repo_root}). "
+            "Check your FAVA_TRAIL_DATA_REPO and FAVA_TRAILS_DIR environment variables."
+        )
+
+    _shared_backend = JjBackend(repo_root=repo_root, trail_path=trails_dir)
+    await _shared_backend.init_monorepo()
+    logger.info(f"Monorepo initialized at {repo_root}")
+
 
 async def _get_trail(trail_name: str | None = None) -> TrailManager:
     """Get or create a TrailManager for the given trail."""
@@ -41,9 +70,13 @@ async def _get_trail(trail_name: str | None = None) -> TrailManager:
     name = trail_name or config.default_trail
 
     if name not in _trail_managers:
-        manager = TrailManager(name)
-        # Auto-initialize if trail doesn't exist
-        if not (manager.trail_path / ".jj").exists():
+        repo_root = get_data_repo_root()
+        safe_name = sanitize_trail_name(name)
+        trail_path = get_trails_dir() / safe_name
+        backend = JjBackend(repo_root=repo_root, trail_path=trail_path)
+        manager = TrailManager(name, vcs=backend)
+        # Auto-initialize if trail doesn't exist (detect by thoughts/ dir, not .jj)
+        if not (manager.trail_path / "thoughts").exists():
             await manager.init()
         _trail_managers[name] = manager
 
@@ -358,8 +391,9 @@ def run():
             print(f"FATAL: {e}", file=sys.stderr)
             sys.exit(1)
 
-        # Ensure home directory
+        # Ensure home directory and initialize monorepo
         ensure_data_repo_root()
+        await _init_server()
 
         logger.info("FAVA Trail MCP Server starting...")
         logger.info(f"Tools: {len(TOOL_DEFINITIONS)}")

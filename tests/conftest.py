@@ -51,7 +51,10 @@ async def jj_backend(tmp_fava_home):
 async def trail_manager(tmp_fava_home):
     """Create and initialize a TrailManager with a test trail."""
     from fava_trail.trail import TrailManager
+    from fava_trail.vcs.jj_backend import JjBackend
 
-    manager = TrailManager("test")  # Uses bridge default from get_data_repo_root()
+    trail_path = tmp_fava_home / "trails" / "test"
+    backend = JjBackend(repo_root=tmp_fava_home, trail_path=trail_path)
+    manager = TrailManager("test", vcs=backend)
     await manager.init()
     return manager
