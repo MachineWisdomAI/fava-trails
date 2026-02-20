@@ -2,6 +2,7 @@
 
 import os
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -15,13 +16,35 @@ if not Path(jj_bin).exists():
 
 @pytest.fixture
 def tmp_fava_home(tmp_path):
-    """Create a temporary FAVA_TRAIL_DATA_REPO directory."""
-    home = tmp_path / "fava-trail"
+    """Create a temporary FAVA_TRAIL_DATA_REPO with monorepo initialized at root."""
+    home = tmp_path / "fava-trail-data"
     home.mkdir()
     (home / "trails").mkdir()
     os.environ["FAVA_TRAIL_DATA_REPO"] = str(home)
+    # Init monorepo at root (not per-trail)
+    subprocess.run([jj_bin, "git", "init", "--colocate"], cwd=str(home), check=True)
+    subprocess.run(
+        [jj_bin, "config", "set", "--repo", "user.name", "FAVA Trail Test"],
+        cwd=str(home), check=True,
+    )
+    subprocess.run(
+        [jj_bin, "config", "set", "--repo", "user.email", "test@fava-trail.dev"],
+        cwd=str(home), check=True,
+    )
     yield home
     os.environ.pop("FAVA_TRAIL_DATA_REPO", None)
+
+
+@pytest_asyncio.fixture
+async def jj_backend(tmp_fava_home):
+    """Create a JjBackend with monorepo at root, trail as subdirectory."""
+    from fava_trail.vcs.jj_backend import JjBackend
+
+    trail_path = tmp_fava_home / "trails" / "test-jj"
+    trail_path.mkdir(parents=True)
+    backend = JjBackend(repo_root=tmp_fava_home, trail_path=trail_path)
+    await backend.init_trail()  # Creates dirs only, no repo init
+    return backend
 
 
 @pytest_asyncio.fixture
@@ -29,18 +52,6 @@ async def trail_manager(tmp_fava_home):
     """Create and initialize a TrailManager with a test trail."""
     from fava_trail.trail import TrailManager
 
-    manager = TrailManager("test")
+    manager = TrailManager("test")  # Uses bridge default from get_data_repo_root()
     await manager.init()
     return manager
-
-
-@pytest_asyncio.fixture
-async def jj_backend(tmp_fava_home):
-    """Create a JjBackend with an initialized trail repo."""
-    from fava_trail.vcs.jj_backend import JjBackend
-
-    trail_path = tmp_fava_home / "trails" / "test-jj"
-    trail_path.mkdir(parents=True)
-    backend = JjBackend(trail_path)
-    await backend.init_trail()
-    return backend

@@ -16,7 +16,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
-from .config import ensure_fava_home, load_global_config
+from .config import ensure_data_repo_root, load_global_config
 from .trail import TrailManager
 from .vcs.jj_backend import JjBackend
 
@@ -359,7 +359,7 @@ def run():
             sys.exit(1)
 
         # Ensure home directory
-        ensure_fava_home()
+        ensure_data_repo_root()
 
         logger.info("FAVA Trail MCP Server starting...")
         logger.info(f"Tools: {len(TOOL_DEFINITIONS)}")

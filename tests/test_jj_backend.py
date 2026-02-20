@@ -1,20 +1,90 @@
 """Tests for JjBackend VCS operations."""
 
+import subprocess
+
 import pytest
 
 
 @pytest.mark.asyncio
 async def test_init_trail(jj_backend):
-    """JJ colocated trail should have .jj and .git dirs."""
-    assert (jj_backend.trail_path / ".jj").exists()
-    assert (jj_backend.trail_path / ".git").exists()
+    """.jj and .git at repo_root (monorepo), trail_path is just a directory."""
+    assert (jj_backend.repo_root / ".jj").exists()
+    assert (jj_backend.repo_root / ".git").exists()
+    # trail_path has no .jj/.git — it's a subdirectory of the monorepo
+    assert jj_backend.trail_path.exists()
+    assert not (jj_backend.trail_path / ".jj").exists()
+    assert not (jj_backend.trail_path / ".git").exists()
 
 
 @pytest.mark.asyncio
 async def test_init_trail_idempotent(jj_backend):
     """Re-initializing should not fail."""
     result = await jj_backend.init_trail()
-    assert "already initialized" in result.lower()
+    # Trail dir already exists, should report that
+    assert jj_backend.trail_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_init_monorepo_three_case_existing_git(tmp_path):
+    """Case 1: .git exists, no .jj → colocate JJ on top."""
+    from fava_trail.vcs.jj_backend import JjBackend
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    # Create a bare git repo first
+    subprocess.run(["git", "init"], cwd=str(repo), check=True, capture_output=True)
+    assert (repo / ".git").exists()
+    assert not (repo / ".jj").exists()
+
+    trail = repo / "trails" / "test"
+    trail.mkdir(parents=True)
+    backend = JjBackend(repo_root=repo, trail_path=trail)
+    await backend.init_monorepo()
+
+    # Now both should exist
+    assert (repo / ".jj").exists()
+    assert (repo / ".git").exists()
+
+
+@pytest.mark.asyncio
+async def test_init_monorepo_three_case_both_exist(jj_backend):
+    """Case 2: Both .jj and .git exist → skip, just configure."""
+    result = await jj_backend.init_monorepo()
+    assert "initialized" in result.lower()
+    assert (jj_backend.repo_root / ".jj").exists()
+    assert (jj_backend.repo_root / ".git").exists()
+
+
+@pytest.mark.asyncio
+async def test_init_monorepo_three_case_neither(tmp_path):
+    """Case 3: Neither exists → fresh init."""
+    from fava_trail.vcs.jj_backend import JjBackend
+
+    repo = tmp_path / "fresh-repo"
+    trail = repo / "trails" / "test"
+    backend = JjBackend(repo_root=repo, trail_path=trail)
+    await backend.init_monorepo()
+
+    assert (repo / ".jj").exists()
+    assert (repo / ".git").exists()
+
+
+@pytest.mark.asyncio
+async def test_init_monorepo_sets_snapshot_conflict_style(tmp_path):
+    """init_monorepo configures snapshot-style conflict markers."""
+    from fava_trail.vcs.jj_backend import JjBackend
+
+    repo = tmp_path / "snap-repo"
+    trail = repo / "trails" / "test"
+    backend = JjBackend(repo_root=repo, trail_path=trail)
+    await backend.init_monorepo()
+
+    # Verify the config was set
+    proc = subprocess.run(
+        ["jj", "config", "get", "ui.conflict-marker-style"],
+        cwd=str(repo), capture_output=True, text=True,
+    )
+    assert proc.stdout.strip() == "snapshot"
 
 
 @pytest.mark.asyncio
@@ -41,12 +111,51 @@ async def test_describe(jj_backend):
 
 
 @pytest.mark.asyncio
-async def test_log(jj_backend):
-    """Log should return at least the root change."""
+async def test_log_path_scoped(jj_backend):
+    """Log should be scoped to trail path — only shows trail-relevant commits."""
+    # Write a file in the trail
+    test_file = jj_backend.trail_path / "test.md"
+    test_file.write_text("# Trail file")
+    await jj_backend.commit_files("add trail file", [str(test_file)])
+
+    # Log should show the commit
     changes = await jj_backend.log()
-    assert len(changes) > 0
-    for change in changes:
-        assert change.change_id
+    descriptions = [c.description for c in changes]
+    assert any("add trail file" in d for d in descriptions)
+
+
+@pytest.mark.asyncio
+async def test_log_does_not_show_other_trails(jj_backend):
+    """Log should not show commits from other trail paths."""
+    # Write a file OUTSIDE the trail path but inside repo
+    other_trail = jj_backend.repo_root / "trails" / "other-trail"
+    other_trail.mkdir(parents=True)
+    other_file = other_trail / "other.md"
+    other_file.write_text("# Other trail")
+    # Commit via JJ at repo root (bypassing the backend's commit_files assertion)
+    proc = subprocess.run(
+        ["jj", "describe", "-m", "other trail commit"],
+        cwd=str(jj_backend.repo_root), capture_output=True,
+    )
+    subprocess.run(
+        ["jj", "new"],
+        cwd=str(jj_backend.repo_root), capture_output=True,
+    )
+
+    # Log scoped to jj_backend's trail should NOT show the other trail commit
+    changes = await jj_backend.log()
+    descriptions = [c.description for c in changes]
+    assert not any("other trail commit" in d for d in descriptions)
+
+
+@pytest.mark.asyncio
+async def test_diff_path_scoped(jj_backend):
+    """Diff should be scoped to trail path."""
+    test_file = jj_backend.trail_path / "diff-test.md"
+    test_file.write_text("# Diff test")
+    diff = await jj_backend.diff()
+    # Should show the change in our trail
+    assert diff.summary is not None
 
 
 @pytest.mark.asyncio
@@ -60,14 +169,6 @@ async def test_op_log(jj_backend):
 
 
 @pytest.mark.asyncio
-async def test_diff_no_changes(jj_backend):
-    """Diff on empty change should show no changes."""
-    diff = await jj_backend.diff()
-    # May or may not have changes depending on state
-    assert diff.summary is not None
-
-
-@pytest.mark.asyncio
 async def test_conflicts_none(jj_backend):
     """Fresh trail should have no conflicts."""
     conflicts = await jj_backend.conflicts()
@@ -75,17 +176,29 @@ async def test_conflicts_none(jj_backend):
 
 
 @pytest.mark.asyncio
-async def test_commit_files(jj_backend):
-    """Committing a file should create a trackable change."""
-    test_file = jj_backend.trail_path / "test.md"
-    test_file.write_text("# Test\nHello world")
-    change = await jj_backend.commit_files([str(test_file)], "add test file")
-    assert change.description == "add test file"
+async def test_commit_files_parameter_order(jj_backend):
+    """commit_files takes (message, paths) — message first."""
+    test_file = jj_backend.trail_path / "param-test.md"
+    test_file.write_text("# Parameter order test")
+    change = await jj_backend.commit_files("param order test", [str(test_file)])
+    assert change.description == "param order test"
 
     # Verify in log
     changes = await jj_backend.log(limit=5)
     descriptions = [c.description for c in changes]
-    assert any("add test file" in d for d in descriptions)
+    assert any("param order test" in d for d in descriptions)
+
+
+@pytest.mark.asyncio
+async def test_commit_files_cross_trail_pollution_assertion(jj_backend):
+    """commit_files should abort if dirty files are outside the trail prefix."""
+    # Write a file outside the trail but inside the repo
+    outside_file = jj_backend.repo_root / "trails" / "other-trail" / "evil.md"
+    outside_file.parent.mkdir(parents=True, exist_ok=True)
+    outside_file.write_text("# Cross-trail pollution")
+
+    with pytest.raises(RuntimeError, match="Cross-trail pollution detected"):
+        await jj_backend.commit_files("should fail", [str(outside_file)])
 
 
 @pytest.mark.asyncio

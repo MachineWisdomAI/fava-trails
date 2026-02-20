@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 
 from fava_trail.config import (
-    ensure_fava_home,
-    get_fava_home,
+    ensure_data_repo_root,
+    get_data_repo_root,
     get_trails_dir,
     sanitize_trail_name,
 )
@@ -17,7 +17,7 @@ def test_fava_home_default(monkeypatch, tmp_path):
     """Default home is ~/.fava-trail when no env var set."""
     monkeypatch.delenv("FAVA_TRAIL_DATA_REPO", raising=False)
     monkeypatch.delenv("FAVA_TRAIL_HOME", raising=False)
-    home = get_fava_home()
+    home = get_data_repo_root()
     assert home == Path(os.path.expanduser("~/.fava-trail"))
 
 
@@ -25,7 +25,7 @@ def test_fava_home_env_override(monkeypatch, tmp_path):
     """FAVA_TRAIL_DATA_REPO env var overrides default."""
     monkeypatch.setenv("FAVA_TRAIL_DATA_REPO", str(tmp_path / "custom"))
     monkeypatch.delenv("FAVA_TRAIL_HOME", raising=False)
-    home = get_fava_home()
+    home = get_data_repo_root()
     assert home == tmp_path / "custom"
 
 
@@ -33,7 +33,7 @@ def test_fava_home_legacy_env_compat(monkeypatch, tmp_path):
     """Deprecated FAVA_TRAIL_HOME still works as fallback."""
     monkeypatch.delenv("FAVA_TRAIL_DATA_REPO", raising=False)
     monkeypatch.setenv("FAVA_TRAIL_HOME", str(tmp_path / "legacy"))
-    home = get_fava_home()
+    home = get_data_repo_root()
     assert home == tmp_path / "legacy"
 
 
@@ -41,7 +41,7 @@ def test_fava_home_new_env_takes_precedence(monkeypatch, tmp_path):
     """FAVA_TRAIL_DATA_REPO takes precedence over deprecated FAVA_TRAIL_HOME."""
     monkeypatch.setenv("FAVA_TRAIL_DATA_REPO", str(tmp_path / "new"))
     monkeypatch.setenv("FAVA_TRAIL_HOME", str(tmp_path / "old"))
-    home = get_fava_home()
+    home = get_data_repo_root()
     assert home == tmp_path / "new"
 
 
@@ -150,8 +150,8 @@ def test_trails_dir_tilde_expansion(monkeypatch, tmp_path):
     assert result == expected
 
 
-def test_ensure_fava_home_creates_custom_trails_dir(monkeypatch, tmp_path):
-    """ensure_fava_home creates the actual configured trails directory."""
+def test_ensure_data_repo_root_creates_custom_trails_dir(monkeypatch, tmp_path):
+    """ensure_data_repo_root creates the actual configured trails directory."""
     home = tmp_path / "home"
     custom_trails = tmp_path / "custom-trails"
 
@@ -161,7 +161,7 @@ def test_ensure_fava_home_creates_custom_trails_dir(monkeypatch, tmp_path):
     assert not home.exists()
     assert not custom_trails.exists()
 
-    ensure_fava_home()
+    ensure_data_repo_root()
 
     assert home.exists()
     assert custom_trails.exists()

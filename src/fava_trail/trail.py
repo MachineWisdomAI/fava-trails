@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from .config import get_trails_dir, load_trail_config, sanitize_trail_name, save_trail_config
+from .config import get_data_repo_root, get_trails_dir, load_trail_config, sanitize_trail_name, save_trail_config
 from .models import (
     DEFAULT_NAMESPACE,
     NAMESPACE_ROUTES,
@@ -40,7 +40,8 @@ class TrailManager:
     def __init__(self, trail_name: str, vcs: Optional[VcsBackend] = None):
         self.trail_name = sanitize_trail_name(trail_name)
         self.trail_path = get_trails_dir() / self.trail_name
-        self.vcs = vcs or JjBackend(self.trail_path)
+        # Temporary bridge (replaced by shared backend injection in Phase 1b.2)
+        self.vcs = vcs or JjBackend(repo_root=get_data_repo_root(), trail_path=self.trail_path)
         self._lock = asyncio.Lock()
         self._config: Optional[TrailConfig] = None
         self._snapshot_count = 0
@@ -76,8 +77,8 @@ class TrailManager:
 
             # Initial commit with directory structure
             await self.vcs.commit_files(
-                [str(p) for p in self.trail_path.rglob(".gitkeep")],
                 "Initialize trail with namespace directories",
+                [str(p) for p in self.trail_path.rglob(".gitkeep")],
             )
 
             return result
@@ -129,8 +130,8 @@ class TrailManager:
             path.write_text(record.to_markdown())
 
             await self.vcs.commit_files(
-                [str(path)],
                 f"Save thought {record.thought_id[:8]} [{source_type.value}] in {ns}/",
+                [str(path)],
             )
 
             await self._maybe_gc()
@@ -207,8 +208,8 @@ class TrailManager:
                 desc += f": {reason}"
 
             await self.vcs.commit_files(
-                [str(new_path), str(original_path)],
                 desc,
+                [str(new_path), str(original_path)],
             )
 
             await self._maybe_gc()
@@ -320,8 +321,8 @@ class TrailManager:
             drafts_path.unlink()
 
             await self.vcs.commit_files(
-                [str(target_path)],
                 f"Promote {thought_id[:8]} from drafts/ to {target_ns}/ [{record.frontmatter.source_type.value}]",
+                [str(target_path)],
             )
 
         return record

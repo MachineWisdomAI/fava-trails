@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -34,6 +35,9 @@ class VcsConflict:
     file_path: str
     description: str
     sides: list[str] = field(default_factory=list)
+    side_a: Optional[str] = None
+    side_b: Optional[str] = None
+    base: Optional[str] = None
 
 
 @dataclass
@@ -59,12 +63,19 @@ class RebaseResult:
 class VcsBackend(ABC):
     """Abstract VCS backend. All output is semantically translated — no raw VCS stdout."""
 
-    def __init__(self, trail_path: Path):
+    def __init__(self, repo_root: Path, trail_path: Path):
+        self.repo_root = repo_root
         self.trail_path = trail_path
+        self.repo_lock = asyncio.Lock()  # For global ops (push/fetch/gc)
+
+    @abstractmethod
+    async def init_monorepo(self) -> str:
+        """Initialize the monorepo (JJ + Git at repo_root). Returns semantic summary."""
+        ...
 
     @abstractmethod
     async def init_trail(self) -> str:
-        """Initialize a new trail repository. Returns semantic summary."""
+        """Initialize trail directory structure (no repo init). Returns semantic summary."""
         ...
 
     @abstractmethod
@@ -78,8 +89,8 @@ class VcsBackend(ABC):
         ...
 
     @abstractmethod
-    async def commit_files(self, paths: list[str], description: str) -> VcsChange:
-        """Stage and commit specific files with a description."""
+    async def commit_files(self, message: str, paths: list[str]) -> VcsChange:
+        """Commit specific files with a message. Asserts no cross-trail pollution."""
         ...
 
     @abstractmethod
@@ -128,8 +139,23 @@ class VcsBackend(ABC):
         ...
 
     @abstractmethod
+    async def push(self) -> str:
+        """Push all bookmarks to remote. Returns semantic summary."""
+        ...
+
+    @abstractmethod
+    async def fetch(self) -> str:
+        """Fetch from remote without rebase. Returns semantic summary."""
+        ...
+
+    @abstractmethod
+    async def add_remote(self, name: str, url: str) -> str:
+        """Add a git remote. Returns semantic summary."""
+        ...
+
+    @abstractmethod
     async def gc(self) -> str:
-        """Run garbage collection. Returns summary."""
+        """Run garbage collection at repo root. Returns summary."""
         ...
 
     @abstractmethod
