@@ -36,8 +36,17 @@ class JjError(Exception):
 class JjBackend(VcsBackend):
     """JJ colocated mode backend. Single monorepo, trail-path scoped operations."""
 
+    # Shared repo locks: all instances with the same repo_root share one lock.
+    # This deduplicates GC and serializes global ops (push/fetch) across all trail backends.
+    _repo_locks: dict[str, asyncio.Lock] = {}
+
     def __init__(self, repo_root: Path, trail_path: Path):
         super().__init__(repo_root, trail_path)
+        # Override per-instance repo_lock with shared lock keyed by repo_root
+        key = str(repo_root.resolve())
+        if key not in JjBackend._repo_locks:
+            JjBackend._repo_locks[key] = asyncio.Lock()
+        self.repo_lock = JjBackend._repo_locks[key]
         self._jj_bin = self._find_jj()
 
     @staticmethod

@@ -25,11 +25,10 @@ async def handle_list_trails(arguments: dict) -> dict[str, Any]:
     trails = []
     if trails_dir.exists():
         for p in sorted(trails_dir.iterdir()):
-            if p.is_dir() and (p / ".jj").exists():
+            if p.is_dir() and (p / "thoughts").exists():
                 trails.append({
                     "name": p.name,
                     "path": str(p),
-                    "has_jj": True,
                 })
     return {
         "status": "ok",

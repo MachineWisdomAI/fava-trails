@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from .config import get_data_repo_root, get_trails_dir, load_trail_config, sanitize_trail_name, save_trail_config
+from .config import get_trails_dir, load_trail_config, sanitize_trail_name, save_trail_config
 from .models import (
     DEFAULT_NAMESPACE,
     NAMESPACE_ROUTES,
@@ -19,7 +19,6 @@ from .models import (
     ValidationStatus,
 )
 from .vcs.base import VcsBackend, VcsChange, VcsConflict, VcsDiff, VcsOpLogEntry, RebaseResult
-from .vcs.jj_backend import JjBackend
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +36,10 @@ NAMESPACE_DIRS = [
 class TrailManager:
     """Manages a single trail: VCS ops, thought CRUD, namespace routing, GC."""
 
-    def __init__(self, trail_name: str, vcs: Optional[VcsBackend] = None):
+    def __init__(self, trail_name: str, vcs: VcsBackend):
         self.trail_name = sanitize_trail_name(trail_name)
         self.trail_path = get_trails_dir() / self.trail_name
-        # Temporary bridge (replaced by shared backend injection in Phase 1b.2)
-        self.vcs = vcs or JjBackend(repo_root=get_data_repo_root(), trail_path=self.trail_path)
+        self.vcs = vcs
         self._lock = asyncio.Lock()
         self._config: Optional[TrailConfig] = None
         self._snapshot_count = 0
@@ -58,6 +56,24 @@ class TrailManager:
 
     def _thought_path(self, thought_id: str, namespace: str = DEFAULT_NAMESPACE) -> Path:
         return self._thoughts_dir(namespace) / f"{thought_id}.md"
+
+    def _find_thought_path(self, thought_id: str) -> Optional[Path]:
+        """Find a thought file by ULID across all namespaces. Returns None if not found."""
+        for p in self.trail_path.glob("thoughts/**/*.md"):
+            if p.stem == thought_id:
+                return p
+        return None
+
+    def _get_namespace_from_path(self, path: Path) -> str:
+        """Extract namespace from a thought file path. Handles nested dirs (e.g., preferences/firm)."""
+        # path is like: .../trails/test/thoughts/preferences/firm/ULID.md
+        # We want: preferences/firm
+        thoughts_dir = self.trail_path / "thoughts"
+        try:
+            rel = path.parent.relative_to(thoughts_dir)
+            return str(rel)
+        except ValueError:
+            return DEFAULT_NAMESPACE
 
     async def init(self) -> str:
         """Initialize the trail repo and namespace directories."""
@@ -140,10 +156,9 @@ class TrailManager:
 
     async def get_thought(self, thought_id: str) -> Optional[ThoughtRecord]:
         """Retrieve a thought by ULID. Searches all namespaces."""
-        for ns_dir in self.trail_path.glob("thoughts/**/*.md"):
-            if ns_dir.stem == thought_id:
-                text = ns_dir.read_text()
-                return ThoughtRecord.from_markdown(text)
+        path = self._find_thought_path(thought_id)
+        if path:
+            return ThoughtRecord.from_markdown(path.read_text())
         return None
 
     async def supersede(
@@ -163,21 +178,12 @@ class TrailManager:
         """
         async with self._lock:
             # Find original
-            original = await self.get_thought(original_id)
-            if original is None:
+            original_path = self._find_thought_path(original_id)
+            if original_path is None:
                 raise ValueError(f"Thought {original_id} not found")
 
-            # Determine namespace from original's location
-            original_path = None
-            for p in self.trail_path.glob("thoughts/**/*.md"):
-                if p.stem == original_id:
-                    original_path = p
-                    break
-
-            if original_path is None:
-                raise ValueError(f"Thought file for {original_id} not found")
-
-            namespace = original_path.parent.name
+            original = ThoughtRecord.from_markdown(original_path.read_text())
+            namespace = self._get_namespace_from_path(original_path)
 
             # Create new thought
             new_fm = ThoughtFrontmatter(
@@ -301,11 +307,17 @@ class TrailManager:
             # Find the thought in drafts
             drafts_path = self._thought_path(thought_id, "drafts")
             if not drafts_path.exists():
-                # Check other namespaces
-                existing = await self.get_thought(thought_id)
-                if existing:
-                    existing.frontmatter.validation_status = ValidationStatus.PROPOSED
-                    return existing
+                # Check other namespaces — persist the status update to disk
+                existing_path = self._find_thought_path(thought_id)
+                if existing_path:
+                    record = ThoughtRecord.from_markdown(existing_path.read_text())
+                    record.frontmatter.validation_status = ValidationStatus.PROPOSED
+                    existing_path.write_text(record.to_markdown())
+                    await self.vcs.commit_files(
+                        f"Propose {thought_id[:8]} (already in {self._get_namespace_from_path(existing_path)}/)",
+                        [str(existing_path)],
+                    )
+                    return record
                 raise ValueError(f"Thought {thought_id} not found")
 
             record = ThoughtRecord.from_markdown(drafts_path.read_text())
