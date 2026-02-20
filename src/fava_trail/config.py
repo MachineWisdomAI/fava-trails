@@ -35,8 +35,8 @@ def sanitize_trail_name(name: str) -> str:
     return name
 
 
-def get_fava_home() -> Path:
-    """Get the FAVA Trail data repo directory from env or default.
+def get_data_repo_root() -> Path:
+    """Get the FAVA Trail data repo root directory (monorepo root where .jj/ and .git/ live).
 
     Checks FAVA_TRAIL_DATA_REPO first, falls back to deprecated FAVA_TRAIL_HOME.
     """
@@ -64,7 +64,7 @@ def get_trails_dir() -> Path:
     if env_override:
         return Path(os.path.expanduser(env_override))
 
-    home = get_fava_home()
+    home = get_data_repo_root()
     config = load_global_config()
     trails_path = Path(config.trails_dir)
     if trails_path.is_absolute():
@@ -74,7 +74,7 @@ def get_trails_dir() -> Path:
 
 def load_global_config() -> GlobalConfig:
     """Load global configuration from config.yaml."""
-    config_path = get_fava_home() / "config.yaml"
+    config_path = get_data_repo_root() / "config.yaml"
     if config_path.exists():
         with open(config_path) as f:
             data = yaml.safe_load(f) or {}
@@ -84,7 +84,7 @@ def load_global_config() -> GlobalConfig:
 
 def save_global_config(config: GlobalConfig) -> None:
     """Save global configuration to config.yaml."""
-    config_path = get_fava_home() / "config.yaml"
+    config_path = get_data_repo_root() / "config.yaml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     with open(config_path, "w") as f:
         yaml.dump(config.model_dump(), f, default_flow_style=False, sort_keys=False)
@@ -113,9 +113,9 @@ def save_trail_config(trail_name: str, config: TrailConfig) -> None:
         yaml.dump(config.model_dump(), f, default_flow_style=False, sort_keys=False)
 
 
-def ensure_fava_home() -> Path:
-    """Ensure the FAVA Trail home and trails directories exist."""
-    home = get_fava_home()
+def ensure_data_repo_root() -> Path:
+    """Ensure the FAVA Trail data repo root and trails directories exist."""
+    home = get_data_repo_root()
     home.mkdir(parents=True, exist_ok=True)
     trails_dir = get_trails_dir()
     trails_dir.mkdir(parents=True, exist_ok=True)
