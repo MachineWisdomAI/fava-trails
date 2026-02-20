@@ -231,3 +231,15 @@ The monorepo substrate (Part B) must come first because it changes how every JJ 
 | 1b.5 | Push + rename | Server-level post-write push hook, `wise-fava-trail` → `fava-trail-data`, CLAUDE.md, fresh repo (no migration) |
 
 Each phase ends with a git commit. Phases are sequential — each builds on the previous.
+
+---
+
+## Amendment History
+
+### TICK 1b-001: Recall Query Word-Level Matching (2026-02-20)
+
+**Commits:**
+- `aeebd8e` — `[TICK 1b-001] Fix: recall uses word-level AND matching instead of exact substring`
+- `2afb276` — `[TICK 1b-001] Test: multi-word query, scope-by-tags, scope-by-branch, tag-only search`
+
+**Implementation:** Single-line change to `trail.py:333`. Split query into words, require all present via `all(word in searchable for word in query_words)`. Added 4 test functions covering the bug and scope filter gaps.

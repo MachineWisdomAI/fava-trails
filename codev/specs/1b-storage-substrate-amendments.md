@@ -580,3 +580,24 @@ trails/new-project/
 - Stale draft auto-promotion daemon — Phase 2 implementation
 - Trust Gate integration — Phase 3
 - Semantic search over content diffs — Phase 3
+
+---
+
+## Amendments
+
+### TICK 1b-001: Recall Query Word-Level Matching + Scope Test Coverage (2026-02-20)
+
+**Status:** completed
+**Scope:** 2-line code fix + 4 new tests
+
+**Trigger:** During cross-agent handoff (Claude Desktop → Claude Code), `recall(query="onboarding start-here", scope={"tags": ["start-here"]})` returned 0 results despite the thought existing with that tag. Investigation revealed two issues:
+
+1. **Query matching bug** — `trail.py:333` used exact substring matching (`if query_lower not in searchable`). Multi-word queries failed when words weren't contiguous in the searchable text. Fix: word-level AND matching (`all(word in searchable for word in query_words)`).
+
+2. **Test coverage gap** — `test_recall_by_scope` only tested `scope={"project": ...}`. The `scope["tags"]` and `scope["branch"]` filter paths had zero test coverage.
+
+**Fix:**
+- `trail.py:333`: 2-line change — substring → word-level AND matching
+- 4 new tests: `test_recall_multi_word_query`, `test_recall_by_scope_tags`, `test_recall_by_scope_branch`, `test_recall_query_finds_tags_in_searchable`
+
+**Tests:** 69 → 73
