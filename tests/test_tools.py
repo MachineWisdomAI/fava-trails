@@ -138,6 +138,26 @@ async def test_recall_by_query(trail_manager):
 
 
 @pytest.mark.asyncio
+async def test_recall_multi_word_query(trail_manager):
+    """recall should match multi-word queries using word-level AND (not exact substring)."""
+    await trail_manager.save_thought(
+        content="JJ is great for versioning.", agent_id="test"
+    )
+    await trail_manager.save_thought(
+        content="Python is the best language.", agent_id="test"
+    )
+
+    # "JJ versioning" — both words present but not contiguous
+    results = await trail_manager.recall(query="JJ versioning")
+    assert len(results) >= 1
+    assert any("JJ" in r.content and "versioning" in r.content for r in results)
+
+    # Non-matching multi-word query
+    results_none = await trail_manager.recall(query="nonexistent stuff here")
+    assert len(results_none) == 0
+
+
+@pytest.mark.asyncio
 async def test_recall_by_scope(trail_manager):
     """recall should filter by metadata scope."""
     await trail_manager.save_thought(
@@ -154,6 +174,91 @@ async def test_recall_by_scope(trail_manager):
     results = await trail_manager.recall(scope={"project": "fava-trail"})
     assert len(results) >= 1
     assert all(r.frontmatter.metadata.project == "fava-trail" for r in results)
+
+
+@pytest.mark.asyncio
+async def test_recall_by_scope_tags(trail_manager):
+    """recall should filter by metadata scope tags (subset match)."""
+    await trail_manager.save_thought(
+        content="Architecture overview.",
+        agent_id="test",
+        metadata={"tags": ["arch", "codebase-state"]},
+    )
+    await trail_manager.save_thought(
+        content="Untagged thought.",
+        agent_id="test",
+        metadata={"project": "fava-trail"},
+    )
+    await trail_manager.save_thought(
+        content="Different tag thought.",
+        agent_id="test",
+        metadata={"tags": ["gotcha"]},
+    )
+
+    # Single tag filter
+    results = await trail_manager.recall(scope={"tags": ["codebase-state"]})
+    assert len(results) >= 1
+    assert all("codebase-state" in r.frontmatter.metadata.tags for r in results)
+
+    # Multi-tag subset match — all required tags must be present
+    results_multi = await trail_manager.recall(scope={"tags": ["arch", "codebase-state"]})
+    assert len(results_multi) >= 1
+    assert all(
+        {"arch", "codebase-state"}.issubset(set(r.frontmatter.metadata.tags))
+        for r in results_multi
+    )
+
+    # Non-matching tag returns empty
+    results_none = await trail_manager.recall(scope={"tags": ["nonexistent-tag"]})
+    assert len(results_none) == 0
+
+
+@pytest.mark.asyncio
+async def test_recall_by_scope_branch(trail_manager):
+    """recall should filter by metadata scope branch."""
+    await trail_manager.save_thought(
+        content="Main branch thought.",
+        agent_id="test",
+        metadata={"project": "fava-trail", "branch": "main"},
+    )
+    await trail_manager.save_thought(
+        content="Feature branch thought.",
+        agent_id="test",
+        metadata={"project": "fava-trail", "branch": "feature-xyz"},
+    )
+
+    results = await trail_manager.recall(scope={"branch": "main"})
+    assert len(results) >= 1
+    assert all(r.frontmatter.metadata.branch == "main" for r in results)
+
+    # Feature branch isolated
+    results_feature = await trail_manager.recall(scope={"branch": "feature-xyz"})
+    assert len(results_feature) >= 1
+    assert all(r.frontmatter.metadata.branch == "feature-xyz" for r in results_feature)
+
+    # Combined scope: project + branch
+    results_combined = await trail_manager.recall(
+        scope={"project": "fava-trail", "branch": "main"}
+    )
+    assert all(
+        r.frontmatter.metadata.project == "fava-trail"
+        and r.frontmatter.metadata.branch == "main"
+        for r in results_combined
+    )
+
+
+@pytest.mark.asyncio
+async def test_recall_query_finds_tags_in_searchable(trail_manager):
+    """recall query should find thoughts via tag even when content doesn't contain the tag string."""
+    await trail_manager.save_thought(
+        content="This content has no mention of the tag value.",
+        agent_id="test",
+        metadata={"tags": ["needle-tag"]},
+    )
+
+    results = await trail_manager.recall(query="needle-tag")
+    assert len(results) >= 1
+    assert any("needle-tag" in r.frontmatter.metadata.tags for r in results)
 
 
 @pytest.mark.asyncio
