@@ -228,3 +228,138 @@ async def test_start_and_forget(trail_manager):
 
     result = await trail_manager.forget()
     assert "abandon" in result.lower()
+
+
+# --- Phase 1b.3: update_thought + content freeze ---
+
+
+@pytest.mark.asyncio
+async def test_update_thought_happy_path(trail_manager):
+    """update_thought should modify content in-place (same file, same ULID)."""
+    record = await trail_manager.save_thought(
+        content="Original wording.",
+        agent_id="test-agent",
+    )
+    path = trail_manager.trail_path / "thoughts" / "drafts" / f"{record.thought_id}.md"
+    assert path.exists()
+
+    updated = await trail_manager.update_thought(record.thought_id, "Refined wording.")
+    assert updated.thought_id == record.thought_id
+    assert updated.content == "Refined wording."
+
+    # Same file, same path
+    assert path.exists()
+    retrieved = await trail_manager.get_thought(record.thought_id)
+    assert retrieved.content == "Refined wording."
+
+
+@pytest.mark.asyncio
+async def test_update_thought_preserves_frontmatter(trail_manager):
+    """update_thought must preserve all frontmatter identity fields (tamper-proof)."""
+    record = await trail_manager.save_thought(
+        content="Original content.",
+        agent_id="original-agent",
+        source_type=SourceType.DECISION,
+        confidence=0.9,
+        metadata={"project": "fava-trail", "tags": ["arch"]},
+    )
+
+    updated = await trail_manager.update_thought(record.thought_id, "New content.")
+
+    # Frontmatter preserved
+    assert updated.frontmatter.agent_id == "original-agent"
+    assert updated.frontmatter.source_type == SourceType.DECISION
+    assert updated.frontmatter.confidence == 0.9
+    assert updated.frontmatter.metadata.project == "fava-trail"
+    assert updated.frontmatter.metadata.tags == ["arch"]
+    assert updated.frontmatter.created_at == record.frontmatter.created_at
+
+
+@pytest.mark.asyncio
+async def test_update_thought_content_freeze_approved(trail_manager):
+    """update_thought on approved thought should raise ValueError."""
+    from fava_trail.models import ValidationStatus
+
+    record = await trail_manager.save_thought(content="Decision.", agent_id="test")
+    # Manually set to approved by writing to disk
+    path = trail_manager._find_thought_path(record.thought_id)
+    from fava_trail.models import ThoughtRecord
+    loaded = ThoughtRecord.from_markdown(path.read_text())
+    loaded.frontmatter.validation_status = ValidationStatus.APPROVED
+    path.write_text(loaded.to_markdown())
+
+    with pytest.raises(ValueError, match="frozen"):
+        await trail_manager.update_thought(record.thought_id, "Should fail.")
+
+
+@pytest.mark.asyncio
+async def test_update_thought_content_freeze_rejected(trail_manager):
+    """update_thought on rejected thought should raise ValueError."""
+    from fava_trail.models import ValidationStatus
+
+    record = await trail_manager.save_thought(content="Rejected idea.", agent_id="test")
+    path = trail_manager._find_thought_path(record.thought_id)
+    from fava_trail.models import ThoughtRecord
+    loaded = ThoughtRecord.from_markdown(path.read_text())
+    loaded.frontmatter.validation_status = ValidationStatus.REJECTED
+    path.write_text(loaded.to_markdown())
+
+    with pytest.raises(ValueError, match="frozen"):
+        await trail_manager.update_thought(record.thought_id, "Should fail.")
+
+
+@pytest.mark.asyncio
+async def test_update_thought_content_freeze_tombstoned(trail_manager):
+    """update_thought on tombstoned thought should raise ValueError."""
+    from fava_trail.models import ValidationStatus
+
+    record = await trail_manager.save_thought(content="Old stale draft.", agent_id="test")
+    path = trail_manager._find_thought_path(record.thought_id)
+    from fava_trail.models import ThoughtRecord
+    loaded = ThoughtRecord.from_markdown(path.read_text())
+    loaded.frontmatter.validation_status = ValidationStatus.TOMBSTONED
+    path.write_text(loaded.to_markdown())
+
+    with pytest.raises(ValueError, match="frozen"):
+        await trail_manager.update_thought(record.thought_id, "Should fail.")
+
+
+@pytest.mark.asyncio
+async def test_update_thought_content_freeze_superseded(trail_manager):
+    """update_thought on superseded thought should raise ValueError."""
+    record = await trail_manager.save_thought(
+        content="Will be superseded.",
+        agent_id="test",
+        namespace="observations",
+    )
+    await trail_manager.supersede(
+        original_id=record.thought_id,
+        new_content="Replacement.",
+        reason="Corrected",
+        agent_id="test",
+    )
+
+    with pytest.raises(ValueError, match="frozen.*superseded"):
+        await trail_manager.update_thought(record.thought_id, "Should fail.")
+
+
+@pytest.mark.asyncio
+async def test_update_thought_not_found(trail_manager):
+    """update_thought on non-existent thought should raise ValueError."""
+    with pytest.raises(ValueError, match="not found"):
+        await trail_manager.update_thought("01NONEXISTENT000000000000", "Should fail.")
+
+
+@pytest.mark.asyncio
+async def test_save_thought_still_creates_new(trail_manager):
+    """save_thought must still always create NEW thoughts (regression test)."""
+    r1 = await trail_manager.save_thought(content="First thought.", agent_id="test")
+    r2 = await trail_manager.save_thought(content="Second thought.", agent_id="test")
+    assert r1.thought_id != r2.thought_id
+
+    # Both exist as separate files
+    p1 = trail_manager._find_thought_path(r1.thought_id)
+    p2 = trail_manager._find_thought_path(r2.thought_id)
+    assert p1 is not None
+    assert p2 is not None
+    assert p1 != p2

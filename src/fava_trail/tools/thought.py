@@ -105,6 +105,28 @@ async def handle_forget(trail, arguments: dict) -> dict[str, Any]:
     return {"status": "ok", "message": result}
 
 
+async def handle_update_thought(trail, arguments: dict) -> dict[str, Any]:
+    """Update thought content in-place. Frontmatter is preserved."""
+    thought_id = arguments.get("thought_id", "")
+    if not thought_id:
+        return {"status": "error", "message": "thought_id is required"}
+
+    new_content = arguments.get("content", "")
+    if not new_content:
+        return {"status": "error", "message": "content is required"}
+
+    try:
+        record = await trail.update_thought(thought_id, new_content)
+    except ValueError as e:
+        return {"status": "error", "message": str(e)}
+
+    return {
+        "status": "ok",
+        "thought": _serialize_thought(record),
+        "message": f"Updated thought {thought_id[:8]} content in-place",
+    }
+
+
 async def handle_supersede(trail, arguments: dict) -> dict[str, Any]:
     """Replace a thought with corrected version. Atomic: new thought + backlink in single JJ change."""
     original_id = arguments.get("thought_id", "")

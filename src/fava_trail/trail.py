@@ -161,6 +161,53 @@ class TrailManager:
             return ThoughtRecord.from_markdown(path.read_text())
         return None
 
+    # Content-freeze statuses: thoughts in these states cannot be updated via update_thought
+    FROZEN_STATUSES = {
+        ValidationStatus.APPROVED,
+        ValidationStatus.REJECTED,
+        ValidationStatus.TOMBSTONED,
+    }
+
+    async def update_thought(self, thought_id: str, new_content: str) -> ThoughtRecord:
+        """Update thought content in-place. Frontmatter is preserved (tamper-proof).
+
+        Content-freeze guard: rejects updates when:
+        - validation_status is APPROVED, REJECTED, or TOMBSTONED
+        - superseded_by is set (thought has been replaced)
+        """
+        async with self._lock:
+            path = self._find_thought_path(thought_id)
+            if path is None:
+                raise ValueError(f"Thought {thought_id} not found")
+
+            record = ThoughtRecord.from_markdown(path.read_text())
+
+            # Content-freeze guards
+            if record.frontmatter.validation_status in self.FROZEN_STATUSES:
+                raise ValueError(
+                    f"Cannot update thought {thought_id[:8]}: "
+                    f"content is frozen (status={record.frontmatter.validation_status.value})"
+                )
+            if record.is_superseded:
+                raise ValueError(
+                    f"Cannot update thought {thought_id[:8]}: "
+                    f"content is frozen (superseded by {record.frontmatter.superseded_by})"
+                )
+
+            # Replace content only — frontmatter loaded from disk and re-serialized verbatim
+            record.content = new_content
+            path.write_text(record.to_markdown())
+
+            namespace = self._get_namespace_from_path(path)
+            await self.vcs.commit_files(
+                f"Update thought {thought_id[:8]} in {namespace}/",
+                [str(path)],
+            )
+
+            await self._maybe_gc()
+
+        return record
+
     async def supersede(
         self,
         original_id: str,

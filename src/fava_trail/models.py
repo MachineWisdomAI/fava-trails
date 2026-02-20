@@ -23,6 +23,7 @@ class ValidationStatus(str, Enum):
     PROPOSED = "proposed"
     APPROVED = "approved"
     REJECTED = "rejected"
+    TOMBSTONED = "tombstoned"
 
 
 class RelationshipType(str, Enum):
@@ -148,6 +149,7 @@ class TrailConfig(BaseModel):
     trust_gate_policy: str = "auto"  # auto | critic | human
     gc_interval_snapshots: int = 500
     gc_interval_seconds: int = 3600
+    stale_draft_days: int = 0  # 0 = disabled; >0 = tombstone drafts older than N days
 
 
 class GlobalConfig(BaseModel):
@@ -155,4 +157,6 @@ class GlobalConfig(BaseModel):
 
     default_trail: str = "default"
     trails_dir: str = "trails"
+    remote_url: Optional[str] = None
+    push_strategy: str = "manual"  # manual | immediate
     trails: dict[str, TrailConfig] = Field(default_factory=dict)
