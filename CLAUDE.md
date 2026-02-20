@@ -57,6 +57,81 @@ push_strategy: manual       # manual | immediate
 
 When `push_strategy: immediate`, the server pushes to remote after every successful write operation. Push failures are non-fatal — the write succeeds and a warning is returned.
 
+## Data Repo Setup (One-Time CLI Steps)
+
+The data repo is a plain git repository. The MCP server JJ-colocates it on first use. You must bootstrap it correctly — the server cannot do everything for you.
+
+### 1. Create the repo
+
+```bash
+# Create on GitHub, then clone (or git init for local-only)
+git clone https://github.com/YOUR-ORG/fava-trail-data.git
+cd fava-trail-data
+```
+
+### 2. Create exactly two files — nothing else
+
+**`config.yaml`:**
+```yaml
+default_trail: default
+trails_dir: trails
+remote_url: https://github.com/YOUR-ORG/fava-trail-data.git
+push_strategy: immediate
+```
+
+**`.gitignore`:**
+```
+.jj/
+__pycache__/
+*.pyc
+.venv/
+```
+
+> **CRITICAL — do NOT add `trails/` to `.gitignore`.** Trails are plain subdirectories of the monorepo tracked by the same git/JJ repo. Gitignoring `trails/` means thought files are never committed and never pushed to remote. The monorepo is one repo; there are no nested repos.
+
+Do not add a README, CLAUDE.md, Makefile, or any other files at bootstrap time. The MCP server creates `trails/` on first use.
+
+### 3. Commit and push (git — bootstrap only)
+
+```bash
+git add config.yaml .gitignore
+git commit -m "Bootstrap fava-trail-data"
+git push origin main
+```
+
+This is the **only** time you use plain `git push`. It covers the bootstrap commit before JJ colocates.
+
+### 4. Initialize JJ colocated mode
+
+```bash
+jj git init --colocate
+jj bookmark track main@origin
+```
+
+`jj git init --colocate` adds `.jj/` alongside `.git/` and takes over commit management. `jj bookmark track main@origin` tells JJ to track the remote `main` branch — required for auto-push to work.
+
+The MCP server calls `jj git init --colocate` automatically on first use if `.jj/` doesn't exist, but `jj bookmark track main@origin` **must be run manually once**.
+
+### 5. Register the MCP server (see MCP Registration section above)
+
+After this, use MCP tools (`save_thought`, `recall`, etc.) for all trail operations. Do not use `git` commands to manage thought files.
+
+## Pushing to Remote
+
+**NEVER use `git push origin main`** after JJ colocates. In JJ colocated mode:
+- HEAD is always **detached** — JJ manages commits, not git
+- Thought commits live on the detached HEAD chain, not on the `main` git branch
+- `git push origin main` only pushes the git `main` bookmark — it misses all thought commits
+
+**If `push_strategy: immediate` is set** (recommended), the server auto-pushes via `jj git push --all` after every write. No manual action needed.
+
+**If you need to push manually:**
+```bash
+# From within fava-trail-data:
+jj bookmark set main -r @-     # advance main bookmark to latest committed change
+jj git push --bookmark main    # push to remote
+```
+
 ## Architecture
 
 **Monorepo model:** A single JJ colocated repo (`.jj/` + `.git/`) lives at `FAVA_TRAIL_DATA_REPO` root. Each trail is a subdirectory — NOT a separate repo. This provides:
