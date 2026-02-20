@@ -18,6 +18,17 @@ DEFAULT_FAVA_HOME = os.path.expanduser("~/.fava-trail")
 # Trail names must be simple slugs: lowercase alphanumeric + hyphens
 _TRAIL_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
 
+# Allowed thought namespaces — prevents path traversal via namespace parameter
+VALID_NAMESPACES = frozenset({
+    "drafts",
+    "decisions",
+    "observations",
+    "intents",
+    "preferences",
+    "preferences/client",
+    "preferences/firm",
+})
+
 
 def sanitize_trail_name(name: str) -> str:
     """Validate trail name is a safe filesystem slug.
@@ -33,6 +44,16 @@ def sanitize_trail_name(name: str) -> str:
     if ".." in name or "/" in name or "\\" in name:
         raise ValueError(f"Invalid trail name: {name!r}. Path traversal not allowed.")
     return name
+
+
+def sanitize_namespace(namespace: str) -> str:
+    """Validate namespace is in the allowed set. Prevents path traversal via namespace parameter."""
+    if namespace not in VALID_NAMESPACES:
+        raise ValueError(
+            f"Invalid namespace: {namespace!r}. "
+            f"Valid namespaces: {sorted(VALID_NAMESPACES)}"
+        )
+    return namespace
 
 
 def get_data_repo_root() -> Path:

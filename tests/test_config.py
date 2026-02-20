@@ -9,6 +9,7 @@ from fava_trail.config import (
     ensure_data_repo_root,
     get_data_repo_root,
     get_trails_dir,
+    sanitize_namespace,
     sanitize_trail_name,
 )
 
@@ -148,6 +149,36 @@ def test_trails_dir_tilde_expansion(monkeypatch, tmp_path):
     result = get_trails_dir()
     expected = Path(os.path.expanduser("~/my-trails"))
     assert result == expected
+
+
+# --- Namespace sanitization ---
+
+
+def test_sanitize_namespace_valid():
+    """Valid namespaces pass sanitization."""
+    assert sanitize_namespace("drafts") == "drafts"
+    assert sanitize_namespace("decisions") == "decisions"
+    assert sanitize_namespace("observations") == "observations"
+    assert sanitize_namespace("preferences/client") == "preferences/client"
+    assert sanitize_namespace("preferences/firm") == "preferences/firm"
+
+
+def test_sanitize_namespace_rejects_traversal():
+    """Path traversal via namespace is rejected."""
+    with pytest.raises(ValueError, match="Invalid namespace"):
+        sanitize_namespace("../../../../etc/ssh")
+    with pytest.raises(ValueError, match="Invalid namespace"):
+        sanitize_namespace("../../../.ssh")
+    with pytest.raises(ValueError, match="Invalid namespace"):
+        sanitize_namespace("/tmp/evil")
+
+
+def test_sanitize_namespace_rejects_unknown():
+    """Unknown namespaces are rejected."""
+    with pytest.raises(ValueError, match="Invalid namespace"):
+        sanitize_namespace("custom-namespace")
+    with pytest.raises(ValueError, match="Invalid namespace"):
+        sanitize_namespace("")
 
 
 def test_ensure_data_repo_root_creates_custom_trails_dir(monkeypatch, tmp_path):
