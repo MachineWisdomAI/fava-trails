@@ -271,8 +271,21 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "update_thought",
+        "description": "Update thought content in-place (same file, same ULID). Use for refining wording or adding detail. Content is frozen once approved, rejected, tombstoned, or superseded.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "thought_id": {"type": "string", "description": "ULID of the thought to update"},
+                "content": {"type": "string", "description": "The new content (replaces existing body, frontmatter preserved)"},
+                "trail_name": {"type": "string"},
+            },
+            "required": ["thought_id", "content"],
+        },
+    },
+    {
         "name": "supersede",
-        "description": "Replace a thought with a corrected version. ATOMIC: creates new thought + backlinks original in a single JJ change. The superseded_by field is the ONLY permitted exception to immutability.",
+        "description": "Replace a thought with a corrected version. ATOMIC: creates new thought + backlinks original in a single JJ change. Use for conceptual replacement when the conclusion is wrong. For refining wording, use update_thought instead.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -312,6 +325,7 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
         handle_save_thought,
         handle_start_thought,
         handle_supersede,
+        handle_update_thought,
     )
     from .tools.recall import handle_recall
     from .tools.navigation import (
@@ -334,7 +348,7 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
 
         # Check for conflicts before WRITE operations (conflict interception layer)
         # Read-only operations (get_thought, recall, diff) skip this check for performance
-        write_ops = {"start_thought", "save_thought", "propose_truth", "forget", "supersede", "learn_preference", "sync"}
+        write_ops = {"start_thought", "save_thought", "update_thought", "propose_truth", "forget", "supersede", "learn_preference", "sync"}
         if name in write_ops:
             active_conflicts = await trail.get_conflicts()
             if active_conflicts:
@@ -356,6 +370,7 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
         handlers = {
             "start_thought": lambda: handle_start_thought(trail, arguments),
             "save_thought": lambda: handle_save_thought(trail, arguments),
+            "update_thought": lambda: handle_update_thought(trail, arguments),
             "get_thought": lambda: handle_get_thought(trail, arguments),
             "propose_truth": lambda: handle_propose_truth(trail, arguments),
             "recall": lambda: handle_recall(trail, arguments),
