@@ -376,9 +376,9 @@ Currently auto-initializes by checking `(manager.trail_path / ".jj").exists()` (
 
 ### config.py Changes
 
-**New: `get_repo_root()`** — Returns the monorepo root path (`FAVA_TRAIL_DATA_REPO`). This is the directory containing `.jj/` and `.git/`.
+**Rename `get_fava_home()` to `get_data_repo_root()`** — Returns the monorepo root path (`FAVA_TRAIL_DATA_REPO`). This is the directory containing `.jj/` and `.git/`. `get_fava_home()` is removed entirely — no alias, no backwards compatibility shim (it was just written in Phase 0, no external consumers).
 
-**`get_trails_dir()`** — Still returns `{repo_root}/trails/`. No change in semantics.
+**`get_trails_dir()`** — Still returns `{data_repo_root}/trails/`. No change in semantics.
 
 The existing `FAVA_TRAIL_DATA_REPO` env var already points to the right place. No new env vars needed.
 
@@ -409,29 +409,16 @@ No per-trail bookmark management. No orphan branch creation. No refspec hacking.
 
 Pull Daemon also simplifies: one background loop for the entire monorepo, not one per trail.
 
-### Migration from Current Per-Trail Repos
+### Fresh Repo (No Migration)
 
-The `trails/default/` directory currently has its own `.git/` and `.jj/` with 20+ changes. Migration:
+The data in `wise-fava-trail` is all test data (save/promote/supersede exercises during Phase 1 development). None needs preservation. Instead of a complex migration:
 
-1. **Export history as text (consensus safety measure):** Before deleting per-trail VCS, export `jj log --patch` and `jj op log` as text files into the trail directory. This preserves a searchable text archive of the old history even though the DAG is lost.
-   ```bash
-   cd trails/default/
-   jj log --patch > _migration_history_log.txt
-   jj op log > _migration_history_ops.txt
-   ```
-2. Export current trail content: Copy `trails/default/thoughts/` to a temp location
-3. Remove per-trail VCS: Delete `trails/default/.git/` and `trails/default/.jj/`
-4. Init monorepo: Run `jj git init --colocate` at the `fava-trail-data/` root
-5. Restore content: Copy thoughts back into `trails/default/thoughts/` (including the `_migration_history_*.txt` files)
-6. Commit: `jj commit -m "Migrate trails to monorepo (history exported as text)"`
-7. Add remote: `jj git remote add origin git@github.com:MachineWisdomAI/fava-trail-data.git`
-8. Push: `jj git push --allow-new`
+1. Create `fava-trail-data` repo on GitHub (`MachineWisdomAI/fava-trail-data`)
+2. Delete `wise-fava-trail` repo from GitHub
+3. `init_monorepo()` handles fresh repo creation: `jj git init --colocate` at `fava-trail-data/` root, add remote `git@github.com:MachineWisdomAI/fava-trail-data.git`
+4. Leave local `wise-fava-trail/` directory intact until owner deletes manually
 
-**DAG history is lost** for the per-trail JJ changes, but the text export preserves searchable history. This is acceptable because:
-- The thought files themselves contain full provenance (ULID, parent_id, superseded_by, timestamps)
-- The old JJ op log was local-only anyway (would have been lost on machine death)
-- The text export preserves a readable record of all changes and operations
-- The monorepo gives us remote backup going forward, which is the whole point
+**Note:** If future users of FAVA Trail need to migrate real data from per-trail repos to a monorepo, the migration path would be: export `jj log --patch` as text, copy thought files, delete inner VCS dirs, init monorepo, restore files, commit. But this is not needed for the current deployment.
 
 ### Trail Lifecycle in the Monorepo
 
@@ -589,7 +576,7 @@ trails/new-project/
 - Workspace lifecycle management automation (Phase 2 — when sync/Pull Daemon ships)
 - Cross-trail queries (Phase 3 — when TKG ships)
 - Per-trail access control (not needed for 1-person consultancy)
-- Preserving pre-monorepo JJ history (not worth the complexity)
+- Data migration from `wise-fava-trail` (test data only — fresh repo instead)
 - Stale draft auto-promotion daemon — Phase 2 implementation
 - Trust Gate integration — Phase 3
 - Semantic search over content diffs — Phase 3
