@@ -493,8 +493,18 @@ class JjBackend(VcsBackend):
         return "Pushed to git remote"
 
     async def push(self) -> str:
-        """Push all bookmarks to remote."""
+        """Push all bookmarks to remote.
+
+        Advances the 'main' bookmark to the latest committed change (@-)
+        before pushing — necessary because JJ colocated mode keeps HEAD
+        detached, so commits don't automatically advance any bookmark.
+        """
         async with self.repo_lock:
+            # Advance main bookmark to latest committed change
+            try:
+                await self._run("bookmark", "set", "main", "-r", "@-")
+            except JjError as e:
+                logger.warning(f"Could not advance main bookmark: {e}")
             return await self.git_push()
 
     async def try_push(self) -> dict:
