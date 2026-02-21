@@ -1,8 +1,8 @@
-# Spec 6: Semantic Recall
+# Spec 7: Semantic Recall
 
 **Status:** not started
 **Source:** `codev/spir-v2.md` Phase 3 (semantic index sections)
-**Prerequisites:** Spec 5 (Recall Enhancements)
+**Prerequisites:** Spec 6 (Recall Enhancements)
 
 ---
 
@@ -42,7 +42,7 @@ Vector query → thought_id → fetch. Falls back to FTS5 keyword matching for l
 - Index rebuilds from thought files in <30s for 500 thoughts
 - Falls back to keyword matching gracefully
 - Existing `recall` tool unchanged
-- Tool count: 16 → 17
+- Tool count: 17 → 18
 
 ## Out of Scope
 

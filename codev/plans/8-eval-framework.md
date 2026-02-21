@@ -1,11 +1,11 @@
-# Plan 7: Evaluation Framework
+# Plan 8: Evaluation Framework
 
 **Status:** not started
-**Spec:** `codev/specs/7-eval-framework.md`
+**Spec:** `codev/specs/8-eval-framework.md`
 
 ---
 
-## Phase 7.1: Crash Recovery Eval
+## Phase 8.1: Crash Recovery Eval
 
 **Files created:**
 - `eval/crash_recovery.py` — SIGKILL chaos test
@@ -20,7 +20,7 @@
 **Done criteria:**
 - Script passes — zero data loss after SIGKILL
 
-## Phase 7.2: Recall Relevance Eval
+## Phase 8.2: Recall Relevance Eval
 
 **Files created:**
 - `eval/recall_relevance.py` — sample-based accuracy audit

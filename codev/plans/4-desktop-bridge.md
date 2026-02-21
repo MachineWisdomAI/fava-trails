@@ -1,11 +1,11 @@
-# Plan 3: Desktop Bridge
+# Plan 4: Desktop Bridge
 
 **Status:** not started
-**Spec:** `codev/specs/3-desktop-bridge.md`
+**Spec:** `codev/specs/4-desktop-bridge.md`
 
 ---
 
-## Phase 3.1: Wrapper Script
+## Phase 4.1: Wrapper Script
 
 **Files created:**
 - `scripts/mcp-fava-wrapper.sh` — WSL2 wrapper for Claude Desktop stdio MCP
@@ -15,7 +15,7 @@
 - `wsl.exe bash -lc scripts/mcp-fava-wrapper.sh` starts the MCP server
 - Stdio transport works (tool calls in, JSON responses out)
 
-## Phase 3.2: Manual Verification
+## Phase 4.2: Manual Verification
 
 - Configure Claude Desktop with wrapper
 - Run `list_trails` from Desktop

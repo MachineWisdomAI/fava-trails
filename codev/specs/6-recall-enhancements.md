@@ -1,8 +1,8 @@
-# Spec 5: Recall Enhancements
+# Spec 6: Recall Enhancements
 
 **Status:** not started
 **Source:** `codev/spir-v2.md` Phase 2 (recall sections)
-**Prerequisites:** Spec 2 (Trust Gate)
+**Prerequisites:** Spec 3 (Trust Gate)
 
 ---
 
@@ -36,5 +36,5 @@ When `include_relationships=True`, for each matching thought, also fetch and ret
 
 ## Out of Scope
 
-- Semantic/vector recall (Phase 6)
+- Semantic/vector recall (Phase 7)
 - Graph database (future TKG Bridge)

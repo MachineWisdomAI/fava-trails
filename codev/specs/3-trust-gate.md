@@ -1,8 +1,8 @@
-# Spec 2: Trust Gate
+# Spec 3: Trust Gate
 
 **Status:** not started
 **Source:** `codev/spir-v2.md` Trust Gate sections
-**Prerequisites:** Spec 1b (storage substrate amendments) — integrated
+**Prerequisites:** Spec 2 (Hierarchical Scoping)
 
 ---
 
@@ -105,7 +105,7 @@ trust_gate_model: google/gemini-2.5-flash     # cheap, fast reviewer
 
 ## Out of Scope
 
-- Semantic search / SQLite-vec (Phase 6)
-- Desktop bridge (Phase 3)
-- Pull Daemon (Phase 4)
-- Recall enhancements (Phase 5)
+- Semantic search / SQLite-vec (Phase 7)
+- Desktop bridge (Phase 4)
+- Pull Daemon (Phase 5)
+- Recall enhancements (Phase 6)

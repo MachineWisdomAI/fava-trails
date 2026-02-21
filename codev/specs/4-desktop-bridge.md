@@ -1,8 +1,8 @@
-# Spec 3: Desktop Bridge
+# Spec 4: Desktop Bridge
 
 **Status:** not started
 **Source:** `codev/spir-v2.md` Phase 2 (Desktop Bridge section)
-**Prerequisites:** Spec 2 (Trust Gate)
+**Prerequisites:** Spec 3 (Trust Gate)
 
 ---
 
@@ -49,5 +49,5 @@ exec uv run --directory /home/younes/git/MachineWisdomAI/fava-trail fava-trail-s
 
 ## Out of Scope
 
-- Pull Daemon (Phase 4)
+- Pull Daemon (Phase 5)
 - Non-WSL2 environments (native Linux, macOS)

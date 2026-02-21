@@ -1,11 +1,11 @@
-# Plan 6: Semantic Recall
+# Plan 7: Semantic Recall
 
 **Status:** not started
-**Spec:** `codev/specs/6-semantic-recall.md`
+**Spec:** `codev/specs/7-semantic-recall.md`
 
 ---
 
-## Phase 6.1: SQLite-vec Hybrid Index
+## Phase 7.1: SQLite-vec Hybrid Index
 
 **Files created:**
 - `src/fava_trail/index/__init__.py`
@@ -16,7 +16,7 @@
 - Vector, FTS5, and relationship tables initialized
 - Connection pooling for concurrent access
 
-## Phase 6.2: Index Rebuild
+## Phase 7.2: Index Rebuild
 
 **Files created:**
 - `src/fava_trail/index/rebuild.py` — walk thought files, populate index
@@ -26,7 +26,7 @@
 - Completes in <30s for 500 thoughts
 - Malformed files → skip + log warning
 
-## Phase 6.3: `recall_semantic` Tool
+## Phase 7.3: `recall_semantic` Tool
 
 **Files modified:**
 - `src/fava_trail/tools/recall.py` — add `handle_recall_semantic()`
@@ -38,7 +38,7 @@
 - Response includes `applicable_preferences`
 - Superseded thoughts hidden by default
 
-## Phase 6.4: Incremental Indexing
+## Phase 7.4: Incremental Indexing
 
 **Files modified:**
 - `src/fava_trail/trail.py` — hook index updates into write operations

@@ -1,8 +1,8 @@
-# Spec 4: Pull Daemon
+# Spec 5: Pull Daemon
 
 **Status:** not started
 **Source:** `codev/spir-v2.md` Phase 2 (Pull Daemon section)
-**Prerequisites:** Spec 3 (Desktop Bridge)
+**Prerequisites:** Spec 4 (Desktop Bridge)
 
 ---
 

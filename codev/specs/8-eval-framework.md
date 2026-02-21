@@ -1,8 +1,8 @@
-# Spec 7: Evaluation Framework
+# Spec 8: Evaluation Framework
 
 **Status:** not started
 **Source:** `codev/spir-v2.md` Phase 2 (eval sections)
-**Prerequisites:** Spec 4 (Pull Daemon)
+**Prerequisites:** Spec 5 (Pull Daemon)
 
 ---
 

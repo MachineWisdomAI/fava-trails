@@ -1,11 +1,11 @@
-# Plan 5: Recall Enhancements
+# Plan 6: Recall Enhancements
 
 **Status:** not started
-**Spec:** `codev/specs/5-recall-enhancements.md`
+**Spec:** `codev/specs/6-recall-enhancements.md`
 
 ---
 
-## Phase 5.1: `applicable_preferences` Injection
+## Phase 6.1: `applicable_preferences` Injection
 
 **Files modified:**
 - `src/fava_trail/trail.py` — `recall()` scans `preferences/` namespace for scope-matching thoughts
@@ -21,7 +21,7 @@
 - Preferences matched by scope overlap
 - No match → empty list
 
-## Phase 5.2: `include_relationships` Traversal
+## Phase 6.2: `include_relationships` Traversal
 
 **Files modified:**
 - `src/fava_trail/trail.py` — `recall()` follows `relationships` list for 1-hop traversal
@@ -36,7 +36,7 @@
 - File-read based (no graph database)
 - Missing targets handled gracefully (skip + log)
 
-## Phase 5.3: Tests
+## Phase 6.3: Tests
 
 **Test scenarios:**
 1. `recall` with matching preference → appears in `applicable_preferences`

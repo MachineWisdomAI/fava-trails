@@ -1,11 +1,11 @@
-# Plan 4: Pull Daemon
+# Plan 5: Pull Daemon
 
 **Status:** not started
-**Spec:** `codev/specs/4-pull-daemon.md`
+**Spec:** `codev/specs/5-pull-daemon.md`
 
 ---
 
-## Phase 4.1: Daemon Implementation
+## Phase 5.1: Daemon Implementation
 
 **Files created:**
 - `src/fava_trail/daemon/__init__.py`
@@ -22,7 +22,7 @@
 - Fetches from remote at configured interval
 - Conflict triggers automatic rollback
 
-## Phase 4.2: Server Integration
+## Phase 5.2: Server Integration
 
 **Files modified:**
 - `src/fava_trail/server.py` — start daemon after `_init_server()`, stop on shutdown
@@ -33,7 +33,7 @@
 - Daemon stops when server shuts down
 - Daemon disabled by config → no background loop
 
-## Phase 4.3: Tests
+## Phase 5.3: Tests
 
 **Tests:**
 - Daemon starts and stops without errors

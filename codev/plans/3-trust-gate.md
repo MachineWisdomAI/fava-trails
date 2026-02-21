@@ -1,11 +1,11 @@
-# Plan 2: Trust Gate
+# Plan 3: Trust Gate
 
 **Status:** not started
-**Spec:** `codev/specs/2-trust-gate.md`
+**Spec:** `codev/specs/3-trust-gate.md`
 
 ---
 
-## Phase 2.1: Trust Gate Core + Critic Prompt Loading
+## Phase 3.1: Trust Gate Core + Critic Prompt Loading
 
 **Goal:** Trust Gate intercepts `propose_truth` with critic or human policy. Prompt loaded from data repo.
 
@@ -28,7 +28,7 @@
 - OpenRouter call succeeds with test thought
 - Redaction confirmed (sensitive fields stripped)
 
-## Phase 2.2: `propose_truth` Integration
+## Phase 3.2: `propose_truth` Integration
 
 **Goal:** Wire Trust Gate into the promotion flow. Critic and human paths both work.
 
@@ -49,7 +49,7 @@
 - Human mode → `validation_status: "proposed"`, returns pending
 - `learn_preference` unaffected
 
-## Phase 2.3: `approve_thought` and `reject_thought` Tools
+## Phase 3.3: `approve_thought` and `reject_thought` Tools
 
 **Goal:** New MCP tools for human approval gate.
 
@@ -74,9 +74,9 @@
 - `approve_thought` moves proposed thought to permanent namespace
 - `reject_thought` sets `validation_status: "rejected"` with reason
 - Both tools error on non-proposed thoughts
-- Tool count: 14 → 16
+- Tool count: 15 → 17
 
-## Phase 2.4: Tests
+## Phase 3.4: Tests
 
 **Goal:** Full test coverage for Trust Gate flows.
 
@@ -105,9 +105,9 @@
 
 | Phase | Focus | Key Deliverable |
 |-------|-------|-----------------|
-| 2.1 | Core + Prompt | Trust Gate module, prompt loading, OpenRouter client |
-| 2.2 | Integration | Wire into `propose_truth` flow |
-| 2.3 | Human Gate Tools | `approve_thought` + `reject_thought` |
-| 2.4 | Tests | Full coverage for critic + human flows |
+| 3.1 | Core + Prompt | Trust Gate module, prompt loading, OpenRouter client |
+| 3.2 | Integration | Wire into `propose_truth` flow |
+| 3.3 | Human Gate Tools | `approve_thought` + `reject_thought` |
+| 3.4 | Tests | Full coverage for critic + human flows |
 
 Each phase ends with a git commit. Phases are sequential.

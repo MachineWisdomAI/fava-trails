@@ -1,8 +1,8 @@
-# Spec 8: Toolkit Migration Adapter
+# Spec 9: Toolkit Migration Adapter
 
 **Status:** not started
 **Source:** `codev/spir-v2.md` Phase 2 (migration section)
-**Prerequisites:** Spec 2 (Trust Gate)
+**Prerequisites:** Spec 3 (Trust Gate)
 
 ---
 

@@ -1,8 +1,8 @@
-# Spec 10: OpenClaw Memory Driver
+# Spec 11: OpenClaw Memory Driver
 
 **Status:** not started
 **Source:** `codev/spir-v2.md` Phase 5
-**Prerequisites:** Spec 6 (Semantic Recall)
+**Prerequisites:** Spec 7 (Semantic Recall)
 
 ---
 

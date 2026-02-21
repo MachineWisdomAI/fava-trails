@@ -1,11 +1,11 @@
-# Plan 8: Toolkit Migration Adapter
+# Plan 9: Toolkit Migration Adapter
 
 **Status:** not started
-**Spec:** `codev/specs/8-toolkit-migration.md`
+**Spec:** `codev/specs/9-toolkit-migration.md`
 
 ---
 
-## Phase 8.1: Migration Script
+## Phase 9.1: Migration Script
 
 **Files created:**
 - `src/fava_trail/adapters/__init__.py`
@@ -22,7 +22,7 @@
 - Creates thoughts with correct metadata
 - Idempotent
 
-## Phase 8.2: CLI Entry Point
+## Phase 9.2: CLI Entry Point
 
 **Files modified:**
 - `pyproject.toml` — add `fava-trail-migrate` entry point
