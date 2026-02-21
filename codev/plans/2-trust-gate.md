@@ -1,0 +1,113 @@
+# Plan 2: Trust Gate
+
+**Status:** not started
+**Spec:** `codev/specs/2-trust-gate.md`
+
+---
+
+## Phase 2.1: Trust Gate Core + Critic Prompt Loading
+
+**Goal:** Trust Gate intercepts `propose_truth` with critic or human policy. Prompt loaded from data repo.
+
+**Files created:**
+- `src/fava_trail/trust_gate.py` — prompt loading, OpenRouter API call, verdict parsing, redaction layer
+
+**Files modified:**
+- `src/fava_trail/models.py` — add `TrustGateConfig` to `GlobalConfig` and `TrailConfig`
+- `src/fava_trail/config.py` — load trust gate config, resolve prompt file path
+
+**Key patterns:**
+- `load_critic_prompt(data_repo_root)` → reads `trust-gate-prompt.md` from `$FAVA_TRAIL_DATA_REPO`
+- `review_thought(thought, prompt, model)` → async httpx POST to OpenRouter, returns `{verdict: "approve"|"reject", reasoning: "..."}`
+- Redaction: strip `agent_id`, `metadata.extra` before sending
+- Missing prompt file → raise `TrustGateConfigError` with actionable message
+
+**Done criteria:**
+- Prompt file loaded from `$FAVA_TRAIL_DATA_REPO/trust-gate-prompt.md`
+- Missing file → clear error
+- OpenRouter call succeeds with test thought
+- Redaction confirmed (sensitive fields stripped)
+
+## Phase 2.2: `propose_truth` Integration
+
+**Goal:** Wire Trust Gate into the promotion flow. Critic and human paths both work.
+
+**Files modified:**
+- `src/fava_trail/trail.py` — `propose_truth()` calls Trust Gate before namespace move
+- `src/fava_trail/tools/navigation.py` — `handle_propose_truth()` returns pending status for human mode
+
+**Key patterns:**
+- `critic` mode: `propose_truth()` → `trust_gate.review_thought()` → approve → move to namespace / reject → stay in drafts
+- `human` mode: `propose_truth()` → set `validation_status: "proposed"` → return pending
+- `learn_preference` bypasses Trust Gate entirely (existing behavior preserved)
+- Provenance: on approval/rejection, store `{reviewer_model, reviewed_at, verdict, reasoning}` in thought metadata
+
+**Done criteria:**
+- `propose_truth` with critic policy blocks on OpenRouter verdict
+- Approved → permanent namespace, `validation_status: "approved"`
+- Rejected → stays in drafts, `validation_status: "rejected"`, reasoning attached
+- Human mode → `validation_status: "proposed"`, returns pending
+- `learn_preference` unaffected
+
+## Phase 2.3: `approve_thought` and `reject_thought` Tools
+
+**Goal:** New MCP tools for human approval gate.
+
+**Files created/modified:**
+- `src/fava_trail/tools/thought.py` — add `handle_approve_thought()`, `handle_reject_thought()`
+- `src/fava_trail/server.py` — register `approve_thought` and `reject_thought` tools
+
+**Tool definitions:**
+
+`approve_thought`:
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `thought_id` | string | yes | ULID of the proposed thought |
+
+`reject_thought`:
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `thought_id` | string | yes | ULID of the proposed thought |
+| `reason` | string | yes | Reason for rejection |
+
+**Done criteria:**
+- `approve_thought` moves proposed thought to permanent namespace
+- `reject_thought` sets `validation_status: "rejected"` with reason
+- Both tools error on non-proposed thoughts
+- Tool count: 14 → 16
+
+## Phase 2.4: Tests
+
+**Goal:** Full test coverage for Trust Gate flows.
+
+**Files modified:**
+- `tests/test_tools.py` — Trust Gate integration tests
+
+**Test scenarios:**
+1. Critic approves → thought promoted
+2. Critic rejects → thought stays in drafts with rejection reason
+3. Human mode → thought set to proposed, not moved
+4. `approve_thought` on proposed → promoted
+5. `reject_thought` on proposed → rejected with reason
+6. `approve_thought` on non-proposed → error
+7. Missing prompt file → actionable error
+8. `learn_preference` bypasses Trust Gate
+9. Redaction: sensitive fields not in OpenRouter payload
+10. Provenance fields populated after review
+
+**Done criteria:**
+- All new tests pass
+- All existing 73 tests pass (no regressions)
+
+---
+
+## Phase Summary
+
+| Phase | Focus | Key Deliverable |
+|-------|-------|-----------------|
+| 2.1 | Core + Prompt | Trust Gate module, prompt loading, OpenRouter client |
+| 2.2 | Integration | Wire into `propose_truth` flow |
+| 2.3 | Human Gate Tools | `approve_thought` + `reject_thought` |
+| 2.4 | Tests | Full coverage for critic + human flows |
+
+Each phase ends with a git commit. Phases are sequential.
