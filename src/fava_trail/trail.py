@@ -274,8 +274,10 @@ class TrailManager:
             # For cross-scope supersede, allow both trail prefixes
             allowed_prefixes = None
             if target_trail and target_trail.trail_name != self.trail_name:
-                source_rel = str(self.trail_path.relative_to(self.trail_path.parent.parent.parent))
-                target_rel = str(dest.trail_path.relative_to(dest.trail_path.parent.parent.parent))
+                trails_dir = get_trails_dir()
+                repo_root = trails_dir.parent
+                source_rel = str(self.trail_path.relative_to(repo_root))
+                target_rel = str(dest.trail_path.relative_to(repo_root))
                 allowed_prefixes = [source_rel, target_rel]
 
             await self.vcs.commit_files(

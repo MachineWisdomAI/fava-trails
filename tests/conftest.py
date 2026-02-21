@@ -58,3 +58,29 @@ async def trail_manager(tmp_fava_home):
     manager = TrailManager("test", vcs=backend)
     await manager.init()
     return manager
+
+
+@pytest_asyncio.fixture
+async def nested_trail_managers(tmp_fava_home):
+    """Create multiple nested TrailManagers for hierarchical scoping tests.
+
+    Returns dict with keys: 'company', 'team', 'project', 'epic'
+    mapped to TrailManagers for mw, mw/eng, mw/eng/fava-trail, mw/eng/fava-trail/auth-epic.
+    """
+    from fava_trail.trail import TrailManager
+    from fava_trail.vcs.jj_backend import JjBackend
+
+    managers = {}
+    for name, key in [
+        ("mw", "company"),
+        ("mw/eng", "team"),
+        ("mw/eng/fava-trail", "project"),
+        ("mw/eng/fava-trail/auth-epic", "epic"),
+    ]:
+        trail_path = tmp_fava_home / "trails" / name
+        backend = JjBackend(repo_root=tmp_fava_home, trail_path=trail_path)
+        manager = TrailManager(name, vcs=backend)
+        await manager.init()
+        managers[key] = manager
+
+    return managers

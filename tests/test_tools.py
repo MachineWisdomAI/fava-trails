@@ -3,6 +3,7 @@
 import pytest
 
 from fava_trail.models import SourceType
+from fava_trail.trail import recall_multi
 
 
 @pytest.mark.asyncio
@@ -508,3 +509,243 @@ async def test_save_thought_still_creates_new(trail_manager):
     assert p1 is not None
     assert p2 is not None
     assert p1 != p2
+
+
+# --- Phase 2: Hierarchical Scoping ---
+
+
+@pytest.mark.asyncio
+async def test_nested_trail_save_and_recall(nested_trail_managers):
+    """save_thought on nested trail creates correct directory structure."""
+    project = nested_trail_managers["project"]
+    record = await project.save_thought(
+        content="Project-level decision about auth flow.",
+        agent_id="test-agent",
+        source_type=SourceType.DECISION,
+    )
+    path = project.trail_path / "thoughts" / "drafts" / f"{record.thought_id}.md"
+    assert path.exists()
+    # Verify nested path: trails/mw/eng/fava-trail/thoughts/drafts/
+    assert "mw/eng/fava-trail" in str(path) or "mw\\eng\\fava-trail" in str(path)
+
+    # Recall finds it
+    results = await project.recall(query="auth flow")
+    assert len(results) == 1
+    assert results[0].thought_id == record.thought_id
+
+
+@pytest.mark.asyncio
+async def test_recall_multi_across_scopes(nested_trail_managers):
+    """recall_multi searches across multiple scopes and deduplicates."""
+    company = nested_trail_managers["company"]
+    team = nested_trail_managers["team"]
+    project = nested_trail_managers["project"]
+
+    # Save different thoughts in different scopes
+    c_record = await company.save_thought(
+        content="Company coding standards: use black formatter.",
+        agent_id="test-agent",
+    )
+    t_record = await team.save_thought(
+        content="Team convention: use pytest for all tests.",
+        agent_id="test-agent",
+    )
+    p_record = await project.save_thought(
+        content="Project decision: use asyncio throughout.",
+        agent_id="test-agent",
+    )
+
+    # Multi-scope recall
+    results = await recall_multi(
+        trail_managers=[project, team, company],
+        query="",  # match all
+        limit=50,
+    )
+
+    # Should find all three thoughts
+    ids = [r[0].thought_id for r in results]
+    assert p_record.thought_id in ids
+    assert t_record.thought_id in ids
+    assert c_record.thought_id in ids
+
+    # Each result has source trail name
+    sources = {r[1] for r in results}
+    assert "mw" in sources
+    assert "mw/eng" in sources
+    assert "mw/eng/fava-trail" in sources
+
+
+@pytest.mark.asyncio
+async def test_recall_multi_deduplicates(nested_trail_managers):
+    """recall_multi should not return duplicate thoughts."""
+    project = nested_trail_managers["project"]
+
+    record = await project.save_thought(
+        content="Unique thought.",
+        agent_id="test-agent",
+    )
+
+    # Pass same manager twice
+    results = await recall_multi(
+        trail_managers=[project, project],
+        query="Unique",
+    )
+
+    ids = [r[0].thought_id for r in results]
+    assert ids.count(record.thought_id) == 1
+
+
+@pytest.mark.asyncio
+async def test_cross_scope_supersede(nested_trail_managers):
+    """supersede with target_trail elevates thought to a different scope."""
+    epic = nested_trail_managers["epic"]
+    project = nested_trail_managers["project"]
+
+    # Save a finding in the epic scope
+    original = await epic.save_thought(
+        content="Auth tokens expire too quickly for CI.",
+        agent_id="test-agent",
+        namespace="observations",
+    )
+
+    # Elevate to project scope
+    elevated = await epic.supersede(
+        original_id=original.thought_id,
+        new_content="Auth tokens expire too quickly — affects all services, not just auth-epic.",
+        reason="Applies to entire project, not just auth epic",
+        agent_id="test-agent",
+        target_trail=project,
+    )
+
+    # New thought is in project scope
+    found_in_project = await project.get_thought(elevated.thought_id)
+    assert found_in_project is not None
+    assert "all services" in found_in_project.content
+
+    # Original is marked as superseded in epic scope
+    original_updated = await epic.get_thought(original.thought_id)
+    assert original_updated.is_superseded
+    assert original_updated.frontmatter.superseded_by == elevated.thought_id
+
+
+@pytest.mark.asyncio
+async def test_supersede_same_scope_default(trail_manager):
+    """supersede without target_trail stays in same scope (backward compat)."""
+    record = await trail_manager.save_thought(
+        content="Original finding.",
+        agent_id="test-agent",
+        namespace="observations",
+    )
+
+    new_record = await trail_manager.supersede(
+        original_id=record.thought_id,
+        new_content="Corrected finding.",
+        reason="Was wrong about X",
+        agent_id="test-agent",
+    )
+
+    # New thought in same trail
+    found = await trail_manager.get_thought(new_record.thought_id)
+    assert found is not None
+    assert found.content == "Corrected finding."
+
+
+@pytest.mark.asyncio
+async def test_list_scopes_recursive(nested_trail_managers, tmp_fava_home):
+    """list_scopes discovers nested scopes recursively."""
+    from fava_trail.tools.navigation import handle_list_scopes
+
+    result = await handle_list_scopes({})
+    assert result["status"] == "ok"
+    paths = [s["path"] for s in result["scopes"]]
+    assert "mw" in paths
+    assert "mw/eng" in paths
+    assert "mw/eng/fava-trail" in paths
+    assert "mw/eng/fava-trail/auth-epic" in paths
+
+
+@pytest.mark.asyncio
+async def test_list_scopes_prefix_filter(nested_trail_managers, tmp_fava_home):
+    """list_scopes with prefix filters results."""
+    from fava_trail.tools.navigation import handle_list_scopes
+
+    result = await handle_list_scopes({"prefix": "mw/eng/fava-trail"})
+    paths = [s["path"] for s in result["scopes"]]
+    assert "mw/eng/fava-trail" in paths
+    assert "mw/eng/fava-trail/auth-epic" in paths
+    assert "mw" not in paths
+    assert "mw/eng" not in paths
+
+
+@pytest.mark.asyncio
+async def test_list_scopes_include_stats(nested_trail_managers, tmp_fava_home):
+    """list_scopes with include_stats returns thought counts."""
+    from fava_trail.tools.navigation import handle_list_scopes
+
+    project = nested_trail_managers["project"]
+    await project.save_thought(content="A thought.", agent_id="test")
+
+    result = await handle_list_scopes({"include_stats": True})
+    project_scope = next(s for s in result["scopes"] if s["path"] == "mw/eng/fava-trail")
+    assert "thought_count" in project_scope
+    assert project_scope["thought_count"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_resolve_scope_globs_star(nested_trail_managers, tmp_fava_home):
+    """Glob * matches one level only."""
+    from fava_trail.config import resolve_scope_globs
+
+    trails_dir = tmp_fava_home / "trails"
+    resolved = resolve_scope_globs(trails_dir, ["mw/eng/*"])
+    assert "mw/eng/fava-trail" in resolved
+    # Should NOT match mw/eng/fava-trail/auth-epic (that's two levels)
+    assert "mw/eng/fava-trail/auth-epic" not in resolved
+
+
+@pytest.mark.asyncio
+async def test_resolve_scope_globs_double_star(nested_trail_managers, tmp_fava_home):
+    """Glob ** matches any depth."""
+    from fava_trail.config import resolve_scope_globs
+
+    trails_dir = tmp_fava_home / "trails"
+    resolved = resolve_scope_globs(trails_dir, ["mw/**"])
+    assert "mw/eng" in resolved
+    assert "mw/eng/fava-trail" in resolved
+    assert "mw/eng/fava-trail/auth-epic" in resolved
+
+
+@pytest.mark.asyncio
+async def test_root_level_trail_warning(tmp_fava_home):
+    """Writing to a root-level trail should succeed but include a warning."""
+    from fava_trail.server import _get_trail, _is_root_level
+
+    assert _is_root_level("scratch")
+    assert not _is_root_level("mw/scratch")
+
+
+@pytest.mark.asyncio
+async def test_trail_name_required():
+    """_get_trail with None trail_name should raise ValueError."""
+    from fava_trail.server import _get_trail
+
+    with pytest.raises(ValueError, match="trail_name is required"):
+        await _get_trail(None)
+
+    with pytest.raises(ValueError, match="trail_name is required"):
+        await _get_trail("")
+
+
+@pytest.mark.asyncio
+async def test_path_traversal_rejected():
+    """Path traversal attempts should be rejected."""
+    from fava_trail.config import sanitize_scope_path
+
+    with pytest.raises(ValueError, match="Path traversal"):
+        sanitize_scope_path("../etc/passwd")
+
+    with pytest.raises(ValueError, match="Path traversal"):
+        sanitize_scope_path("mw/../../../etc")
+
+    with pytest.raises(ValueError, match="Path traversal"):
+        sanitize_scope_path("mw\\eng")
