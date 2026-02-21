@@ -1,4 +1,4 @@
-"""Navigation and lifecycle tools: diff, list_trails, conflicts, propose_truth, rollback, sync."""
+"""Navigation and lifecycle tools: diff, list_scopes, conflicts, propose_truth, rollback, sync."""
 
 from __future__ import annotations
 
@@ -19,22 +19,42 @@ async def handle_diff(trail, arguments: dict) -> dict[str, Any]:
     }
 
 
-async def handle_list_trails(arguments: dict) -> dict[str, Any]:
-    """Show available trails."""
+async def handle_list_scopes(arguments: dict) -> dict[str, Any]:
+    """Discover all scopes (trails) recursively. Supports prefix filter and optional stats."""
     trails_dir = get_trails_dir()
-    trails = []
+    prefix = arguments.get("prefix", "")
+    include_stats = arguments.get("include_stats", False)
+    scopes = []
+
     if trails_dir.exists():
-        for p in sorted(trails_dir.iterdir()):
-            if p.is_dir() and (p / "thoughts").exists():
-                trails.append({
-                    "name": p.name,
-                    "path": str(p),
-                })
+        search_root = trails_dir / prefix if prefix else trails_dir
+        if search_root.exists():
+            for thoughts_dir in search_root.rglob("thoughts"):
+                if thoughts_dir.is_dir():
+                    scope_dir = thoughts_dir.parent
+                    # Ensure scope_dir is under trails_dir
+                    try:
+                        scope_name = str(scope_dir.relative_to(trails_dir))
+                    except ValueError:
+                        continue
+                    entry: dict[str, Any] = {"path": scope_name}
+                    if include_stats:
+                        md_count = sum(
+                            1 for _ in thoughts_dir.rglob("*.md")
+                            if _.name != ".gitkeep"
+                        )
+                        entry["thought_count"] = md_count
+                    scopes.append(entry)
+
     return {
         "status": "ok",
-        "count": len(trails),
-        "trails": trails,
+        "count": len(scopes),
+        "scopes": sorted(scopes, key=lambda s: s["path"]),
     }
+
+
+# Backward compatibility alias
+handle_list_trails = handle_list_scopes
 
 
 async def handle_conflicts(trail, arguments: dict) -> dict[str, Any]:

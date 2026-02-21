@@ -1,6 +1,6 @@
 """FAVA Trail MCP Server — Federated Agents Versioned Audit Trail.
 
-Provides 14 MCP tools for versioned agent memory via JJ (Jujutsu) VCS.
+Provides 15 MCP tools for versioned agent memory via JJ (Jujutsu) VCS.
 All tool responses are token-optimized JSON summaries — no raw VCS output.
 """
 
@@ -21,7 +21,8 @@ from .config import (
     get_data_repo_root,
     get_trails_dir,
     load_global_config,
-    sanitize_trail_name,
+    resolve_scope_globs,
+    sanitize_scope_path,
 )
 from .trail import TrailManager
 from .vcs.jj_backend import JjBackend
@@ -65,11 +66,16 @@ async def _init_server() -> None:
 
 
 async def _get_trail(trail_name: str | None = None) -> TrailManager:
-    """Get or create a TrailManager for the given trail."""
-    config = load_global_config()
-    name = trail_name or config.default_trail
+    """Get or create a TrailManager for the given trail.
 
-    safe_name = sanitize_trail_name(name)
+    trail_name is REQUIRED. Returns error if None.
+    """
+    if not trail_name:
+        raise ValueError(
+            "trail_name is required. Pass your scope path (e.g. 'mw/eng/fava-trail')."
+        )
+
+    safe_name = sanitize_scope_path(trail_name)
     if safe_name not in _trail_managers:
         repo_root = get_data_repo_root()
         trail_path = get_trails_dir() / safe_name
@@ -83,7 +89,14 @@ async def _get_trail(trail_name: str | None = None) -> TrailManager:
     return _trail_managers[safe_name]
 
 
+def _is_root_level(trail_name: str) -> bool:
+    """Check if trail_name is a root-level scope (no / separator)."""
+    return "/" not in trail_name
+
+
 # --- Tool Definitions ---
+
+TRAIL_NAME_DESC = "Scope path (e.g. 'mw/eng/fava-trail'). Required."
 
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
@@ -93,7 +106,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "description": {"type": "string", "description": "Brief description of reasoning intent"},
-                "trail_name": {"type": "string", "description": "Trail to use (defaults to config default)"},
+                "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
             },
         },
     },
@@ -136,7 +149,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                     },
                     "description": "Thought metadata for filtering",
                 },
-                "trail_name": {"type": "string"},
+                "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
             },
             "required": ["content"],
         },
@@ -148,7 +161,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "thought_id": {"type": "string", "description": "ULID of the thought to retrieve"},
-                "trail_name": {"type": "string"},
+                "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
             },
             "required": ["thought_id"],
         },
@@ -160,7 +173,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "thought_id": {"type": "string", "description": "ULID of the draft thought to promote"},
-                "trail_name": {"type": "string"},
+                "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
             },
             "required": ["thought_id"],
         },
@@ -185,7 +198,12 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "include_superseded": {"type": "boolean", "default": False, "description": "Show superseded thoughts (for archaeology)"},
                 "include_relationships": {"type": "boolean", "default": False, "description": "Include 1-hop related thoughts"},
                 "limit": {"type": "integer", "default": 20},
-                "trail_name": {"type": "string"},
+                "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
+                "trail_names": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Additional scopes to search. Supports glob patterns (* = one level, ** = any depth).",
+                },
             },
         },
     },
@@ -196,7 +214,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "revision": {"type": "string", "description": "Specific revision to abandon (default: current)"},
-                "trail_name": {"type": "string"},
+                "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
             },
         },
     },
@@ -206,7 +224,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "trail_name": {"type": "string"},
+                "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
             },
         },
     },
@@ -216,7 +234,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "trail_name": {"type": "string"},
+                "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
             },
         },
     },
@@ -227,7 +245,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "op_id": {"type": "string", "description": "Operation ID to restore to"},
-                "trail_name": {"type": "string"},
+                "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
             },
         },
     },
@@ -238,16 +256,30 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "revision": {"type": "string", "description": "Revision to diff (default: current working change)"},
-                "trail_name": {"type": "string"},
+                "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
+            },
+        },
+    },
+    {
+        "name": "list_scopes",
+        "description": "Show all available FAVA trails/scopes. Discovers nested scopes recursively.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prefix": {"type": "string", "description": "Filter by scope prefix (e.g. 'mw/eng')"},
+                "include_stats": {"type": "boolean", "default": False, "description": "Include thought count per scope"},
             },
         },
     },
     {
         "name": "list_trails",
-        "description": "Show all available FAVA trails.",
+        "description": "Show all available FAVA trails. Alias for list_scopes.",
         "inputSchema": {
             "type": "object",
-            "properties": {},
+            "properties": {
+                "prefix": {"type": "string", "description": "Filter by scope prefix (e.g. 'mw/eng')"},
+                "include_stats": {"type": "boolean", "default": False, "description": "Include thought count per scope"},
+            },
         },
     },
     {
@@ -265,7 +297,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 },
                 "agent_id": {"type": "string"},
                 "metadata": {"type": "object"},
-                "trail_name": {"type": "string"},
+                "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
             },
             "required": ["content"],
         },
@@ -278,7 +310,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "properties": {
                 "thought_id": {"type": "string", "description": "ULID of the thought to update"},
                 "content": {"type": "string", "description": "The new content (replaces existing body, frontmatter preserved)"},
-                "trail_name": {"type": "string"},
+                "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
             },
             "required": ["thought_id", "content"],
         },
@@ -294,9 +326,26 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "reason": {"type": "string", "description": "Why this thought is being superseded"},
                 "agent_id": {"type": "string"},
                 "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-                "trail_name": {"type": "string"},
+                "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
             },
             "required": ["thought_id", "content", "reason"],
+        },
+    },
+    {
+        "name": "change_scope",
+        "description": "Elevate a thought to a different scope. Wraps supersede with cross-scope arguments. Use when a task-level finding should be visible at project or team level.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "thought_id": {"type": "string", "description": "ULID of the thought to elevate"},
+                "content": {"type": "string", "description": "Content for the new scope (may be rewritten for broader audience)"},
+                "target_trail_name": {"type": "string", "description": "Target scope path where the new thought will be created"},
+                "reason": {"type": "string", "description": "Why this thought is being elevated to a different scope"},
+                "agent_id": {"type": "string"},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                "trail_name": {"type": "string", "description": "Source scope path (where the original thought lives). Required."},
+            },
+            "required": ["thought_id", "content", "target_trail_name", "reason"],
         },
     },
 ]
@@ -319,6 +368,7 @@ async def handle_list_tools() -> list[Tool]:
 async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     """Route tool calls to handlers. All responses are structured JSON."""
     from .tools.thought import (
+        handle_change_scope,
         handle_forget,
         handle_get_thought,
         handle_learn_preference,
@@ -331,24 +381,33 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
     from .tools.navigation import (
         handle_conflicts,
         handle_diff,
-        handle_list_trails,
+        handle_list_scopes,
         handle_propose_truth,
         handle_rollback,
         handle_sync,
     )
 
     try:
-        # list_trails doesn't need a trail
-        if name == "list_trails":
-            result = await handle_list_trails(arguments)
+        # list_scopes and list_trails don't need a trail
+        if name in ("list_scopes", "list_trails"):
+            result = await handle_list_scopes(arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
 
         # All other tools need a trail
         trail = await _get_trail(arguments.get("trail_name"))
 
+        # Root-level warning for write operations
+        warning = None
+        trail_name_arg = arguments.get("trail_name", "")
+        if trail_name_arg and _is_root_level(trail_name_arg):
+            warning = (
+                f"Warning: trail '{trail_name_arg}' is at root level under trails/. "
+                f"Consider using a scoped path like 'mw/{trail_name_arg}' to avoid kitchen-sink accumulation."
+            )
+
         # Check for conflicts before WRITE operations (conflict interception layer)
         # Read-only operations (get_thought, recall, diff) skip this check for performance
-        write_ops = {"start_thought", "save_thought", "update_thought", "propose_truth", "forget", "supersede", "learn_preference", "sync"}
+        write_ops = {"start_thought", "save_thought", "update_thought", "propose_truth", "forget", "supersede", "learn_preference", "sync", "change_scope"}
         if name in write_ops:
             active_conflicts = await trail.get_conflicts()
             if active_conflicts:
@@ -378,27 +437,55 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
                     return [TextContent(type="text", text=json.dumps(conflict_result, indent=2, default=str))]
 
         # Route to handler
-        handlers = {
-            "start_thought": lambda: handle_start_thought(trail, arguments),
-            "save_thought": lambda: handle_save_thought(trail, arguments),
-            "update_thought": lambda: handle_update_thought(trail, arguments),
-            "get_thought": lambda: handle_get_thought(trail, arguments),
-            "propose_truth": lambda: handle_propose_truth(trail, arguments),
-            "recall": lambda: handle_recall(trail, arguments),
-            "forget": lambda: handle_forget(trail, arguments),
-            "sync": lambda: handle_sync(trail, arguments),
-            "conflicts": lambda: handle_conflicts(trail, arguments),
-            "rollback": lambda: handle_rollback(trail, arguments),
-            "diff": lambda: handle_diff(trail, arguments),
-            "learn_preference": lambda: handle_learn_preference(trail, arguments),
-            "supersede": lambda: handle_supersede(trail, arguments),
-        }
-
-        handler = handlers.get(name)
-        if handler is None:
-            result = {"status": "error", "message": f"Unknown tool: {name}"}
+        if name == "recall":
+            # Resolve trail_names (plural) to additional TrailManagers
+            additional_trails = None
+            trail_names = arguments.get("trail_names")
+            if trail_names:
+                trails_dir = get_trails_dir()
+                resolved_names = resolve_scope_globs(trails_dir, trail_names)
+                additional_trails = []
+                for tn in resolved_names:
+                    if tn != trail.trail_name:  # avoid duplicating primary trail
+                        try:
+                            additional_trails.append(await _get_trail(tn))
+                        except (ValueError, RuntimeError) as e:
+                            logger.debug(f"Skipping scope {tn}: {e}")
+            result = await handle_recall(trail, arguments, additional_trails=additional_trails)
+        elif name == "change_scope":
+            # Resolve target trail
+            target_trail_name = arguments.get("target_trail_name")
+            if not target_trail_name:
+                result = {"status": "error", "message": "target_trail_name is required for change_scope"}
+            else:
+                target_trail = await _get_trail(target_trail_name)
+                result = await handle_change_scope(trail, arguments, target_trail=target_trail)
+        elif name == "supersede":
+            result = await handle_supersede(trail, arguments)
         else:
-            result = await handler()
+            handlers = {
+                "start_thought": lambda: handle_start_thought(trail, arguments),
+                "save_thought": lambda: handle_save_thought(trail, arguments),
+                "update_thought": lambda: handle_update_thought(trail, arguments),
+                "get_thought": lambda: handle_get_thought(trail, arguments),
+                "propose_truth": lambda: handle_propose_truth(trail, arguments),
+                "forget": lambda: handle_forget(trail, arguments),
+                "sync": lambda: handle_sync(trail, arguments),
+                "conflicts": lambda: handle_conflicts(trail, arguments),
+                "rollback": lambda: handle_rollback(trail, arguments),
+                "diff": lambda: handle_diff(trail, arguments),
+                "learn_preference": lambda: handle_learn_preference(trail, arguments),
+            }
+
+            handler = handlers.get(name)
+            if handler is None:
+                result = {"status": "error", "message": f"Unknown tool: {name}"}
+            else:
+                result = await handler()
+
+        # Attach root-level warning if applicable
+        if warning and isinstance(result, dict) and result.get("status") == "ok":
+            result["warning"] = warning
 
         # Post-write push hook: push after successful write operations
         if name in write_ops and isinstance(result, dict) and result.get("status") == "ok":
