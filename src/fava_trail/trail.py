@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from .config import get_trails_dir, load_trail_config, sanitize_namespace, sanitize_trail_name, save_trail_config
+from .config import get_trails_dir, load_trail_config, sanitize_namespace, sanitize_scope_path, sanitize_trail_name, save_trail_config
 from .models import (
     DEFAULT_NAMESPACE,
     NAMESPACE_ROUTES,
@@ -37,7 +37,7 @@ class TrailManager:
     """Manages a single trail: VCS ops, thought CRUD, namespace routing, GC."""
 
     def __init__(self, trail_name: str, vcs: VcsBackend):
-        self.trail_name = sanitize_trail_name(trail_name)
+        self.trail_name = sanitize_scope_path(trail_name)
         self.trail_path = get_trails_dir() / self.trail_name
         self.vcs = vcs
         self._lock = asyncio.Lock()
@@ -215,6 +215,7 @@ class TrailManager:
         new_content: str,
         reason: str = "",
         agent_id: str = "unknown",
+        target_trail: "TrailManager | None" = None,
         **kwargs,
     ) -> ThoughtRecord:
         """Atomically supersede a thought: create new + backlink original in single JJ change.
@@ -223,15 +224,22 @@ class TrailManager:
         Both the new thought creation AND the original's superseded_by backlink
         occur in a single JJ change. If process crashes mid-operation,
         either both writes exist or neither does.
+
+        When target_trail is provided, the new thought is created in the target trail
+        instead of the source trail (cross-scope supersession / scope elevation).
         """
         async with self._lock:
-            # Find original
+            # Find original in this trail
             original_path = self._find_thought_path(original_id)
             if original_path is None:
                 raise ValueError(f"Thought {original_id} not found")
 
             original = ThoughtRecord.from_markdown(original_path.read_text())
             namespace = self._get_namespace_from_path(original_path)
+
+            # Determine where the new thought lands
+            dest = target_trail or self
+            new_thoughts_dir = dest.trail_path / "thoughts" / namespace
 
             # Create new thought
             new_fm = ThoughtFrontmatter(
@@ -245,10 +253,10 @@ class TrailManager:
             )
 
             new_record = ThoughtRecord(frontmatter=new_fm, content=new_content)
-            new_path = self._thought_path(new_record.thought_id, namespace)
+            new_path = new_thoughts_dir / f"{new_record.thought_id}.md"
 
             # ATOMIC: Write both files before committing
-            # 1. Write new thought
+            # 1. Write new thought (may be in a different trail)
             new_path.parent.mkdir(parents=True, exist_ok=True)
             new_path.write_text(new_record.to_markdown())
 
@@ -258,12 +266,22 @@ class TrailManager:
 
             # 3. Single JJ change for both writes
             desc = f"Supersede {original_id[:8]} with {new_record.thought_id[:8]}"
+            if target_trail:
+                desc += f" (scope: {self.trail_name} → {target_trail.trail_name})"
             if reason:
                 desc += f": {reason}"
+
+            # For cross-scope supersede, allow both trail prefixes
+            allowed_prefixes = None
+            if target_trail and target_trail.trail_name != self.trail_name:
+                source_rel = str(self.trail_path.relative_to(self.trail_path.parent.parent.parent))
+                target_rel = str(dest.trail_path.relative_to(dest.trail_path.parent.parent.parent))
+                allowed_prefixes = [source_rel, target_rel]
 
             await self.vcs.commit_files(
                 desc,
                 [str(new_path), str(original_path)],
+                allowed_prefixes=allowed_prefixes,
             )
 
             await self._maybe_gc()
@@ -466,3 +484,33 @@ class TrailManager:
                 logger.info(f"GC completed for trail {self.trail_name}")
             except Exception as e:
                 logger.warning(f"GC failed for trail {self.trail_name}: {e}")
+
+
+async def recall_multi(
+    trail_managers: list[TrailManager],
+    query: str = "",
+    namespace: Optional[str] = None,
+    scope: Optional[dict] = None,
+    include_superseded: bool = False,
+    include_relationships: bool = False,
+    limit: int = 20,
+) -> list[tuple[ThoughtRecord, str]]:
+    """Search across multiple scopes. Returns (thought, source_trail_name) tuples.
+
+    Results deduplicated by thought_id. Each result tagged with its source trail name.
+    """
+    seen_ids: set[str] = set()
+    results: list[tuple[ThoughtRecord, str]] = []
+    for tm in trail_managers:
+        for r in await tm.recall(
+            query=query,
+            namespace=namespace,
+            scope=scope,
+            include_superseded=include_superseded,
+            include_relationships=include_relationships,
+            limit=limit,
+        ):
+            if r.thought_id not in seen_ids:
+                seen_ids.add(r.thought_id)
+                results.append((r, tm.trail_name))
+    return results[:limit]

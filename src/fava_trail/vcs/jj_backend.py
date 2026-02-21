@@ -201,23 +201,29 @@ class JjBackend(VcsBackend):
         await self._run("describe", "-m", description)
         return f"Updated description: {description[:80]}"
 
-    async def commit_files(self, message: str, paths: list[str]) -> VcsChange:
+    async def commit_files(
+        self,
+        message: str,
+        paths: list[str],
+        allowed_prefixes: list[str] | None = None,
+    ) -> VcsChange:
         """Commit files with cross-trail pollution assertion.
 
         Uses jj diff --name-only to get dirty paths. Asserts all dirty paths
-        fall under the expected trail prefix. Then describes and creates new change.
+        fall under the expected trail prefix (or allowed_prefixes for cross-scope ops).
+        Then describes and creates new change.
         """
         # Get dirty files in the working copy
         stdout, _ = await self._run("diff", "--name-only", check=False)
         dirty_paths = [line.strip() for line in stdout.splitlines() if line.strip()]
 
-        # Cross-trail assertion: all dirty files must be under our trail
+        # Cross-trail assertion: all dirty files must be under allowed prefixes
         if dirty_paths:
-            trail_rel = self._trail_rel_path()
+            prefixes = allowed_prefixes or [self._trail_rel_path()]
             for dp in dirty_paths:
-                if not dp.startswith(trail_rel):
+                if not any(dp.startswith(pfx) for pfx in prefixes):
                     raise RuntimeError(
-                        f"Cross-trail pollution detected: '{dp}' is outside trail prefix '{trail_rel}'. "
+                        f"Cross-trail pollution detected: '{dp}' is outside allowed prefixes {prefixes}. "
                         "Aborting commit to prevent data corruption."
                     )
 

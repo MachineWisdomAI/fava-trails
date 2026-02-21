@@ -127,8 +127,11 @@ async def handle_update_thought(trail, arguments: dict) -> dict[str, Any]:
     }
 
 
-async def handle_supersede(trail, arguments: dict) -> dict[str, Any]:
-    """Replace a thought with corrected version. Atomic: new thought + backlink in single JJ change."""
+async def handle_supersede(trail, arguments: dict, target_trail=None) -> dict[str, Any]:
+    """Replace a thought with corrected version. Atomic: new thought + backlink in single JJ change.
+
+    When target_trail is provided, the new thought lands in the target trail (cross-scope).
+    """
     original_id = arguments.get("thought_id", "")
     if not original_id:
         return {"status": "error", "message": "thought_id (of original thought) is required"}
@@ -148,17 +151,30 @@ async def handle_supersede(trail, arguments: dict) -> dict[str, Any]:
             reason=reason,
             agent_id=arguments.get("agent_id", "unknown"),
             confidence=arguments.get("confidence"),
+            target_trail=target_trail,
         )
     except ValueError as e:
         return {"status": "error", "message": str(e)}
 
-    return {
+    result = {
         "status": "ok",
         "new_thought": _serialize_thought(record),
         "supersedes_thought_id": original_id,
         "reason": reason,
         "message": f"Superseded {original_id[:8]} with {record.thought_id[:8]}: {reason}",
     }
+    if target_trail:
+        result["source_trail"] = trail.trail_name
+        result["target_trail"] = target_trail.trail_name
+    return result
+
+
+async def handle_change_scope(trail, arguments: dict, target_trail=None) -> dict[str, Any]:
+    """Elevate a thought to a different scope. Wraps supersede with cross-scope arguments."""
+    if target_trail is None:
+        return {"status": "error", "message": "target_trail_name is required for change_scope"}
+
+    return await handle_supersede(trail, arguments, target_trail=target_trail)
 
 
 async def handle_learn_preference(trail, arguments: dict) -> dict[str, Any]:
