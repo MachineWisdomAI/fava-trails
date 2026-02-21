@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_FAVA_HOME = os.path.expanduser("~/.fava-trail")
 
-# Trail names must be simple slugs: lowercase alphanumeric + hyphens
-_TRAIL_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
+# Scope path segment: alphanumeric + hyphens/dots/underscores, starts with alphanumeric
+_SCOPE_SEGMENT_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
 
 # Allowed thought namespaces — prevents path traversal via namespace parameter
 VALID_NAMESPACES = frozenset({
@@ -30,20 +30,32 @@ VALID_NAMESPACES = frozenset({
 })
 
 
-def sanitize_trail_name(name: str) -> str:
-    """Validate trail name is a safe filesystem slug.
+def sanitize_scope_path(name: str) -> str:
+    """Validate scope path: slash-separated segments, each a safe slug.
 
-    Rejects path traversal attempts (../, /, \\) and non-slug characters.
+    Accepts both single-segment ('default') and multi-segment ('mw/eng/fava-trail') paths.
+    Rejects path traversal attempts (.., \\) and invalid characters.
     """
-    if not name or not _TRAIL_NAME_RE.match(name):
-        raise ValueError(
-            f"Invalid trail name: {name!r}. "
-            "Trail names must be alphanumeric with hyphens/dots/underscores, "
-            "starting with an alphanumeric character."
-        )
-    if ".." in name or "/" in name or "\\" in name:
-        raise ValueError(f"Invalid trail name: {name!r}. Path traversal not allowed.")
+    if not name:
+        raise ValueError("Scope path cannot be empty.")
+    if "\\" in name or ".." in name:
+        raise ValueError(f"Invalid scope path: {name!r}. Path traversal not allowed.")
+    name = name.strip("/")
+    if not name:
+        raise ValueError("Scope path cannot be empty.")
+    segments = name.split("/")
+    for seg in segments:
+        if not seg or not _SCOPE_SEGMENT_RE.match(seg):
+            raise ValueError(
+                f"Invalid scope segment: {seg!r} in {name!r}. "
+                "Segments must be alphanumeric with hyphens/dots/underscores, "
+                "starting with an alphanumeric character."
+            )
     return name
+
+
+# Backward compatibility alias
+sanitize_trail_name = sanitize_scope_path
 
 
 def sanitize_namespace(namespace: str) -> str:
@@ -132,6 +144,34 @@ def save_trail_config(trail_name: str, config: TrailConfig) -> None:
     trail_dir.mkdir(parents=True, exist_ok=True)
     with open(config_path, "w") as f:
         yaml.dump(config.model_dump(), f, default_flow_style=False, sort_keys=False)
+
+
+def resolve_scope_globs(trails_dir: Path, patterns: list[str]) -> list[str]:
+    """Resolve glob patterns to actual scope paths under trails/.
+
+    * matches one level, ** matches any depth (standard Path.glob semantics).
+    Silently drops anything resolving outside trails/.
+    """
+    resolved = set()
+    trails_dir_resolved = trails_dir.resolve()
+    for pattern in patterns:
+        if "*" in pattern:
+            for match in trails_dir.glob(pattern):
+                try:
+                    match.resolve().relative_to(trails_dir_resolved)
+                except ValueError:
+                    continue  # outside trails/ — silently drop
+                if match.is_dir() and (match / "thoughts").exists():
+                    resolved.add(str(match.relative_to(trails_dir)))
+        else:
+            candidate = trails_dir / pattern
+            try:
+                candidate.resolve().relative_to(trails_dir_resolved)
+            except ValueError:
+                continue  # outside trails/ — silently drop
+            if candidate.is_dir() and (candidate / "thoughts").exists():
+                resolved.add(pattern)
+    return sorted(resolved)
 
 
 def ensure_data_repo_root() -> Path:

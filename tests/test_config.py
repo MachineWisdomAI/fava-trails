@@ -120,24 +120,35 @@ def test_sanitize_valid_names():
 
 def test_sanitize_rejects_path_traversal():
     """Path traversal attempts are rejected."""
-    with pytest.raises(ValueError, match="Invalid trail name"):
+    with pytest.raises(ValueError, match="Path traversal not allowed"):
         sanitize_trail_name("../../.ssh")
-    with pytest.raises(ValueError, match="Invalid trail name"):
+    with pytest.raises(ValueError, match="Path traversal not allowed"):
         sanitize_trail_name("../etc/passwd")
-    with pytest.raises(ValueError, match="Invalid trail name"):
-        sanitize_trail_name("foo/bar")
-    with pytest.raises(ValueError, match="Invalid trail name"):
+    with pytest.raises(ValueError, match="Path traversal not allowed"):
         sanitize_trail_name("foo\\bar")
+
+
+def test_sanitize_accepts_scoped_paths():
+    """Slash-separated scope paths are valid."""
+    assert sanitize_trail_name("foo/bar") == "foo/bar"
+    assert sanitize_trail_name("mw/eng/fava-trail") == "mw/eng/fava-trail"
+    assert sanitize_trail_name("mw/eng/fava-trail/auth-epic") == "mw/eng/fava-trail/auth-epic"
+    # Leading/trailing slashes are stripped
+    assert sanitize_trail_name("/mw/eng/") == "mw/eng"
+    assert sanitize_trail_name("mw/eng/") == "mw/eng"
 
 
 def test_sanitize_rejects_empty_and_special():
     """Empty strings and special characters are rejected."""
-    with pytest.raises(ValueError, match="Invalid trail name"):
+    with pytest.raises(ValueError, match="cannot be empty"):
         sanitize_trail_name("")
-    with pytest.raises(ValueError, match="Invalid trail name"):
+    with pytest.raises(ValueError, match="Invalid scope segment"):
         sanitize_trail_name("-starts-with-dash")
-    with pytest.raises(ValueError, match="Invalid trail name"):
+    with pytest.raises(ValueError, match="Invalid scope segment"):
         sanitize_trail_name(".hidden")
+    # Empty segments (double slash) rejected
+    with pytest.raises(ValueError, match="Invalid scope segment"):
+        sanitize_trail_name("a//b")
 
 
 def test_trails_dir_tilde_expansion(monkeypatch, tmp_path):
