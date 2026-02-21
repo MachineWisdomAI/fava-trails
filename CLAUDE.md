@@ -43,8 +43,26 @@ Add to Claude Desktop `claude_desktop_config.json` or `~/.claude.json`:
 |----------|---------|---------|
 | `FAVA_TRAIL_DATA_REPO` | Root directory for trail data (monorepo root) | `~/.fava-trail` |
 | `FAVA_TRAILS_DIR` | Override trails directory location (absolute path) | `$FAVA_TRAIL_DATA_REPO/trails` |
+| `FAVA_TRAIL_SCOPE_HINT` | Server-side scope hint, baked into tool descriptions | *(none)* |
 
 The server reads `$FAVA_TRAIL_DATA_REPO/config.yaml` for global settings and manages trails under `$FAVA_TRAIL_DATA_REPO/trails/`.
+
+### Scope Discovery (Two-Layer)
+
+Agents need to know which `trail_name` to pass on every tool call. Two env vars work together:
+
+| Env Var | Set where | Read by | Purpose |
+|---------|-----------|---------|---------|
+| `FAVA_TRAIL_SCOPE_HINT` | MCP server `env` block | Server at startup | Broad org/team hint baked into tool descriptions |
+| `FAVA_TRAIL_SCOPE` | Project `.env` file | Agent (via env vars) | Project-specific scope, overrides the hint |
+
+**Resolution order:**
+1. If `FAVA_TRAIL_SCOPE` is in your env vars (loaded from project `.env`) — use that
+2. If working in a different directory with its own `.env` — read that instead
+3. Otherwise, use the scope shown in tool descriptions (from `FAVA_TRAIL_SCOPE_HINT`)
+4. Create sub-scopes as needed (e.g. `mwai/eng/fava-trails/auth-epic` for focused work)
+
+The server never auto-applies a default scope. The agent always passes `trail_name` explicitly — these env vars just tell it *what value to use*.
 
 ### Global Config (`config.yaml`)
 

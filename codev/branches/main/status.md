@@ -29,6 +29,7 @@
 | 9 | Toolkit Migration | not started | `9-toolkit-migration` | `9-toolkit-migration` |
 | 10 | codev Integration | not started | `10-codev-integration` | `10-codev-integration` |
 | 11 | OpenClaw Memory Driver | not started | `11-openclaw-memory-driver` | `11-openclaw-memory-driver` |
+| 12 | Rebrand to FAVA Trails 🫛 | not started | `12-rebrand-fava-trails` | `12-rebrand-fava-trails` |
 
 ## Test Status
 
