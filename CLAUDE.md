@@ -49,13 +49,14 @@ The server reads `$FAVA_TRAIL_DATA_REPO/config.yaml` for global settings and man
 ### Global Config (`config.yaml`)
 
 ```yaml
-default_trail: default
 trails_dir: trails          # relative to FAVA_TRAIL_DATA_REPO
 remote_url: null            # git remote URL (optional)
 push_strategy: manual       # manual | immediate
 ```
 
 When `push_strategy: immediate`, the server pushes to remote after every successful write operation. Push failures are non-fatal — the write succeeds and a warning is returned.
+
+> **Note:** `default_trail` is no longer used for scope resolution — `trail_name` is required on all tool calls. The agent is responsible for knowing its scope.
 
 ## Data Repo Setup (One-Time)
 
@@ -146,7 +147,7 @@ jj git push --bookmark main    # push to remote
 FAVA_TRAIL_DATA_REPO/           # Monorepo root (.jj/ + .git/)
 ├── config.yaml                 # Global config
 └── trails/
-    ├── default/                # Trail (subdirectory, NOT a repo)
+    ├── default/                # Root-level scope (triggers warning)
     │   └── thoughts/
     │       ├── drafts/
     │       ├── decisions/
@@ -155,8 +156,14 @@ FAVA_TRAIL_DATA_REPO/           # Monorepo root (.jj/ + .git/)
     │       └── preferences/
     │           ├── client/
     │           └── firm/
-    └── project-x/
-        └── thoughts/...
+    └── mw/                     # Company scope
+        ├── thoughts/...
+        └── eng/                # Team scope
+            ├── thoughts/...
+            └── fava-trail/     # Project scope
+                ├── thoughts/...
+                └── auth-epic/  # Task/epic scope
+                    └── thoughts/...
 ```
 
 **Engine vs. Fuel split:**
@@ -165,7 +172,7 @@ FAVA_TRAIL_DATA_REPO/           # Monorepo root (.jj/ + .git/)
 
 ## Tools Reference
 
-All tools accept an optional `trail_name` parameter (defaults to the trail configured in `config.yaml`).
+All tools accept a **required** `trail_name` parameter — the scope path (e.g. `mw/eng/fava-trail`). Scope paths are `/`-separated, with each segment validated as a safe slug. Root-level names (no `/`) trigger a non-blocking warning suggesting a scoped path.
 
 ### `start_thought`
 
@@ -214,7 +221,7 @@ Retrieve a specific thought by its ULID. Returns full content and metadata.
 
 ### `recall`
 
-Search thoughts by query, namespace, and scope. Hides superseded thoughts by default.
+Search thoughts by query, namespace, and scope. Hides superseded thoughts by default. Supports multi-scope search via `trail_names`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -224,6 +231,9 @@ Search thoughts by query, namespace, and scope. Hides superseded thoughts by def
 | `include_superseded` | bool | no | Show superseded thoughts (default: false) |
 | `include_relationships` | bool | no | Include 1-hop related thoughts (default: false) |
 | `limit` | int | no | Max results (default: 20) |
+| `trail_names` | array | no | Additional scope paths to search. Supports globs: `mw/eng/*` (one level), `mw/**` (any depth) |
+
+Each result includes a `source_trail` field indicating which scope it came from. Results are deduplicated by `thought_id`.
 
 ### `propose_truth`
 
@@ -242,6 +252,20 @@ Replace a thought with a corrected version. **Atomic**: creates new thought + ba
 | `thought_id` | string | **yes** | ULID of the thought to supersede |
 | `content` | string | **yes** | Content of the replacement thought |
 | `reason` | string | **yes** | Why this thought is being superseded |
+| `agent_id` | string | no | ID of the agent |
+| `confidence` | float | no | 0.0 to 1.0 |
+
+### `change_scope`
+
+Elevate a thought to a different scope. Wraps `supersede` with cross-scope arguments — the new thought lands in the target scope while the original is marked superseded in the source scope. Both operations are atomic (single JJ change).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `thought_id` | string | **yes** | ULID of the thought to elevate |
+| `content` | string | **yes** | Content for the new scope (may be rewritten for broader audience) |
+| `target_trail_name` | string | **yes** | Target scope path where the new thought lands |
+| `reason` | string | **yes** | Why this thought is being elevated |
+| `trail_name` | string | **yes** | Source scope (where the original lives) |
 | `agent_id` | string | no | ID of the agent |
 | `confidence` | float | no | 0.0 to 1.0 |
 
@@ -277,9 +301,16 @@ Compare thought states. Shows what changed in a revision.
 |-----------|------|----------|-------------|
 | `revision` | string | no | Revision to diff (default: current working change) |
 
-### `list_trails`
+### `list_scopes`
 
-Show all available FAVA trails.
+Discover all available scopes recursively. Finds any directory containing a `thoughts/` subdirectory at any depth under `trails/`.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `prefix` | string | no | Filter scopes under this prefix (e.g. `mw/eng`) |
+| `include_stats` | bool | no | Include `thought_count` per scope (default: false) |
+
+`list_trails` is kept as a backward-compatible alias.
 
 ### `learn_preference`
 
