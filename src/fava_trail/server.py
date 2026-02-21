@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import sys
 from typing import Any
 
@@ -96,7 +97,20 @@ def _is_root_level(trail_name: str) -> bool:
 
 # --- Tool Definitions ---
 
-TRAIL_NAME_DESC = "Scope path (e.g. 'mw/eng/fava-trail'). Required."
+def _build_trail_name_desc() -> str:
+    """Build trail_name description, including FAVA_TRAIL_SCOPE hint if set."""
+    base = "Scope path (e.g. 'mw/eng/fava-trail'). Required."
+    scope = os.environ.get("FAVA_TRAIL_SCOPE_HINT", "").strip()
+    if scope:
+        return (
+            f"{base} Your configured scope is '{scope}'. "
+            f"Use this as your trail_name for general work. "
+            f"Create sub-scopes (e.g. '{scope}/my-epic') for focused tasks — "
+            f"do NOT dump everything into one scope."
+        )
+    return base
+
+TRAIL_NAME_DESC = _build_trail_name_desc()
 
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
