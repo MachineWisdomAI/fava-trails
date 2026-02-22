@@ -1,4 +1,4 @@
-# Plan 12: Rebrand to FAVA Trails (Plural) 🫛
+# Plan 12: Rebrand to FAVA Trails (Plural) 🫛👣
 
 **Status:** not started
 **Spec:** `codev/specs/12-rebrand-fava-trails.md`
@@ -38,4 +38,4 @@
 - `README.md` is the GitHub landing page (human docs)
 - `AGENTS.md` has agent-facing docs (scope, lifecycle, conventions)
 - `CLAUDE.md` stub points to `AGENTS.md`
-- 🫛 emoji appears in project branding
+- 🫛👣 flare appears in project branding

@@ -1,4 +1,4 @@
-# Spec 12: Rebrand to FAVA Trails (Plural) 🫛
+# Spec 12: Rebrand to FAVA Trails (Plural) 🫛👣
 
 **Status:** not started
 **Epic:** 0004a-rebrand
@@ -20,7 +20,7 @@ Additionally, the current `CLAUDE.md` serves as both project documentation and a
 - Rename CLI entry point: `fava-trail-server` → `fava-trails-server`
 - Update PyPI package name (if published)
 - Update all imports, references, docs
-- Adopt 🫛 emoji as project icon in docs and branding
+- Adopt 🫛👣 (FAVA Trails) as project icon/flare in docs and branding
 - Update MCP server registration examples
 - Update `wise-fava-trail` data repo references if needed
 
