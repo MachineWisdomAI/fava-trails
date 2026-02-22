@@ -1,7 +1,8 @@
 # Spec 12: Rebrand to FAVA Trails (Plural) 🫛
 
 **Status:** not started
-**Prerequisites:** All other specs complete (lowest priority)
+**Epic:** 0004a-rebrand
+**Prerequisites:** Specs 3-8 (core pipeline complete)
 
 ---
 

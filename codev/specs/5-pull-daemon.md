@@ -1,6 +1,7 @@
 # Spec 5: Pull Daemon
 
 **Status:** not started
+**Epic:** 0002a-desktop-pipeline
 **Source:** `codev/spir-v2.md` Phase 2 (Pull Daemon section)
 **Prerequisites:** Spec 4 (Desktop Bridge)
 

@@ -1,6 +1,7 @@
 # Spec 8: Evaluation Framework
 
 **Status:** not started
+**Epic:** 0002a-desktop-pipeline
 **Source:** `codev/spir-v2.md` Phase 2 (eval sections)
 **Prerequisites:** Spec 5 (Pull Daemon)
 

@@ -1,6 +1,7 @@
 # Spec 7: Semantic Recall
 
 **Status:** not started
+**Epic:** 0003a-recall-pipeline
 **Source:** `codev/spir-v2.md` Phase 3 (semantic index sections)
 **Prerequisites:** Spec 6 (Recall Enhancements)
 

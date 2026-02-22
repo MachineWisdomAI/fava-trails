@@ -1,8 +1,9 @@
 # Spec 9: Toolkit Migration Adapter
 
 **Status:** not started
+**Epic:** 0005a-adoption
 **Source:** `codev/spir-v2.md` Phase 2 (migration section)
-**Prerequisites:** Spec 3 (Trust Gate)
+**Prerequisites:** Spec 3 (Trust Gate), Spec 12 (Rebrand)
 
 ---
 

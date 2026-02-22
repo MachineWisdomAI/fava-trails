@@ -1,6 +1,7 @@
 # Spec 4: Desktop Bridge
 
 **Status:** not started
+**Epic:** 0002a-desktop-pipeline
 **Source:** `codev/spir-v2.md` Phase 2 (Desktop Bridge section)
 **Prerequisites:** Spec 3 (Trust Gate)
 

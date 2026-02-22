@@ -1,6 +1,7 @@
 # Spec 3: Trust Gate
 
 **Status:** not started
+**Epic:** 0001a-trust-gate
 **Source:** `codev/spir-v2.md` Trust Gate sections
 **Prerequisites:** Spec 2 (Hierarchical Scoping)
 

@@ -1,6 +1,7 @@
 # Spec 6: Recall Enhancements
 
 **Status:** not started
+**Epic:** 0003a-recall-pipeline
 **Source:** `codev/spir-v2.md` Phase 2 (recall sections)
 **Prerequisites:** Spec 3 (Trust Gate)
 
