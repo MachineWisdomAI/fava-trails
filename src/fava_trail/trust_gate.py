@@ -10,6 +10,7 @@ Policies:
 
 from __future__ import annotations
 
+import html
 import json
 import logging
 import os
@@ -158,13 +159,17 @@ def _build_review_payload(
 
     system_msg = prompt
 
+    # Escape untrusted content to prevent XML tag injection
+    escaped_content = html.escape(record.content, quote=False)
+    escaped_metadata = html.escape(metadata_yaml, quote=False)
+
     user_msg = (
         "<thought_under_review>\n"
-        f"{record.content}\n"
+        f"{escaped_content}\n"
         "</thought_under_review>\n"
         "\n"
         "<thought_metadata>\n"
-        f"{metadata_yaml}"
+        f"{escaped_metadata}"
         "</thought_metadata>"
     )
 
@@ -294,9 +299,9 @@ async def review_thought(
             if attempt == 0:
                 logger.warning(f"Trust gate parse error (retrying): {e}")
                 continue
-            # After 1 retry, fail-closed as reject
+            # After 1 retry, fail-closed as error (infrastructure failure, not reviewer decision)
             return TrustResult(
-                verdict="reject",
+                verdict="error",
                 reasoning=f"Failed to parse reviewer response after retry: {e}",
                 reviewer=reviewer_id,
             )
