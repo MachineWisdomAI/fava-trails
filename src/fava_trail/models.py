@@ -23,6 +23,7 @@ class ValidationStatus(str, Enum):
     PROPOSED = "proposed"
     APPROVED = "approved"
     REJECTED = "rejected"
+    ERROR = "error"
     TOMBSTONED = "tombstoned"
 
 
@@ -146,7 +147,7 @@ class TrailConfig(BaseModel):
 
     name: str
     default_namespace: str = DEFAULT_NAMESPACE
-    trust_gate_policy: str = "auto"  # auto | critic | human
+    trust_gate_policy: str = "llm-oneshot"  # llm-oneshot | human (future)
     gc_interval_snapshots: int = 500
     gc_interval_seconds: int = 3600
     stale_draft_days: int = 0  # 0 = disabled; >0 = tombstone drafts older than N days
@@ -159,4 +160,7 @@ class GlobalConfig(BaseModel):
     trails_dir: str = "trails"
     remote_url: Optional[str] = None
     push_strategy: str = "manual"  # manual | immediate
+    trust_gate: str = "llm-oneshot"  # llm-oneshot | human (future)
+    openrouter_api_key_env: str = "OPENROUTER_API_KEY"
+    trust_gate_model: str = "google/gemini-2.5-flash"
     trails: dict[str, TrailConfig] = Field(default_factory=dict)

@@ -18,6 +18,7 @@ from .models import (
     TrailConfig,
     ValidationStatus,
 )
+from .trust_gate import TrustResult
 from .vcs.base import VcsBackend, VcsChange, VcsConflict, VcsDiff, VcsOpLogEntry, RebaseResult
 
 logger = logging.getLogger(__name__)
@@ -375,8 +376,19 @@ class TrailManager:
 
         return results[:limit]
 
-    async def propose_truth(self, thought_id: str) -> ThoughtRecord:
-        """Promote a thought from drafts/ to its permanent namespace based on source_type."""
+    async def propose_truth(
+        self,
+        thought_id: str,
+        trust_result: TrustResult | None = None,
+    ) -> ThoughtRecord:
+        """Promote a thought from drafts/ to its permanent namespace based on source_type.
+
+        When trust_result is provided, applies the review verdict:
+          - approve: move to permanent namespace, set validation_status = "approved"
+          - reject: keep in drafts, set validation_status = "rejected", attach reasoning
+          - error: keep in drafts, set validation_status = "error", attach error reason
+        When trust_result is None (backward compat): promotes without review.
+        """
         async with self._lock:
             # Find the thought in drafts
             drafts_path = self._thought_path(thought_id, "drafts")
@@ -395,7 +407,41 @@ class TrailManager:
                 raise ValueError(f"Thought {thought_id} not found")
 
             record = ThoughtRecord.from_markdown(drafts_path.read_text())
-            record.frontmatter.validation_status = ValidationStatus.PROPOSED
+
+            # Apply trust gate result if provided
+            if trust_result is not None:
+                # Attach provenance to thought metadata
+                record.frontmatter.metadata.extra["trust_gate"] = {
+                    "reviewer": trust_result.reviewer,
+                    "reviewed_at": trust_result.reviewed_at.isoformat(),
+                    "verdict": trust_result.verdict,
+                    "reasoning": trust_result.reasoning,
+                }
+                if trust_result.confidence is not None:
+                    record.frontmatter.metadata.extra["trust_gate"]["confidence"] = trust_result.confidence
+
+                if trust_result.verdict == "reject":
+                    record.frontmatter.validation_status = ValidationStatus.REJECTED
+                    drafts_path.write_text(record.to_markdown())
+                    await self.vcs.commit_files(
+                        f"Reject {thought_id[:8]} (trust gate: {trust_result.reasoning[:50]})",
+                        [str(drafts_path)],
+                    )
+                    return record
+
+                if trust_result.verdict == "error":
+                    record.frontmatter.validation_status = ValidationStatus.ERROR
+                    drafts_path.write_text(record.to_markdown())
+                    await self.vcs.commit_files(
+                        f"Error reviewing {thought_id[:8]} (trust gate: {trust_result.reasoning[:50]})",
+                        [str(drafts_path)],
+                    )
+                    return record
+
+                # verdict == "approve" — proceed with promotion
+                record.frontmatter.validation_status = ValidationStatus.APPROVED
+            else:
+                record.frontmatter.validation_status = ValidationStatus.PROPOSED
 
             # Determine target namespace from source_type
             target_ns = NAMESPACE_ROUTES.get(record.frontmatter.source_type, "observations")
