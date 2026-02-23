@@ -17,24 +17,94 @@ A local SQLite database combining vector embeddings (SQLite-vec), FTS5 full-text
 
 ### SQLite Schema
 
-- **Vector table** — embeddings for semantic similarity search
-- **FTS5 table** — full-text index for fast keyword matching
-- **`thought_relationships` table** — edges from frontmatter `relationships` field. Lightweight graph, upgradeable to Neo4j in future (TKG Bridge path)
+Database file: `$FAVA_TRAIL_DATA_REPO/.fava-index.db` (gitignored, local to each machine).
+
+```sql
+-- Vector embeddings for semantic similarity
+-- sqlite-vec virtual table (dimension = 384 for all-MiniLM-L6-v2)
+CREATE VIRTUAL TABLE vec_thoughts USING vec0(
+    thought_id TEXT PRIMARY KEY,
+    embedding FLOAT[384]
+);
+
+-- Full-text search for keyword matching
+CREATE VIRTUAL TABLE fts_thoughts USING fts5(
+    thought_id,
+    content,
+    source_type,
+    tags,
+    tokenize='porter unicode61'
+);
+
+-- Relationship graph edges (from frontmatter relationships field)
+CREATE TABLE thought_relationships (
+    source_id TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    rel_type TEXT NOT NULL,  -- DEPENDS_ON, REVISED_BY, REFERENCES, SUPERSEDES, etc.
+    trail_name TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (source_id, target_id, rel_type)
+);
+
+-- Metadata index for fast filtering before vector search
+CREATE TABLE thought_meta (
+    thought_id TEXT PRIMARY KEY,
+    trail_name TEXT NOT NULL,
+    namespace TEXT NOT NULL,
+    source_type TEXT,
+    validation_status TEXT,
+    created_at TEXT,
+    superseded_by TEXT
+);
+CREATE INDEX idx_meta_trail ON thought_meta(trail_name);
+CREATE INDEX idx_meta_ns ON thought_meta(namespace);
+```
+
+### Embedding Model
+
+**Model:** `sentence-transformers/all-MiniLM-L6-v2` via the `sentence-transformers` Python package.
+
+- Runs **locally** — no API calls, no API key needed
+- 384-dimension output, ~80MB model download on first use
+- Fast: ~1ms per embedding on CPU
+- Well-established, Apache-2.0 licensed
+
+The model is loaded once at server startup (lazy — only if semantic index is enabled). Embedding generation is synchronous but fast enough to run inline with save operations.
+
+**Fallback:** If `sentence-transformers` is not installed, semantic recall degrades to FTS5-only mode with a warning. The package is an optional dependency (`uv add --optional semantic sentence-transformers sqlite-vec`).
 
 ### Index Lifecycle
 
-- Built incrementally on `save_thought` / `update_thought` / `supersede`
-- Full rebuild from thought files on cold start or corruption
-- Index is local (not committed to repo) — each machine rebuilds
-- Target: <30s rebuild for 500 thoughts
+- **Incremental:** `save_thought` / `update_thought` / `supersede` trigger index updates inline (embed + insert/update row)
+- **Full rebuild:** On startup, if `.fava-index.db` is missing or its `schema_version` meta key doesn't match, rebuild from all thought files
+- **Rebuild strategy:** Walk all `thoughts/` directories under `$FAVA_TRAIL_DATA_REPO/trails/`, parse each `.md` file, embed content, insert rows. Skip files that fail to parse (log warning).
+- Index is local (not committed to repo) — each machine rebuilds from thought files
+- Target: <30s rebuild for 500 thoughts (embedding is the bottleneck, ~1ms * 500 = 0.5s; file I/O dominates)
+- **Corruption recovery:** Delete `.fava-index.db` and restart — full rebuild is the recovery path
 
 ### New Tool: `recall_semantic`
 
-Vector query → thought_id → fetch. Falls back to FTS5 keyword matching for low-confidence results. Same response format as `recall` (includes `applicable_preferences`).
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `query` | string | **yes** | Natural language query |
+| `trail_name` | string | **yes** | Scope path |
+| `trail_names` | array | no | Additional scopes (supports globs) |
+| `limit` | int | no | Max results (default: 10) |
+| `namespace` | string | no | Restrict to namespace |
+
+**Search strategy:**
+1. Embed the query using the same model
+2. Vector similarity search (cosine) in `vec_thoughts`, filtered by trail scope via `thought_meta`
+3. Also run FTS5 keyword query
+4. Merge results: vector results ranked by cosine similarity, FTS5 results fill gaps
+5. Fetch full thought content for top results
+6. Attach `applicable_preferences` (same as `recall`)
+7. Return results with `score` and `match_type` ("semantic" or "keyword") fields
 
 ### Dependencies
 
-- `sqlite-vec` — SQLite extension for vector search
+- `sqlite-vec` — SQLite extension for vector search (pip install)
+- `sentence-transformers` — local embedding model (optional dependency group)
 
 ## Done Criteria
 

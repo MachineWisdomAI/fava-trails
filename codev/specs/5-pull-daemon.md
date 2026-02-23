@@ -15,21 +15,72 @@ Multi-agent sync currently requires manual `sync` calls. Without a background re
 
 A background async loop (`src/fava_trail/daemon/pull_daemon.py`) that periodically runs `fetch_and_rebase()` on the monorepo. One daemon instance for the entire monorepo (not per-trail).
 
-### Safety
+### Concurrency Model
 
-On conflict after rebase, immediately restores pre-rebase state via `jj op restore` and notifies the agent:
+The daemon runs as an `asyncio.Task` created during server startup — **not** a separate thread or process. It shares the server's event loop.
 
 ```python
-while running:
+class PullDaemon:
+    def __init__(self, jj_backend: JJBackend, interval: int = 30):
+        self._jj = jj_backend
+        self._interval = interval
+        self._task: asyncio.Task | None = None
+        self._running = False
+
+    async def start(self):
+        """Start the background pull loop as an asyncio task."""
+        self._running = True
+        self._task = asyncio.create_task(self._loop())
+
+    async def stop(self):
+        """Cancel the task and wait for clean exit."""
+        self._running = False
+        if self._task:
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+
+    async def _loop(self):
+        while self._running:
+            await self._pull_once()
+            await asyncio.sleep(self._interval)
+
+    async def _pull_once(self):
+        try:
+            result = await self._jj.fetch_and_rebase()
+            if result.has_conflicts:
+                log.warning("Conflict after rebase, restoring pre-rebase state")
+                await self._jj.op_restore(result.pre_rebase_op_id)
+                # Log conflict details — no agent callback needed,
+                # conflicts surface via the existing conflicts tool
+        except Exception as e:
+            log.error(f"Pull daemon error: {e}")
+            # Never re-raise — daemon must not crash the server
+```
+
+**Key design decisions:**
+- `asyncio.create_task`, not `threading.Thread` — the JJ backend is already async (`async def fetch_and_rebase() -> RebaseResult`) so no thread needed
+- `_pull_once()` catches all exceptions — daemon errors are logged, never propagated
+- `stop()` uses `task.cancel()` + suppress `CancelledError` — standard asyncio cleanup
+- No lock needed — JJ operations are sequential (one op at a time on the monorepo)
+
+### Server Integration
+
+The daemon starts after `_init_server()` in the server's `main()`, and stops when the `stdio_server()` context manager exits:
+
+```python
+async def main():
+    await _init_server()
+    daemon = None
+    if config.pull_daemon.enabled:
+        daemon = PullDaemon(jj_backend, config.pull_daemon.interval_seconds)
+        await daemon.start()
     try:
-        result = jj_backend.fetch_and_rebase()
-        if result.has_conflicts:
-            log.warning("Conflict after rebase, restoring pre-rebase state")
-            jj_backend.op_restore(result.pre_rebase_op_id)
-            notify_agent("conflict", result.conflict_details)
-    except Exception as e:
-        log.error(f"Pull daemon error: {e}")
-    await asyncio.sleep(interval)
+        async with stdio_server() as (read_stream, write_stream):
+            await app.run(read_stream, write_stream, ...)
+    finally:
+        if daemon:
+            await daemon.stop()
 ```
 
 ### Configuration
@@ -40,6 +91,8 @@ pull_daemon:
   enabled: true
   interval_seconds: 30
 ```
+
+Default: `enabled: false` (opt-in). Builders and Desktop sessions enable it; the server doesn't sync by default.
 
 ## Done Criteria
 
