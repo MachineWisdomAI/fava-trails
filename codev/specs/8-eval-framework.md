@@ -20,11 +20,27 @@ Two evaluation scripts in `eval/`:
 
 ### `eval/crash_recovery.py`
 
-SIGKILL chaos test: spawn MCP server, save thoughts, send SIGKILL mid-execution, restart, assert recovery via `jj op restore` with zero data loss.
+SIGKILL chaos test against the MCP server with precise recovery verification.
+
+**Test harness:** The script spawns the MCP server as a subprocess via `asyncio.create_subprocess_exec()` with stdio transport (stdin/stdout pipes). Communication uses JSON-RPC over stdio — the same protocol Claude Desktop uses. The harness sends `tools/call` JSON-RPC requests to `save_thought`, `recall`, etc.
+
+**Test isolation:** Each test run creates a temporary `$FAVA_TRAIL_DATA_REPO` via `tempfile.mkdtemp()`, bootstraps it with `jj git init --colocate`, and sets `FAVA_TRAIL_DATA_REPO` in the subprocess env. Cleanup removes the temp dir after the test.
+
+**Test sequence:**
+1. Start MCP server subprocess with temp data repo
+2. Save N thoughts via JSON-RPC `save_thought` calls, recording all returned `thought_id`s as the **pre-crash manifest**
+3. Send `SIGKILL` to the server process mid-operation (after saving but potentially during a write)
+4. Restart the server with the same temp data repo
+5. Call `recall` for each thought in the pre-crash manifest
+6. **Recovery oracle:** Every `thought_id` from the pre-crash manifest must be retrievable via `get_thought`. "Zero data loss" means: all thoughts that received a successful `save_thought` response are recoverable. Thoughts whose `save_thought` was interrupted (no response received) may or may not exist — that's acceptable. The oracle is: `recovered_ids ⊇ confirmed_ids`.
 
 ### `eval/recall_relevance.py`
 
 Sample-based audit against a fixture corpus with known expected results.
+
+**Test harness:** Same subprocess stdio approach as `crash_recovery.py` — spawn MCP server with a temp data repo, load the fixture corpus into it via `save_thought` calls, then run queries via `recall` and compare against expected results.
+
+**Test isolation:** Temp `$FAVA_TRAIL_DATA_REPO` per run. The fixture corpus is loaded fresh each time to ensure deterministic state.
 
 **Corpus design** (`eval/fixtures/corpus/`):
 - 50 thought markdown files across 3 namespaces (decisions, observations, drafts)

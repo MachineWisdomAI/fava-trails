@@ -47,10 +47,12 @@ class PullDaemon:
 
     async def _pull_once(self):
         try:
-            result = await self._jj.fetch_and_rebase()
+            async with self._jj.repo_lock:
+                result = await self._jj.fetch_and_rebase()
             if result.has_conflicts:
                 log.warning("Conflict after rebase, restoring pre-rebase state")
-                await self._jj.op_restore(result.pre_rebase_op_id)
+                async with self._jj.repo_lock:
+                    await self._jj.op_restore(result.pre_rebase_op_id)
                 # Log conflict details — no agent callback needed,
                 # conflicts surface via the existing conflicts tool
         except Exception as e:
@@ -62,7 +64,8 @@ class PullDaemon:
 - `asyncio.create_task`, not `threading.Thread` — the JJ backend is already async (`async def fetch_and_rebase() -> RebaseResult`) so no thread needed
 - `_pull_once()` catches all exceptions — daemon errors are logged, never propagated
 - `stop()` uses `task.cancel()` + suppress `CancelledError` — standard asyncio cleanup
-- No lock needed — JJ operations are sequential (one op at a time on the monorepo)
+- **Must acquire `repo_lock`** — `fetch_and_rebase()` does NOT hold the shared `repo_lock` internally, but `try_push()` does. Without the lock, the daemon's fetch/rebase can race with auto-push after write operations. The daemon acquires `self._jj.repo_lock` around both `fetch_and_rebase()` and `op_restore()` calls.
+- **Signal handling:** The daemon runs as an `asyncio.Task` — when the server receives SIGTERM/SIGINT, the event loop's shutdown sequence cancels all tasks. The `stop()` method's `task.cancel()` + `CancelledError` suppression handles this cleanly. No separate signal handler is needed.
 
 ### Server Integration
 

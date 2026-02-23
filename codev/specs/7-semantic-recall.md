@@ -58,7 +58,16 @@ CREATE TABLE thought_meta (
 );
 CREATE INDEX idx_meta_trail ON thought_meta(trail_name);
 CREATE INDEX idx_meta_ns ON thought_meta(namespace);
+
+-- Schema version tracking (key-value store for index metadata)
+CREATE TABLE index_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+-- Seeded on creation: INSERT INTO index_meta VALUES ('schema_version', '1');
 ```
+
+**Schema versioning:** The `index_meta` table stores a `schema_version` key. On startup, if the DB exists, read `schema_version` — if it doesn't match the code's `CURRENT_SCHEMA_VERSION`, delete the DB and rebuild. This avoids migration complexity; full rebuild from thought files is the upgrade path.
 
 ### Embedding Model
 
@@ -69,7 +78,16 @@ CREATE INDEX idx_meta_ns ON thought_meta(namespace);
 - Fast: ~1ms per embedding on CPU
 - Well-established, Apache-2.0 licensed
 
-The model is loaded once at server startup (lazy — only if semantic index is enabled). Embedding generation is synchronous but fast enough to run inline with save operations.
+The model is loaded once at server startup (lazy — only if semantic index is enabled).
+
+**Async safety:** Despite ~1ms per embedding, `sentence-transformers` model inference is CPU-bound and holds the GIL. All embedding calls MUST use `asyncio.to_thread()` to avoid blocking the event loop:
+```python
+embedding = await asyncio.to_thread(model.encode, text)
+```
+
+**Text extraction:** Only the markdown body (content below the YAML frontmatter `---` delimiter) is embedded. Frontmatter fields (tags, source_type, etc.) are indexed separately in FTS5 and `thought_meta`. This keeps embeddings focused on semantic content rather than metadata noise.
+
+**sqlite-vec loading:** The `sqlite-vec` extension is loaded via `sqlite3.Connection.enable_load_extension(True)` followed by `conn.load_extension("vec0")`. The extension is installed as a Python package (`pip install sqlite-vec`) which places the shared library on the Python path. Use `sqlite_vec.load(conn)` helper if available.
 
 **Fallback:** If `sentence-transformers` is not installed, semantic recall degrades to FTS5-only mode with a warning. The package is an optional dependency (`uv add --optional semantic sentence-transformers sqlite-vec`).
 
@@ -93,13 +111,14 @@ The model is loaded once at server startup (lazy — only if semantic index is e
 | `namespace` | string | no | Restrict to namespace |
 
 **Search strategy:**
-1. Embed the query using the same model
-2. Vector similarity search (cosine) in `vec_thoughts`, filtered by trail scope via `thought_meta`
-3. Also run FTS5 keyword query
-4. Merge results: vector results ranked by cosine similarity, FTS5 results fill gaps
-5. Fetch full thought content for top results
-6. Attach `applicable_preferences` (same as `recall`)
-7. Return results with `score` and `match_type` ("semantic" or "keyword") fields
+1. Embed the query using the same model (via `asyncio.to_thread()`)
+2. Vector similarity search (cosine) in `vec_thoughts`, filtered by trail scope via `thought_meta` — return top `2 * limit` candidates
+3. Also run FTS5 keyword query — return top `2 * limit` candidates
+4. **Merge via Reciprocal Rank Fusion (RRF):** For each result appearing in either list, compute `score = Σ 1/(k + rank_i)` where `k=60` (standard RRF constant) and `rank_i` is the result's position in each list (absent = infinity). Sort by RRF score descending, take top `limit`.
+5. Tag each result with `match_type`: `"semantic"` if it appeared in vector results, `"keyword"` if FTS5 only, `"hybrid"` if both
+6. Fetch full thought content for top results
+7. Attach `applicable_preferences` (same as `recall`)
+8. Return results with `score` (RRF score) and `match_type` fields
 
 ### Dependencies
 
