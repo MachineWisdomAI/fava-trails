@@ -19,7 +19,11 @@
 **Key patterns:**
 - `TrustGatePromptCache` — on startup, walks all trail directories under `$FAVA_TRAIL_DATA_REPO/trails/`, finds every `trust-gate-prompt.md`, caches `{scope_prefix → prompt_content}` in memory
 - `resolve_prompt(scope)` → walks from most-specific to least-specific scope, returns first cached prompt (e.g. for `mw/eng/fava-trails`, checks `mw/eng/fava-trails` → `mw/eng` → `mw` → root `trails/`)
-- `review_thought(thought, prompt, model)` → async httpx POST to OpenRouter, returns `{verdict: "approve"|"reject", reasoning: "..."}`
+- `TrustResult` dataclass — standardized return type: `{verdict, reasoning, reviewer, reviewed_at, confidence}`
+- `review_thought(thought, prompt, model)` → async httpx POST to OpenRouter with `temp=0` and `response_format: json_object`, returns `TrustResult`
+- Prompt injection defense: system message = trusted prompt, user message = thought wrapped in `<thought_under_review>` XML tags with explicit untrusted-input warning
+- Structured JSON output: reviewer returns `{verdict, reasoning, confidence}`, parsed with retry, fail-closed on parse error
+- Fail-closed: any failure (network, HTTP error, invalid JSON, missing fields) → `TrustResult(verdict="error")`, thought stays in drafts
 - Redaction: strip `agent_id`, `metadata.extra` before sending
 - No prompt at any level → raise `TrustGateConfigError` with actionable message
 - Prompts are **never re-read from disk** after startup — prevents adversarial tampering
@@ -28,8 +32,11 @@
 - Prompt hierarchy discovered and cached at startup
 - `resolve_prompt("mw/eng/fava-trails")` returns most-specific match
 - Missing prompt at all levels → clear error
-- OpenRouter call succeeds with test thought
+- OpenRouter call succeeds with test thought (temp=0, json_object format)
+- Thought content sent in XML tags as untrusted input
+- Fail-closed: API errors → `TrustResult(verdict="error")`, thought stays in drafts
 - Redaction confirmed (sensitive fields stripped)
+- `review_thought()` returns `TrustResult` for all outcomes
 
 ## Phase 3.2: `propose_truth` Integration
 
@@ -72,15 +79,20 @@
 - `tests/test_tools.py` — Trust Gate integration tests
 
 **Test scenarios:**
-1. LLM-oneshot approves → thought promoted
-2. LLM-oneshot rejects → thought stays in drafts with rejection reason
+1. LLM-oneshot approves → thought promoted, `TrustResult(verdict="approve")`
+2. LLM-oneshot rejects → thought stays in drafts with rejection reason, `TrustResult(verdict="reject")`
 3. Human mode → `NotImplementedError` raised
 4. Missing prompt at all hierarchy levels → actionable error
 5. Prompt hierarchy resolution: most-specific scope wins
 6. Prompts loaded at startup, not re-read from disk
 7. `learn_preference` bypasses Trust Gate
 8. Redaction: sensitive fields not in OpenRouter payload
-9. Provenance fields populated after review
+9. Provenance fields populated after review (`reviewer`, `reviewed_at`, `verdict`, `reasoning`)
+10. Fail-closed: OpenRouter network error → `TrustResult(verdict="error")`, thought stays in drafts
+11. Fail-closed: invalid JSON response → reject after 1 retry
+12. Fail-closed: JSON missing `verdict` field → reject
+13. Prompt injection defense: thought content wrapped in XML tags as untrusted input
+14. Structured output: OpenRouter called with `temp=0` and `response_format: json_object`
 
 **Done criteria:**
 - All new tests pass
