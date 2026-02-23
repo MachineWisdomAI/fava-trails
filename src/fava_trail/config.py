@@ -181,3 +181,16 @@ def ensure_data_repo_root() -> Path:
     trails_dir = get_trails_dir()
     trails_dir.mkdir(parents=True, exist_ok=True)
     return home
+
+
+def get_trust_gate_policy(trail_name: str) -> str:
+    """Resolve the trust gate policy for a given trail.
+
+    Priority: trail-level .fava-trail.yaml > global config.yaml > default ("llm-oneshot").
+    """
+    trail_config = load_trail_config(trail_name)
+    if trail_config.trust_gate_policy != "llm-oneshot":
+        return trail_config.trust_gate_policy
+
+    global_config = load_global_config()
+    return global_config.trust_gate

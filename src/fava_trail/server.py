@@ -26,6 +26,7 @@ from .config import (
     sanitize_scope_path,
 )
 from .trail import TrailManager
+from .trust_gate import TrustGatePromptCache
 from .vcs.jj_backend import JjBackend
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,9 @@ _trail_managers: dict[str, TrailManager] = {}
 
 # Shared backend for monorepo init, GC, push, fetch
 _shared_backend: JjBackend | None = None
+
+# Trust gate prompt cache — loaded once at startup, never re-read from disk
+_prompt_cache: TrustGatePromptCache = TrustGatePromptCache()
 
 
 async def _init_server() -> None:
@@ -64,6 +68,9 @@ async def _init_server() -> None:
     _shared_backend = JjBackend(repo_root=repo_root, trail_path=trails_dir)
     await _shared_backend.init_monorepo()
     logger.info(f"Monorepo initialized at {repo_root}")
+
+    # Load trust gate prompts at startup (anti-tampering: never re-read from disk)
+    _prompt_cache.load_from_trails_dir(trails_dir)
 
 
 async def _get_trail(trail_name: str | None = None) -> TrailManager:
