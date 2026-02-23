@@ -64,21 +64,32 @@ propose_truth(thought_id)
     → if rejected: keep in drafts/, set validation_status = "rejected", attach reasoning
 ```
 
-### Human Flow
+### Human Flow (Not Yet Implemented)
 
+The `human` policy is designed for extensibility — future approval channels include:
+- CLI tool (`fava-trail approve <thought_id>`)
+- GitHub PR-based review (GHA calls `approve_thought`/`reject_thought` on merge/close)
+- Web dashboard with approval queue
+
+For now, **only the `critic` policy is implemented**. If `trust_gate` is set to `human`, `propose_truth` raises `NotImplementedError` with a message explaining the available policies.
+
+```python
+# TODO: Implement human approval flow. Likely needs:
+#   1. CLI tool: `fava-trail approve <thought_id>` / `fava-trail reject <thought_id> --reason "..."`
+#   2. PR-based flow: thought serialized to PR, GHA calls approve/reject on merge/close
+#   3. approve_thought / reject_thought MCP tools for interactive use
+raise NotImplementedError(
+    "trust_gate: human is not yet implemented. Use 'critic' policy. "
+    "See Spec 3 for planned approval channels."
+)
 ```
-propose_truth(thought_id)
-    → set validation_status = "proposed"
-    → return {status: "pending_approval", thought_id: "..."}
-    → (agent or human later calls approve_thought or reject_thought)
-```
 
-### New Tools
+### Future Tools (shelved)
 
-| Tool | Purpose |
-|------|---------|
-| `approve_thought` | Explicitly approve a proposed thought (human gate) |
-| `reject_thought` | Explicitly reject a proposed thought with reason |
+| Tool | Purpose | Status |
+|------|---------|--------|
+| `approve_thought` | Explicitly approve a proposed thought (human gate) | Not yet implemented |
+| `reject_thought` | Explicitly reject a proposed thought with reason | Not yet implemented |
 
 ### Configuration
 
@@ -109,8 +120,8 @@ trust_gate_model: google/gemini-2.5-flash     # cheap, fast reviewer
 - `propose_truth` with `critic` policy sends thought to OpenRouter and blocks on verdict
 - Approved thoughts move to permanent namespace with `validation_status: "approved"`
 - Rejected thoughts stay in `drafts/` with `validation_status: "rejected"` and rejection reasoning attached
-- `propose_truth` with `human` policy sets `validation_status: "proposed"` and returns pending status
-- `approve_thought` and `reject_thought` tools work for human gate
+- `propose_truth` with `human` policy raises `NotImplementedError` with clear message
+- `approve_thought` and `reject_thought` tools shelved (not registered)
 - Prompt hierarchy resolved at startup (most-specific scope wins)
 - Prompts cached in memory — never re-read from disk after startup
 - No prompt at any hierarchy level → actionable error (never silent bypass)

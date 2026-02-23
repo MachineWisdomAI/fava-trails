@@ -33,15 +33,15 @@
 
 ## Phase 3.2: `propose_truth` Integration
 
-**Goal:** Wire Trust Gate into the promotion flow. Critic and human paths both work.
+**Goal:** Wire Trust Gate into the promotion flow. Critic path works; human path raises NotImplementedError.
 
 **Files modified:**
 - `src/fava_trail/trail.py` — `propose_truth()` calls Trust Gate before namespace move
-- `src/fava_trail/tools/navigation.py` — `handle_propose_truth()` returns pending status for human mode
+- `src/fava_trail/tools/navigation.py` — `handle_propose_truth()` routes through Trust Gate
 
 **Key patterns:**
 - `critic` mode: `propose_truth()` → `trust_gate.review_thought()` → approve → move to namespace / reject → stay in drafts
-- `human` mode: `propose_truth()` → set `validation_status: "proposed"` → return pending
+- `human` mode: `propose_truth()` → raise `NotImplementedError` with TODO and message listing future channels
 - `learn_preference` bypasses Trust Gate entirely (existing behavior preserved)
 - Provenance: on approval/rejection, store `{reviewer_model, reviewed_at, verdict, reasoning}` in thought metadata
 
@@ -49,35 +49,20 @@
 - `propose_truth` with critic policy blocks on OpenRouter verdict
 - Approved → permanent namespace, `validation_status: "approved"`
 - Rejected → stays in drafts, `validation_status: "rejected"`, reasoning attached
-- Human mode → `validation_status: "proposed"`, returns pending
+- Human mode → `NotImplementedError` with clear message
 - `learn_preference` unaffected
 
-## Phase 3.3: `approve_thought` and `reject_thought` Tools
+## Phase 3.3: Human Policy Guard + Extensibility Stub
 
-**Goal:** New MCP tools for human approval gate.
+**Goal:** `trust_gate: human` raises `NotImplementedError` with clear guidance. Extensibility designed but shelved.
 
-**Files created/modified:**
-- `src/fava_trail/tools/thought.py` — add `handle_approve_thought()`, `handle_reject_thought()`
-- `src/fava_trail/server.py` — register `approve_thought` and `reject_thought` tools
-
-**Tool definitions:**
-
-`approve_thought`:
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `thought_id` | string | yes | ULID of the proposed thought |
-
-`reject_thought`:
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `thought_id` | string | yes | ULID of the proposed thought |
-| `reason` | string | yes | Reason for rejection |
+**Files modified:**
+- `src/fava_trail/trust_gate.py` — add guard in `review_thought()` that raises for `human` policy with TODO comment listing future channels (CLI, PR/GHA, MCP tools)
 
 **Done criteria:**
-- `approve_thought` moves proposed thought to permanent namespace
-- `reject_thought` sets `validation_status: "rejected"` with reason
-- Both tools error on non-proposed thoughts
-- Tool count: 15 → 17
+- `propose_truth` with `trust_gate: human` raises `NotImplementedError`
+- Error message names available policy (`critic`) and references spec for planned channels
+- Tool count unchanged: 15 (no new tools registered)
 
 ## Phase 3.4: Tests
 
@@ -89,18 +74,17 @@
 **Test scenarios:**
 1. Critic approves → thought promoted
 2. Critic rejects → thought stays in drafts with rejection reason
-3. Human mode → thought set to proposed, not moved
-4. `approve_thought` on proposed → promoted
-5. `reject_thought` on proposed → rejected with reason
-6. `approve_thought` on non-proposed → error
-7. Missing prompt file → actionable error
-8. `learn_preference` bypasses Trust Gate
-9. Redaction: sensitive fields not in OpenRouter payload
-10. Provenance fields populated after review
+3. Human mode → `NotImplementedError` raised
+4. Missing prompt at all hierarchy levels → actionable error
+5. Prompt hierarchy resolution: most-specific scope wins
+6. Prompts loaded at startup, not re-read from disk
+7. `learn_preference` bypasses Trust Gate
+8. Redaction: sensitive fields not in OpenRouter payload
+9. Provenance fields populated after review
 
 **Done criteria:**
 - All new tests pass
-- All existing 73 tests pass (no regressions)
+- All existing tests pass (no regressions)
 
 ---
 
@@ -110,7 +94,7 @@
 |-------|-------|-----------------|
 | 3.1 | Core + Prompt | Trust Gate module, hierarchical prompt cache, OpenRouter client |
 | 3.2 | Integration | Wire into `propose_truth` flow |
-| 3.3 | Human Gate Tools | `approve_thought` + `reject_thought` |
-| 3.4 | Tests | Full coverage for critic + human flows |
+| 3.3 | Human Policy Guard | `NotImplementedError` for `human` policy, extensibility stub |
+| 3.4 | Tests | Full coverage for critic flow + hierarchy + guard |
 
 Each phase ends with a git commit. Phases are sequential.
