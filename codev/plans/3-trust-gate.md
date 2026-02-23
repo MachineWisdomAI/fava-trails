@@ -17,14 +17,17 @@
 - `src/fava_trail/config.py` — load trust gate config, resolve prompt file path
 
 **Key patterns:**
-- `load_critic_prompt(data_repo_root)` → reads `trust-gate-prompt.md` from `$FAVA_TRAIL_DATA_REPO`
+- `TrustGatePromptCache` — on startup, walks all trail directories under `$FAVA_TRAIL_DATA_REPO/trails/`, finds every `trust-gate-prompt.md`, caches `{scope_prefix → prompt_content}` in memory
+- `resolve_prompt(scope)` → walks from most-specific to least-specific scope, returns first cached prompt (e.g. for `mw/eng/fava-trails`, checks `mw/eng/fava-trails` → `mw/eng` → `mw` → root `trails/`)
 - `review_thought(thought, prompt, model)` → async httpx POST to OpenRouter, returns `{verdict: "approve"|"reject", reasoning: "..."}`
 - Redaction: strip `agent_id`, `metadata.extra` before sending
-- Missing prompt file → raise `TrustGateConfigError` with actionable message
+- No prompt at any level → raise `TrustGateConfigError` with actionable message
+- Prompts are **never re-read from disk** after startup — prevents adversarial tampering
 
 **Done criteria:**
-- Prompt file loaded from `$FAVA_TRAIL_DATA_REPO/trust-gate-prompt.md`
-- Missing file → clear error
+- Prompt hierarchy discovered and cached at startup
+- `resolve_prompt("mw/eng/fava-trails")` returns most-specific match
+- Missing prompt at all levels → clear error
 - OpenRouter call succeeds with test thought
 - Redaction confirmed (sensitive fields stripped)
 
@@ -105,7 +108,7 @@
 
 | Phase | Focus | Key Deliverable |
 |-------|-------|-----------------|
-| 3.1 | Core + Prompt | Trust Gate module, prompt loading, OpenRouter client |
+| 3.1 | Core + Prompt | Trust Gate module, hierarchical prompt cache, OpenRouter client |
 | 3.2 | Integration | Wire into `propose_truth` flow |
 | 3.3 | Human Gate Tools | `approve_thought` + `reject_thought` |
 | 3.4 | Tests | Full coverage for critic + human flows |

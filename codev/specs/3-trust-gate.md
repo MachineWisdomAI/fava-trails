@@ -26,25 +26,37 @@ A review gate that intercepts `propose_truth` and requires either model-based cr
 
 There is no `auto` policy. Every thought that enters permanent namespaces must pass through review.
 
-### Critic Prompt File
+### Critic Prompt Files (Hierarchical, Startup-Loaded)
 
-The critic prompt is a markdown file in the data repo root, loaded at runtime:
+The critic prompt is a markdown file named `trust-gate-prompt.md` that can exist at any level of the trail hierarchy, following the same resolution pattern as CLAUDE.md:
 
 ```
-$FAVA_TRAIL_DATA_REPO/trust-gate-prompt.md
+$FAVA_TRAIL_DATA_REPO/trails/trust-gate-prompt.md                    # Global default
+$FAVA_TRAIL_DATA_REPO/trails/mw/trust-gate-prompt.md                 # Company override
+$FAVA_TRAIL_DATA_REPO/trails/mw/eng/trust-gate-prompt.md             # Team override
+$FAVA_TRAIL_DATA_REPO/trails/mw/eng/fava-trails/trust-gate-prompt.md # Project override
 ```
 
-This file defines what the critic evaluates — quality indicators, junk indicators, fatal signals, classification criteria. Different organizations customize their own quality bar by editing this file.
+**Resolution order:** When `propose_truth` is called for a thought in scope `mw/eng/fava-trails`, walk from most specific to least specific — use the **first** `trust-gate-prompt.md` found. If none found at any level, error.
+
+This file defines what the critic evaluates — quality indicators, junk indicators, fatal signals, classification criteria. Different organizations customize their own quality bar by editing this file. Teams can override company-wide criteria for their specific trails.
 
 The prompt file follows the agent prompt pattern (see reference: `memory-quality-judge.md`). It receives the thought content, frontmatter metadata, and any related context, and must return a structured verdict.
 
-**Fallback:** If the prompt file is missing, `propose_truth` returns an error: `"Trust Gate prompt not found at {path}. Create trust-gate-prompt.md in your data repo."` — never silently bypasses review.
+**Startup-time loading (anti-tampering):** All `trust-gate-prompt.md` files are discovered and loaded into memory **once at MCP server startup**. The in-memory cache maps each trail prefix to its resolved prompt content. This prevents an adversarial agent from modifying the prompt file mid-session to weaken or bypass review criteria.
+
+- On startup: walk all trail directories, find all `trust-gate-prompt.md` files, cache `{scope_prefix → prompt_content}`
+- On `propose_truth`: resolve the thought's scope against the cached prompts (most-specific-first), never re-read from disk
+- To update criteria: edit the file and **restart the MCP server** — this is intentional friction
+- Future hardening: checksum verification, signed prompts (out of scope for Spec 3)
+
+**Fallback:** If no `trust-gate-prompt.md` exists at any level of the hierarchy, `propose_truth` returns an error: `"No trust-gate-prompt.md found in trail hierarchy for scope {scope}. Create one under trails/."` — never silently bypasses review.
 
 ### Critic Flow
 
 ```
 propose_truth(thought_id)
-    → load trust-gate-prompt.md from FAVA_TRAIL_DATA_REPO
+    → resolve prompt from in-memory cache (most-specific scope match, loaded at startup)
     → build review payload: thought content + frontmatter + related thoughts
     → POST to OpenRouter API (httpx, async)
     → parse structured verdict (approve/reject + reasoning)
@@ -99,7 +111,9 @@ trust_gate_model: google/gemini-2.5-flash     # cheap, fast reviewer
 - Rejected thoughts stay in `drafts/` with `validation_status: "rejected"` and rejection reasoning attached
 - `propose_truth` with `human` policy sets `validation_status: "proposed"` and returns pending status
 - `approve_thought` and `reject_thought` tools work for human gate
-- Missing prompt file → actionable error (never silent bypass)
+- Prompt hierarchy resolved at startup (most-specific scope wins)
+- Prompts cached in memory — never re-read from disk after startup
+- No prompt at any hierarchy level → actionable error (never silent bypass)
 - Redaction layer confirmed via test (sensitive fields not sent to OpenRouter)
 - Provenance fields populated after review (model, timestamp, verdict)
 - `learn_preference` still bypasses Trust Gate (user input is auto-approved truth)
