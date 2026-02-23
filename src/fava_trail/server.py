@@ -489,7 +489,7 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
                 "save_thought": lambda: handle_save_thought(trail, arguments),
                 "update_thought": lambda: handle_update_thought(trail, arguments),
                 "get_thought": lambda: handle_get_thought(trail, arguments),
-                "propose_truth": lambda: handle_propose_truth(trail, arguments),
+                "propose_truth": lambda: handle_propose_truth(trail, arguments, prompt_cache=_prompt_cache),
                 "forget": lambda: handle_forget(trail, arguments),
                 "sync": lambda: handle_sync(trail, arguments),
                 "conflicts": lambda: handle_conflicts(trail, arguments),

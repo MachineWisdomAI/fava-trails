@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import logging
+import os
 from pathlib import Path
 from typing import Any
 
-from ..config import get_trails_dir
+from ..config import get_trails_dir, get_trust_gate_policy, load_global_config
+from ..trust_gate import TrustGateConfigError, TrustGatePromptCache, review_thought
+
+logger = logging.getLogger(__name__)
 
 
 async def handle_diff(trail, arguments: dict) -> dict[str, Any]:
@@ -98,20 +103,77 @@ async def handle_conflicts(trail, arguments: dict) -> dict[str, Any]:
     }
 
 
-async def handle_propose_truth(trail, arguments: dict) -> dict[str, Any]:
-    """Promote thought from drafts/ to permanent namespace based on source_type."""
+async def handle_propose_truth(
+    trail,
+    arguments: dict,
+    prompt_cache: TrustGatePromptCache | None = None,
+) -> dict[str, Any]:
+    """Promote thought from drafts/ to permanent namespace, gated by Trust Gate review."""
     thought_id = arguments.get("thought_id", "")
     if not thought_id:
         return {"status": "error", "message": "thought_id is required"}
 
     try:
         from .thought import _serialize_thought
-        record = await trail.propose_truth(thought_id)
-        return {
+
+        # Resolve trust gate policy
+        policy = get_trust_gate_policy(trail.trail_name)
+
+        trust_result = None
+        if prompt_cache is not None:
+            # Get the thought to review
+            record = await trail.get_thought(thought_id)
+            if record is None:
+                return {"status": "error", "message": f"Thought {thought_id} not found"}
+
+            try:
+                prompt = prompt_cache.resolve_prompt(trail.trail_name)
+            except TrustGateConfigError as e:
+                return {"status": "error", "message": str(e)}
+
+            global_config = load_global_config()
+            api_key = os.environ.get(global_config.openrouter_api_key_env, "")
+            if not api_key:
+                return {
+                    "status": "error",
+                    "message": (
+                        f"OpenRouter API key not found. "
+                        f"Set the {global_config.openrouter_api_key_env} environment variable."
+                    ),
+                }
+
+            trust_result = await review_thought(
+                record=record,
+                prompt=prompt,
+                model=global_config.trust_gate_model,
+                api_key=api_key,
+                policy=policy,
+            )
+
+        promoted = await trail.propose_truth(thought_id, trust_result=trust_result)
+        result = {
             "status": "ok",
-            "thought": _serialize_thought(record),
-            "message": f"Promoted {thought_id[:8]} to {record.frontmatter.validation_status.value}",
+            "thought": _serialize_thought(promoted),
+            "message": f"Promoted {thought_id[:8]} to {promoted.frontmatter.validation_status.value}",
         }
+
+        if trust_result is not None:
+            result["trust_gate"] = {
+                "verdict": trust_result.verdict,
+                "reasoning": trust_result.reasoning,
+                "reviewer": trust_result.reviewer,
+            }
+            if trust_result.verdict in ("reject", "error"):
+                result["status"] = "rejected" if trust_result.verdict == "reject" else "error"
+                result["message"] = (
+                    f"Thought {thought_id[:8]} {trust_result.verdict}ed by trust gate: "
+                    f"{trust_result.reasoning}"
+                )
+
+        return result
+
+    except NotImplementedError as e:
+        return {"status": "error", "message": str(e)}
     except ValueError as e:
         return {"status": "error", "message": str(e)}
 
