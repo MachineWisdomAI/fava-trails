@@ -77,15 +77,14 @@
       },
       "checks": {
         "build": {
-          "command": "npm run build",
-          "cwd": "packages/codev",
+          "command": "uv run python -c 'import fava_trail; print(\"ok\")'",
+          "description": "Verify fava_trail package imports successfully",
           "on_fail": "retry",
           "max_retries": 2
         },
         "tests": {
-          "command": "npm test -- --exclude='**/e2e/**' --exclude='**/init.test.ts' --exclude='**/session-manager.test.ts' --exclude='**/send-integration.test.ts'",
-          "cwd": "packages/codev",
-          "description": "Unit tests only - e2e, init, session-manager, and send-integration excluded (pre-existing failures in worktrees)",
+          "command": "uv run pytest tests/ -v --tb=short",
+          "description": "Run all Python tests",
           "on_fail": "retry",
           "max_retries": 2
         }
@@ -120,17 +119,12 @@
           "description": "PR must be created before signaling completion"
         },
         "build": {
-          "command": "npm run build",
-          "cwd": "packages/codev"
+          "command": "uv run python -c 'import fava_trail; print(\"ok\")'",
+          "description": "Verify fava_trail package imports successfully"
         },
         "tests": {
-          "command": "npm test -- --exclude='**/init.test.ts' --exclude='**/session-manager.test.ts' --exclude='**/send-integration.test.ts'",
-          "cwd": "packages/codev"
-        },
-        "cli_tests": {
-          "command": "npx vitest run --config vitest.cli.config.ts",
-          "cwd": "packages/codev",
-          "description": "CLI integration tests"
+          "command": "uv run pytest tests/ -v --tb=short",
+          "description": "Run all Python tests"
         },
         "review_has_arch_updates": {
           "command": "grep -q '## Architecture Updates' codev/reviews/${PROJECT_TITLE}.md",
@@ -156,8 +150,8 @@
     }
   },
   "phase_completion": {
-    "build_succeeds": "cd packages/codev && npm run build 2>&1",
-    "tests_pass": "cd packages/codev && npm test 2>&1",
+    "build_succeeds": "uv run python -c 'import fava_trail; print(\"ok\")' 2>&1",
+    "tests_pass": "uv run pytest tests/ -v --tb=short 2>&1",
     "commit_has_code": "git log -1 --name-only --pretty=format: | grep -qE '\\.(ts|tsx|js|jsx|py|go|rs)$'"
   },
   "defaults": {
@@ -168,8 +162,8 @@
       "parallel": true
     },
     "checks": {
-      "build": { "command": "npm run build", "cwd": "packages/codev" },
-      "test": { "command": "npm test", "cwd": "packages/codev" }
+      "build": { "command": "uv run python -c 'import fava_trail; print(\"ok\")'" },
+      "test": { "command": "uv run pytest tests/ -v --tb=short" }
     }
   }
 }

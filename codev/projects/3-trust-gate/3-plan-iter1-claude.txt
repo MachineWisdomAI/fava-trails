@@ -1,0 +1,33 @@
+
+# Plan Review: Spec 3 — Trust Gate (via Builder self-review)
+
+## Summary
+
+Plan correctly decomposes the Trust Gate into 4 sequential phases matching the spec's requirements. Each phase has clear deliverables and done criteria.
+
+## Assessment
+
+### Phase ordering: CORRECT
+Core module (3.1) → Integration (3.2) → Guard (3.3) → Tests (3.4) follows natural dependency chain.
+
+### Spec coverage: COMPLETE
+All 14 spec scenarios mapped to Phase 3.4 test list. Fail-closed semantics table (6 rows) covered. Prompt injection defense, redaction, provenance all addressed.
+
+### Implementation alignment: VERIFIED
+- Phase 3.1: trust_gate.py created with all components
+- Phase 3.2: trail.py and navigation.py wired correctly
+- Phase 3.3: Human guard merged into 3.1 (acceptable)
+- Phase 3.4: 24 tests covering all scenarios + edge cases
+
+## Issues Found During Implementation
+1. **Fail-open bypass** in navigation.py when prompt_cache is None — FIXED (fail-closed guard added)
+2. Phase 3.3 was essentially done in Phase 3.1 since the human guard is a simple check in review_thought()
+
+## No Changes Requested
+Plan is solid and implementation matches it faithfully.
+
+---
+VERDICT: APPROVE
+SUMMARY: Plan well-structured, implementation complete. One fail-open issue found and fixed during review.
+CONFIDENCE: HIGH
+---

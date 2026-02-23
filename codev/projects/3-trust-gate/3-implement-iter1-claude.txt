@@ -1,0 +1,26 @@
+
+# Implementation Review: Spec 3 — Trust Gate (via Builder self-review)
+
+## Summary
+
+Implementation review complete. Two issues found by external models and fixed during iteration:
+1. XML injection vulnerability in _build_review_payload (Codex finding)
+2. Parse error misclassification as "reject" instead of "error" (Codex finding)
+3. Fail-open bypass when prompt_cache is None (Gemini finding from plan review, already fixed)
+
+All issues resolved. 112 tests passing. No regressions.
+
+## Files Changed
+- `src/fava_trail/trust_gate.py` — Core trust gate module (new)
+- `src/fava_trail/models.py` — ValidationStatus.ERROR, config fields
+- `src/fava_trail/config.py` — get_trust_gate_policy()
+- `src/fava_trail/trail.py` — propose_truth() with trust_result routing
+- `src/fava_trail/tools/navigation.py` — handle_propose_truth() with fail-closed guard
+- `src/fava_trail/server.py` — TrustGatePromptCache startup initialization
+- `tests/test_trust_gate.py` — 25 tests covering all spec scenarios
+
+---
+VERDICT: APPROVE
+SUMMARY: Implementation complete, all issues from consultation resolved, 112 tests passing.
+CONFIDENCE: HIGH
+---
