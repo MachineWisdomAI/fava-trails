@@ -110,3 +110,16 @@
 | 3.4 | Tests | Full coverage for llm-oneshot flow + hierarchy + guard |
 
 Each phase ends with a git commit. Phases are sequential.
+
+## Phases (machine-readable)
+
+```json
+{
+  "phases": [
+    {"id": "phase_3_1", "title": "Trust Gate Core + LLM-Oneshot Prompt Loading"},
+    {"id": "phase_3_2", "title": "propose_truth Integration"},
+    {"id": "phase_3_3", "title": "Human Policy Guard + Extensibility Stub"},
+    {"id": "phase_3_4", "title": "Tests"}
+  ]
+}
+```
