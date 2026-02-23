@@ -1,0 +1,32 @@
+
+# Plan Review: Spec 3 — Trust Gate (via Pal MCP / Gemini 3 Pro)
+
+## Summary
+
+Plan is well-structured with correct phase sequencing (core → integration → guard → tests). All 14 spec scenarios enumerated in Phase 3.4. Fail-closed semantics comprehensively covered.
+
+## Findings
+
+### HIGH: Trust Gate silent bypass (Fail-Open) in navigation.py
+If `prompt_cache` is not provided (is `None`), the code silently skips the `review_thought` block and calls `trail.propose_truth` with `trust_result=None`, causing immediate promotion. This violates the spec ("There is no auto policy") and creates a security risk.
+
+**FIX APPLIED:** Added fail-closed guard: if policy is `llm-oneshot` and `prompt_cache` is None, return error instead of silently bypassing.
+
+### LOW: New httpx client per request
+`review_thought` creates a new `httpx.AsyncClient` for every request. Acceptable for low-frequency human-triggered events.
+
+### LOW: Blocking I/O in cache loading
+`load_from_trails_dir` uses synchronous `read_text()` calls. Acceptable since it's startup-only.
+
+## Positive Aspects
+- Robust test suite covering 14 scenarios
+- Security-first design with explicit redaction and XML encapsulation
+- Clean TrustResult abstraction decoupling review mechanism from persistence
+
+---
+VERDICT: APPROVE
+SUMMARY: Plan is solid. One critical fail-open bypass identified and fixed. No gaps between spec and plan.
+CONFIDENCE: HIGH
+---
+
+(Generated via Pal MCP codereview tool with google/gemini-3-pro-preview)

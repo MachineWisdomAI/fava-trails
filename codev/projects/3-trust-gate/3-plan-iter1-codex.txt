@@ -1,0 +1,30 @@
+
+# Plan Review: Spec 3 — Trust Gate (via Pal MCP / GPT-5.1 Codex)
+
+## Summary
+
+Plan is logically ordered (core → integration → guard → tests) and captures most spec requirements. Phase breakdown mirrors natural dependencies.
+
+## Findings
+
+### MEDIUM: TrustGateConfig vs simple scalar fields
+Plan mentions adding `TrustGateConfig` to `GlobalConfig` but spec uses simple scalar fields. Implementation correctly uses simple fields (`trust_gate`, `trust_gate_model`, `openrouter_api_key_env`), so this is a plan wording issue only.
+
+### MEDIUM: Default trust-gate-prompt.md not bootstrapped
+Spec references a default prompt "provided in data repo bootstrap" but this isn't a plan deliverable. This is a data-repo concern, not engine code. Acknowledged and deferred.
+
+### MEDIUM: Phase 3.2 done criteria missing explicit error path
+Done criteria don't explicitly mention `validation_status="error"` for fail-closed outcomes. However, implementation and tests DO cover this path correctly.
+
+## Positive Aspects
+- Phase breakdown mirrors natural dependencies
+- Plan calls out key security measures (prompt-cache, redaction, injection defense)
+- Phase 3.4's test matrix thoroughly maps to spec behavioral requirements
+
+---
+VERDICT: APPROVE
+SUMMARY: Plan aligns with spec. Medium issues are either wording-only or data-repo concerns. Implementation correctly covers all paths.
+CONFIDENCE: HIGH
+---
+
+(Generated via Pal MCP codereview tool with openai/gpt-5.1-codex)

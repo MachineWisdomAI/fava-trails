@@ -120,6 +120,12 @@ async def handle_propose_truth(
         policy = get_trust_gate_policy(trail.trail_name)
 
         trust_result = None
+        if policy == "llm-oneshot" and prompt_cache is None:
+            return {
+                "status": "error",
+                "message": "Trust Gate enabled (llm-oneshot) but prompt cache not initialized",
+            }
+
         if prompt_cache is not None:
             # Get the thought to review
             record = await trail.get_thought(thought_id)
