@@ -5,9 +5,9 @@
 
 ---
 
-## Phase 3.1: Trust Gate Core + Critic Prompt Loading
+## Phase 3.1: Trust Gate Core + LLM-Oneshot Prompt Loading
 
-**Goal:** Trust Gate intercepts `propose_truth` with critic or human policy. Prompt loaded from data repo.
+**Goal:** Trust Gate intercepts `propose_truth` with llm-oneshot or human policy. Prompt loaded from data repo.
 
 **Files created:**
 - `src/fava_trail/trust_gate.py` — prompt loading, OpenRouter API call, verdict parsing, redaction layer
@@ -33,20 +33,20 @@
 
 ## Phase 3.2: `propose_truth` Integration
 
-**Goal:** Wire Trust Gate into the promotion flow. Critic path works; human path raises NotImplementedError.
+**Goal:** Wire Trust Gate into the promotion flow. LLM-oneshot path works; human path raises NotImplementedError.
 
 **Files modified:**
 - `src/fava_trail/trail.py` — `propose_truth()` calls Trust Gate before namespace move
 - `src/fava_trail/tools/navigation.py` — `handle_propose_truth()` routes through Trust Gate
 
 **Key patterns:**
-- `critic` mode: `propose_truth()` → `trust_gate.review_thought()` → approve → move to namespace / reject → stay in drafts
+- `llm-oneshot` mode: `propose_truth()` → `trust_gate.review_thought()` → approve → move to namespace / reject → stay in drafts
 - `human` mode: `propose_truth()` → raise `NotImplementedError` with TODO and message listing future channels
 - `learn_preference` bypasses Trust Gate entirely (existing behavior preserved)
 - Provenance: on approval/rejection, store `{reviewer_model, reviewed_at, verdict, reasoning}` in thought metadata
 
 **Done criteria:**
-- `propose_truth` with critic policy blocks on OpenRouter verdict
+- `propose_truth` with llm-oneshot policy blocks on OpenRouter verdict
 - Approved → permanent namespace, `validation_status: "approved"`
 - Rejected → stays in drafts, `validation_status: "rejected"`, reasoning attached
 - Human mode → `NotImplementedError` with clear message
@@ -54,14 +54,14 @@
 
 ## Phase 3.3: Human Policy Guard + Extensibility Stub
 
-**Goal:** `trust_gate: human` raises `NotImplementedError` with clear guidance. Extensibility designed but shelved.
+**Goal:** `trust_gate: human` (not yet implemented) raises `NotImplementedError` with clear guidance. Extensibility designed but shelved.
 
 **Files modified:**
 - `src/fava_trail/trust_gate.py` — add guard in `review_thought()` that raises for `human` policy with TODO comment listing future channels (CLI, PR/GHA, MCP tools)
 
 **Done criteria:**
-- `propose_truth` with `trust_gate: human` raises `NotImplementedError`
-- Error message names available policy (`critic`) and references spec for planned channels
+- `propose_truth` with `trust_gate: human` (not yet implemented) raises `NotImplementedError`
+- Error message names available policy (`llm-oneshot`) and references spec for planned channels
 - Tool count unchanged: 15 (no new tools registered)
 
 ## Phase 3.4: Tests
@@ -72,8 +72,8 @@
 - `tests/test_tools.py` — Trust Gate integration tests
 
 **Test scenarios:**
-1. Critic approves → thought promoted
-2. Critic rejects → thought stays in drafts with rejection reason
+1. LLM-oneshot approves → thought promoted
+2. LLM-oneshot rejects → thought stays in drafts with rejection reason
 3. Human mode → `NotImplementedError` raised
 4. Missing prompt at all hierarchy levels → actionable error
 5. Prompt hierarchy resolution: most-specific scope wins
@@ -95,6 +95,6 @@
 | 3.1 | Core + Prompt | Trust Gate module, hierarchical prompt cache, OpenRouter client |
 | 3.2 | Integration | Wire into `propose_truth` flow |
 | 3.3 | Human Policy Guard | `NotImplementedError` for `human` policy, extensibility stub |
-| 3.4 | Tests | Full coverage for critic flow + hierarchy + guard |
+| 3.4 | Tests | Full coverage for llm-oneshot flow + hierarchy + guard |
 
 Each phase ends with a git commit. Phases are sequential.

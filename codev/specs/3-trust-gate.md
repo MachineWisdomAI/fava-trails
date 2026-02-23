@@ -21,12 +21,12 @@ A review gate that intercepts `propose_truth` and requires either model-based cr
 
 | Policy | Behavior |
 |--------|----------|
-| `critic` | Send thought to OpenRouter model with a prompt loaded from the working directory. Model returns `approve` or `reject` with reasoning. |
+| `llm-oneshot` | Send thought to a single OpenRouter model with a prompt loaded at startup. Model returns `approve` or `reject` with reasoning. |
 | `human` | Mark thought as `proposed`. Promotion blocks until explicit human approval via a new `approve_thought` tool. |
 
 There is no `auto` policy. Every thought that enters permanent namespaces must pass through review.
 
-### Critic Prompt Files (Hierarchical, Startup-Loaded)
+### LLM-Oneshot Prompt Files (Hierarchical, Startup-Loaded)
 
 The critic prompt is a markdown file named `trust-gate-prompt.md` that can exist at any level of the trail hierarchy, following the same resolution pattern as CLAUDE.md:
 
@@ -52,7 +52,7 @@ The prompt file follows the agent prompt pattern (see reference: `memory-quality
 
 **Fallback:** If no `trust-gate-prompt.md` exists at any level of the hierarchy, `propose_truth` returns an error: `"No trust-gate-prompt.md found in trail hierarchy for scope {scope}. Create one under trails/."` — never silently bypasses review.
 
-### Critic Flow
+### LLM-Oneshot Flow
 
 ```
 propose_truth(thought_id)
@@ -71,7 +71,7 @@ The `human` policy is designed for extensibility — future approval channels in
 - GitHub PR-based review (GHA calls `approve_thought`/`reject_thought` on merge/close)
 - Web dashboard with approval queue
 
-For now, **only the `critic` policy is implemented**. If `trust_gate` is set to `human`, `propose_truth` raises `NotImplementedError` with a message explaining the available policies.
+For now, **only the `llm-oneshot` policy is implemented**. If `trust_gate` is set to `human`, `propose_truth` raises `NotImplementedError` with a message explaining the available policies.
 
 ```python
 # TODO: Implement human approval flow. Likely needs:
@@ -79,7 +79,7 @@ For now, **only the `critic` policy is implemented**. If `trust_gate` is set to 
 #   2. PR-based flow: thought serialized to PR, GHA calls approve/reject on merge/close
 #   3. approve_thought / reject_thought MCP tools for interactive use
 raise NotImplementedError(
-    "trust_gate: human is not yet implemented. Use 'critic' policy. "
+    "trust_gate: human is not yet implemented. Use 'llm-oneshot' policy. "
     "See Spec 3 for planned approval channels."
 )
 ```
@@ -95,12 +95,12 @@ raise NotImplementedError(
 
 Trail-level config in `.fava-trail.yaml`:
 ```yaml
-trust_gate: critic    # critic | human
+trust_gate: llm-oneshot    # llm-oneshot | human (future)
 ```
 
 Global config fallback in `config.yaml`:
 ```yaml
-trust_gate: critic
+trust_gate: llm-oneshot
 openrouter_api_key_env: OPENROUTER_API_KEY   # env var name containing the key
 trust_gate_model: google/gemini-2.5-flash     # cheap, fast reviewer
 ```
@@ -108,7 +108,7 @@ trust_gate_model: google/gemini-2.5-flash     # cheap, fast reviewer
 ### Privacy
 
 - Redaction layer strips `agent_id`, `metadata.extra`, and any fields marked sensitive before sending to OpenRouter
-- Trail-level override can disable critic for specific trails (`trust_gate: human`)
+- Trail-level override can switch policy for specific trails (e.g. `trust_gate: human` when implemented)
 - Provenance tracking: reviewer model, timestamp, and verdict stored in thought metadata
 
 ### Dependencies
@@ -117,7 +117,7 @@ trust_gate_model: google/gemini-2.5-flash     # cheap, fast reviewer
 
 ## Done Criteria
 
-- `propose_truth` with `critic` policy sends thought to OpenRouter and blocks on verdict
+- `propose_truth` with `llm-oneshot` policy sends thought to OpenRouter and blocks on verdict
 - Approved thoughts move to permanent namespace with `validation_status: "approved"`
 - Rejected thoughts stay in `drafts/` with `validation_status: "rejected"` and rejection reasoning attached
 - `propose_truth` with `human` policy raises `NotImplementedError` with clear message
