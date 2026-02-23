@@ -1,0 +1,31 @@
+
+# Implementation Review: Spec 3 — Trust Gate (via Pal MCP / GPT-5.1 Codex)
+
+## Summary
+
+The Trust Gate integration is thoughtfully structured and well tested. Two significant issues were identified and fixed during review.
+
+## Findings
+
+### CRITICAL (FIXED): XML tag injection in _build_review_payload
+Thought content was embedded in <thought_under_review> tags without escaping. Content containing `</thought_under_review>` could break the XML wrapper and inject system instructions.
+
+**FIX APPLIED:** Added `html.escape()` to escape thought content and metadata YAML before embedding in XML tags. New test `test_prompt_injection_xml_escaping` verifies the defense.
+
+### HIGH (FIXED): Parse errors misclassified as reviewer rejections
+When JSON parsing failed after retry, `review_thought` returned `verdict="reject"` instead of `verdict="error"`. This conflated infrastructure failures with legitimate reviewer decisions, violating fail-closed semantics.
+
+**FIX APPLIED:** Changed parse failure verdict from "reject" to "error". Updated tests to assert `ValidationStatus.ERROR` for all mechanical failures.
+
+## Positive Aspects
+- Startup-loaded TrustGatePromptCache and hierarchical resolution cleanly enforce anti-tampering
+- TrailManager.propose_truth records reviewer provenance consistently across all outcomes
+- Test suite now covers 25 scenarios including XML escaping defense
+
+---
+VERDICT: APPROVE (after fixes applied)
+SUMMARY: Two security/correctness issues found and fixed. Implementation now correctly handles all fail-closed scenarios.
+CONFIDENCE: HIGH
+---
+
+(Generated via Pal MCP codereview tool with openai/gpt-5.1-codex)
