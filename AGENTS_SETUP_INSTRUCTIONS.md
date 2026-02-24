@@ -43,7 +43,6 @@ Create exactly **two files** — nothing else:
 
 **`config.yaml`:**
 ```yaml
-default_trail: default
 trails_dir: trails
 remote_url: "https://github.com/YOUR-ORG/fava-trail-data.git"
 push_strategy: immediate

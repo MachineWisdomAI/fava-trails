@@ -84,7 +84,6 @@ echo ""
 # ─── Step 1: Create config.yaml ───
 
 cat > "${DATA_REPO}/config.yaml" <<EOF
-default_trail: default
 trails_dir: trails
 remote_url: "${REMOTE_URL}"
 push_strategy: immediate

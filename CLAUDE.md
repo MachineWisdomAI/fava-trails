@@ -47,27 +47,19 @@ Add to Claude Desktop `claude_desktop_config.json` or `~/.claude.json`:
 
 The server reads `$FAVA_TRAIL_DATA_REPO/config.yaml` for global settings and manages trails under `$FAVA_TRAIL_DATA_REPO/trails/`.
 
-### Scope Discovery (Three-Layer)
+### Scope Discovery
 
-Agents need to know which `trail_name` to pass on every tool call. Three sources are checked in priority order:
+Agents pass `trail_name` on every tool call. Three sources determine the value — see [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md) for the full resolution protocol.
 
-| Source | Set where | Purpose |
-|--------|-----------|---------|
-| `FAVA_TRAIL_SCOPE` env var | `.env` file (gitignored) | Per-worktree override for epic/branch work |
-| `.fava-trail.yaml` `scope` | Project root (committed) | Default project scope, shared across clones |
-| `FAVA_TRAIL_SCOPE_HINT` | MCP server `env` block | Broad org/team fallback baked into tool descriptions |
-
-**Resolution order:**
-1. `FAVA_TRAIL_SCOPE` env var (from `.env`) — use if set; intended for epic/branch overrides
-2. `.fava-trail.yaml` at project root — committed default, propagates to all clones and worktrees
-3. Scope shown in tool descriptions (from `FAVA_TRAIL_SCOPE_HINT`) — broad fallback
-4. Create sub-scopes as needed (e.g. `mwai/eng/fava-trails/auth-epic` for focused work)
-
-The server never auto-applies a default scope. The agent always passes `trail_name` explicitly — these sources just tell it *what value to use*.
-
-For full scope discovery protocol, session start/end conventions, and agent identity rules, see [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md).
+| Priority | Source | Set where |
+|----------|--------|-----------|
+| 1 | `FAVA_TRAIL_SCOPE` env var | `.env` (gitignored) — per-worktree override |
+| 2 | `.fava-trail.yaml` `scope` | Project root (committed) — default for all clones |
+| 3 | `FAVA_TRAIL_SCOPE_HINT` | MCP server `env` block — broad fallback |
 
 ### Global Config (`config.yaml`)
+
+See [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md#global-config-reference-configyaml) for the full config reference including trust gate and per-trail overrides. Minimal example:
 
 ```yaml
 trails_dir: trails          # relative to FAVA_TRAIL_DATA_REPO
@@ -77,85 +69,13 @@ push_strategy: manual       # manual | immediate
 
 When `push_strategy: immediate`, the server pushes to remote after every successful write operation. Push failures are non-fatal — the write succeeds and a warning is returned.
 
-> **Note:** `default_trail` is no longer used for scope resolution — `trail_name` is required on all tool calls. The agent is responsible for knowing its scope.
-
 ## Data Repo Setup (One-Time)
 
-The data repo is a plain git repository that the MCP server JJ-colocates on first use.
-
-### Automated (recommended)
-
-```bash
-# 1. Create an empty repo on GitHub, then clone it
-git clone https://github.com/YOUR-ORG/fava-trail-data.git
-
-# 2. Run the bootstrap script
-bash scripts/bootstrap-data-repo.sh fava-trail-data
-```
-
-The script validates the repo is empty, creates `config.yaml` + `.gitignore`, commits via git (once), initializes JJ colocated mode, and tracks the remote bookmark.
-
-### Manual (if you prefer)
-
-```bash
-git clone https://github.com/YOUR-ORG/fava-trail-data.git
-cd fava-trail-data
-```
-
-Create exactly **two files** — nothing else:
-
-**`config.yaml`:**
-```yaml
-default_trail: default
-trails_dir: trails
-remote_url: "https://github.com/YOUR-ORG/fava-trail-data.git"
-push_strategy: immediate
-```
-
-**`.gitignore`:**
-```
-.jj/
-__pycache__/
-*.pyc
-.venv/
-```
-
-> **CRITICAL — do NOT add `trails/` to `.gitignore`.** Trails are plain subdirectories of the monorepo tracked by the same git/JJ repo. Gitignoring `trails/` means thought files are never committed and never pushed to remote.
-
-Do not add a README, CLAUDE.md, Makefile, or any other files. The MCP server creates `trails/` on first use.
-
-```bash
-# Commit and push (git — bootstrap only, LAST time you use git push)
-git add config.yaml .gitignore
-git commit -m "Bootstrap fava-trail-data"
-git push origin main
-
-# Initialize JJ colocated mode
-jj git init --colocate
-jj bookmark track main@origin
-```
-
-`jj bookmark track main@origin` is **required once** for auto-push to work. The MCP server calls `jj git init --colocate` automatically if `.jj/` is missing, but it does not set up bookmark tracking.
-
-### After setup
-
-Register the MCP server (see MCP Registration above), then use MCP tools (`save_thought`, `recall`, etc.) for all trail operations. Do not use `git` commands to manage thought files.
+See [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md#creating-the-data-repo) for complete instructions on creating, bootstrapping, and configuring the data repository.
 
 ## Pushing to Remote
 
-**NEVER use `git push origin main`** after JJ colocates. In JJ colocated mode:
-- HEAD is always **detached** — JJ manages commits, not git
-- Thought commits live on the detached HEAD chain, not on the `main` git branch
-- `git push origin main` only pushes the git `main` bookmark — it misses all thought commits
-
-**If `push_strategy: immediate` is set** (recommended), the server auto-pushes the main bookmark after every write. No manual action needed.
-
-**If you need to push manually:**
-```bash
-# From within fava-trail-data:
-jj bookmark set main -r @-     # advance main bookmark to latest committed change
-jj git push --bookmark main    # push to remote
-```
+**NEVER use `git push origin main`** after JJ colocates — it misses thought commits. See [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md#pushing-to-remote) for the correct protocol.
 
 ## Architecture
 

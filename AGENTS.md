@@ -5,9 +5,9 @@ Cheat sheet for AI agents using FAVA Trail MCP tools. For scope discovery and fu
 ## At Session Start
 
 ```
-recall(query="status", scope={"project": "<project-name>"})
-recall(query="decisions", scope={"project": "<project-name>"})
-recall(query="gotcha", scope={"tags": ["gotcha"]})
+recall(trail_name="<scope>", query="status", scope={"project": "<project-name>"})
+recall(trail_name="<scope>", query="decisions", scope={"project": "<project-name>"})
+recall(trail_name="<scope>", query="gotcha", scope={"tags": ["gotcha"]})
 ```
 
 Read the results. They contain decisions, observations, and context from previous sessions and other agents.
@@ -18,6 +18,7 @@ Save thoughts as you go:
 
 ```
 save_thought(
+  trail_name="<scope>",
   content="What I found or decided",
   source_type="observation",    # or "decision", "inference"
   agent_id="claude-code",       # stable role ID, not model name
@@ -32,7 +33,7 @@ Thoughts go to `drafts/` by default. That's correct for in-progress work.
 **Promote finalized thoughts** — this is mandatory. Other agents cannot see your work otherwise:
 
 ```
-propose_truth(thought_id="<ULID>")
+propose_truth(trail_name="<scope>", thought_id="<ULID>")
 ```
 
 This moves the thought from `drafts/` to its permanent namespace (`decisions/`, `observations/`, etc.) based on `source_type`.
@@ -56,19 +57,19 @@ This moves the thought from `drafts/` to its permanent namespace (`decisions/`, 
 
 **Refine wording** (same thought, same ULID):
 ```
-update_thought(thought_id="<ULID>", content="Updated content")
+update_thought(trail_name="<scope>", thought_id="<ULID>", content="Updated content")
 ```
 
 **Replace a wrong conclusion** (new thought, backlinks original):
 ```
-supersede(thought_id="<ULID>", content="Corrected content", reason="Why it was wrong")
+supersede(trail_name="<scope>", thought_id="<ULID>", content="Corrected content", reason="Why it was wrong")
 ```
 
 ## User Corrections
 
 When a user corrects you, capture it immediately:
 ```
-learn_preference(content="Always use uv, not pip", preference_type="firm")
+learn_preference(trail_name="<scope>", content="Always use uv, not pip", preference_type="firm")
 ```
 
 Preferences bypass drafts — they're saved directly to `preferences/`. Every `recall` query automatically surfaces matching preferences.
@@ -87,7 +88,7 @@ metadata={"project": "...", "extra": {"host": "machine-name", "cwd": "/path"}}
 
 To pull the latest thoughts from other agents/machines:
 ```
-sync()
+sync(trail_name="<scope>")
 ```
 
 This fetches from the git remote and rebases. Conflicts are surfaced as structured data via `conflicts()`.
