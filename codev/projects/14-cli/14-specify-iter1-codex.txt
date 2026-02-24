@@ -1,0 +1,16 @@
+# Spec 14 Consultation — GPT-5.1-Codex (neutral)
+
+## Verdict
+Technically feasible with solid user value, but needs clearer data-repo coupling, doctor coverage, and better UX safeguards before implementation proceeds.
+
+## Confidence Score
+7/10
+
+## Key Takeaways
+- Clarify whether `init` should guide or optionally run `init-data` when no repo is found; otherwise users hit a dead-end.
+- Harden `.env` editing (parsing, idempotency, error messaging) and ensure `doctor` reports mismatched or unreadable scope sources.
+- Document or implement guardrails for long walks in `scope list`, especially on large data repos.
+- Keep argparse for now but structure the code to isolate command handlers, allowing painless migration if the CLI surface grows.
+- Add UX polish: consistent summaries, failure remediation steps, and optional remote checks with timeouts to avoid blocking workflows.
+- `doctor` remote reachability should be optional or timeout-limited.
+- `init-data` lacks explicit cleanup when intermediate steps fail (e.g., JJ init fails after creating files).

@@ -75,3 +75,26 @@ The original Memcurial concept relies on Mercurial’s DAG and the hg-evolve ext
 Building the production prototype on **FAVA Trail (JJ \+ SQLite)** is the correct strategic maneuver. It delivers crash-proof, conflict-tolerant, local-first memory using ubiquitous Git-compatible infrastructure.
 
 However, the **Memcurial (hg-evolve)** architecture remains the theoretically perfect model. Should specialized AI infrastructure providers emerge that offer managed Mercurial endpoints without exorbitant operational overhead, migrating the memory substrate to a native obsolescence DAG would eliminate the need for manual graph-schema enforcement, allowing the version control system itself to act as the ultimate, self-curating brain.
+---
+
+## CLI Layer (Spec 14)
+
+The FAVA Trails package now exposes two entry points:
+- `fava-trails-server` — MCP server (agent-facing)
+- `fava-trails` — CLI (human-facing setup and scope management)
+
+Both share `src/fava_trails/` and reuse `config.py` helpers (`get_data_repo_root`, `sanitize_scope_path`, `get_trails_dir`).
+
+### Scope Configuration Pattern
+Two-file pattern for scope discovery:
+1. `.fava-trail.yaml` — committed project default (`scope: mw/eng/project`)
+2. `.env` — local gitignored override (`FAVA_TRAIL_SCOPE=mw/eng/project`)
+
+`fava-trails init` populates `.env` from `.fava-trail.yaml`, closing the gap where agents skip file reads but reliably auto-load `.env`.
+
+### .env Write Safety
+`_update_env_file()` in `cli.py`:
+- Parses line-by-line, preserving comments and blank lines
+- Deduplicates repeated keys
+- Atomic write: `tmp.write_text(...); tmp.replace(env_path)`
+- Uses `with_name(name + ".tmp")` not `with_suffix(".tmp")` (dotfile safety)

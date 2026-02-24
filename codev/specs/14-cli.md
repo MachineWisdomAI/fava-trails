@@ -48,6 +48,7 @@ fava-trails init
 
 # Bootstrap a new data repo (replaces bootstrap-data-repo.sh)
 fava-trails init-data <path>
+<!-- REVIEW(@architect): init-data is very similar to init.. let's call this bootstrap -->
 # → Creates directory, config.yaml, .gitignore
 # → Initializes JJ colocated repo
 # → Optionally sets remote URL
@@ -79,9 +80,15 @@ fava-trails scope list
 ## Success Criteria
 - [ ] `fava-trails init` creates `.fava-trail.yaml` and populates `.env` with `FAVA_TRAIL_SCOPE`
 - [ ] `fava-trails init` works in a project that already has `.fava-trail.yaml` (reads scope, writes `.env`)
+- [ ] `fava-trails init` accepts `--scope <value>` for non-interactive/CI use
+- [ ] `fava-trails init` warns if `.env` is not in `.gitignore`
+- [ ] `fava-trails init` prints clear guidance when no data repo is configured
 - [ ] `fava-trails init-data <path>` replaces `bootstrap-data-repo.sh` functionality
 - [ ] `fava-trails doctor` validates JJ, data repo, and scope configuration
+- [ ] `fava-trails doctor` exits non-zero if any check fails
+- [ ] `fava-trails doctor --check-remote` optionally checks remote reachability
 - [ ] `fava-trails scope` shows current scope and resolution source
+- [ ] `fava-trails --version` prints the package version
 - [ ] CLI is installed as a console_script alongside `fava-trails-server`
 - [ ] Existing `bootstrap-data-repo.sh` is deprecated in favor of `fava-trails init-data`
 - [ ] All new commands have tests
@@ -141,15 +148,18 @@ fava-trails scope list
 ## Open Questions
 
 ### Critical (Blocks Progress)
-- [ ] Should `init` also run `init-data` if no data repo is configured? Or keep them separate?
+- [x] Should `init` also run `init-data` if no data repo is configured? **Resolved: No — keep separate. `init` prints guidance: "Run: fava-trails init-data <path>"**
+<!-- REVIEW(@architect): Correct fava-trails init is going to be run every time we want to start using fava-trails for an agent's workspace. It should assume that fava-trails data repo and MCP are already setup, and can print a hint to run fava-trails bootstrap if this is not the case. -->
 
 ### Important (Affects Design)
-- [ ] Should `doctor` check network connectivity to the git remote?
+- [x] Should `doctor` check network connectivity to the git remote? **Resolved: Optional — `--check-remote` flag only**
+<!-- REVIEW(@architect): No. Too much unnecessary complexity -->
 - [ ] Should `scope set` also update the data repo (create the trail directory)?
+<!-- REVIEW(@architect): It shouldn't because this opens up the ability of the agent to work around the trust gate. It should print a hint that a trust gate prompt will be inherited from the parent, and if the user wants to add a custom one they should do <steps> -->
 
 ### Nice-to-Know (Optimization)
 - [ ] Should we add shell completion generation (`fava-trails --completion`)?
-- [ ] Should `init` offer to add `.env` to `.gitignore` if not already ignored?
+- [x] Should `init` offer to add `.env` to `.gitignore` if not already ignored? **Resolved: Yes — `init` warns if `.env` is not in `.gitignore`**
 
 ## Performance Requirements
 N/A — CLI commands are interactive, human-speed.
@@ -157,6 +167,7 @@ N/A — CLI commands are interactive, human-speed.
 ## Security Considerations
 - `init` writes to `.env` — must not overwrite existing variables, only append/update `FAVA_TRAIL_SCOPE`
 - `init-data` creates directories and runs JJ — standard filesystem permissions apply
+<!-- REVIEW(@architect): You mean bootstrap -->
 - No network access except `doctor` checking remote reachability (optional)
 
 ## Test Scenarios

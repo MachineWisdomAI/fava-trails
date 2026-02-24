@@ -1,0 +1,27 @@
+# Plan 14 Consultation — GPT-5.1-Codex (neutral)
+
+## Verdict: LGTM
+
+The plan is technically sound with appropriate phase granularity. The sub-step breakdown (1a–1g) provides clear, atomic implementation tasks.
+
+## Analysis
+
+### Phase Structure
+- Good granularity: each sub-step (1a–1g) is independently implementable and testable.
+- 1a (entry point) → 1b (init) → 1c (init-data) → 1d/1e/1f (scope) → 1g (tests) is the correct sequencing.
+- Phase 2 adding `doctor` and deprecation notice after core commands is the right priority order.
+
+### Additions from Spec Consultation Feedback
+- `--version` flag (top-level argparse) should be in step 1a alongside the entry point registration.
+- `--scope` flag for `init` should be in step 1b.
+- `.env` not-in-.gitignore warning should be in step 1b.
+- `doctor --check-remote` flag should be in step 2a.
+- `doctor` exit code policy (0=pass, 1=any failure) should be in step 2a.
+
+### Test Coverage
+- Plan 1g test list is comprehensive. All spec success criteria are covered.
+- Mock `subprocess.run` with `unittest.mock.patch` for JJ calls.
+- Add `test_init_noninteractive_scope_flag` test.
+
+## Confidence Score
+9/10 — Minor additions needed from spec consultation (--version, --scope flags) but no structural changes required.

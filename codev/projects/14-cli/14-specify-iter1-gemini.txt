@@ -1,0 +1,16 @@
+# Spec 14 Consultation — Gemini 3 Pro (neutral)
+
+## Verdict
+The specification is technically sound and highly pragmatic, correctly targeting the "scope discovery" reliability gap with a low-risk implementation, though the `.env` manipulation logic requires specific safeguards to prevent configuration corruption.
+
+## Confidence Score
+9/10
+
+## Key Takeaways
+1. **Security/Hygiene**: The `init` command MUST check if `.env` is in `.gitignore` and warn the user if it is being tracked or not ignored.
+2. **Robust Parsing**: Implement a non-destructive `.env` parser that handles edge cases (comments, existing keys) rather than simple file appending or regex substitution.
+3. **User Guidance**: If `init` detects that `get_data_repo_root()` returns nothing (no data repo found), it should explicitly suggest running `fava-trails init-data`.
+4. **Version Flag**: Add `--version` to the top-level parser to assist with support and `doctor` checks.
+5. **Scope Validation**: Ensure `scope set` validates that the scope path format is compliant (e.g., no spaces, valid characters) before writing to config files.
+- Argparse decision is correct. 5 commands, zero-dep goal, click is overkill.
+- Subprocess dependency on `jj` binary: version range checking in `doctor` is essential.

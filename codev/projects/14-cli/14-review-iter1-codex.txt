@@ -1,0 +1,19 @@
+# PR Review — GPT-5.1-Codex (neutral)
+
+## Verdict: REQUEST_CHANGES
+
+### HIGH
+- `cmd_scope_list` crashes with unhandled exception when data repo is not configured (`get_trails_dir()` not wrapped in try/except).
+
+### MEDIUM
+- `_write_project_yaml` reads existing YAML without catching `yaml.YAMLError` — corrupt `.fava-trail.yaml` crashes `init` and `scope set`.
+- `_update_env_file` duplicate detection misses `export KEY=value` format — appends instead of replacing/deduplicating.
+
+### LOW
+- Stale local `import shutil` inside `cmd_bootstrap` at line 196 — module-level import was added but local not removed.
+
+## Status
+Issues addressed in iteration. 39 tests passing after fixes.
+
+## Note
+`cmd_bootstrap` guidance print `FAVA_TRAILS_DATA_REPO` (plural) is CORRECT — `config.py` uses `FAVA_TRAILS_DATA_REPO` as primary variable. Expert analysis was incorrect on this point.

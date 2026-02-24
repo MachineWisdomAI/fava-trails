@@ -1,0 +1,31 @@
+# Spec 14 Consultation — GPT-5.1 (neutral)
+
+## Verdict
+Solid, low-risk spec: technically straightforward to implement with argparse, covers the core needs well, and only needs a few small clarifications and polish items (non-interactive init, error codes, shared helpers) to be "complete".
+
+## Confidence Score
+9/10
+
+## Key Takeaways
+- The spec is technically sound and essentially complete for its goals; it's ready to move into implementation with only minor clarifications.
+- Main implementation risks are careful `.env` editing, robust subprocess handling, and ensuring doctor's checks don't hang or misreport.
+- Add a non-interactive `--scope` flag for `init`, define clear exit codes (especially for `doctor`), and consider optional remote reachability checks.
+- Centralize scope and data-repo resolution logic in shared helpers used by both CLI and server to avoid configuration drift.
+- Argparse is the right choice given constraints and current scope.
+- Add `fava-trails --version` flag (pull from package metadata).
+- `doctor` should exit non-zero if any check fails.
+- `doctor --check-remote` flag to avoid blocking on slow networks.
+
+## Consensus Summary (all 3 models)
+**AGREEMENT**: Spec is technically feasible and addresses a real pain point. Argparse is the correct choice. `.env` parsing is the highest-risk implementation area.
+
+**ACTIONABLE IMPLEMENTATION NOTES**:
+1. Add `--version` flag to top-level parser
+2. Add `--scope` flag to `init` for non-interactive/CI use
+3. Robust `.env` parser: line-by-line, preserve comments/blanks, handle duplicates
+4. `init` warns if `.env` is not in `.gitignore`
+5. `init` prints clear guidance when no data repo found: "Run: fava-trails init-data <path>"
+6. `doctor` remote check optional (`--check-remote` flag)
+7. `scope list`: sorted unique scopes, one per line
+8. Centralize scope resolution in shared helper (not duplicated in CLI)
+9. `doctor` exits non-zero on any failure

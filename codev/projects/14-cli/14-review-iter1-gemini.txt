@@ -1,0 +1,14 @@
+# PR Review — Gemini 3 Pro (neutral)
+
+## Verdict: LGTM (after fixes)
+
+CLI is well-structured, reuses existing config helpers, and safety patterns are solid.
+Issues found and resolved in this iteration.
+
+## Summary of fixes
+1. `cmd_scope_list` now wraps `get_trails_dir()` in try/except — no more crash when data repo unconfigured
+2. `_write_project_yaml` catches `yaml.YAMLError` on read — corrupt YAML no longer crashes init/scope set
+3. `_update_env_file` handles `export KEY=value` format in deduplication
+4. Stale local `import shutil` removed from cmd_bootstrap
+
+## Confidence: 9/10

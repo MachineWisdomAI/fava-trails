@@ -1,0 +1,17 @@
+# PR Review — GPT-5.1 (neutral)
+
+## Verdict: LGTM (after fixes)
+
+All critical safety patterns correctly implemented. Four issues found and fixed in this iteration.
+
+## Issues Fixed
+- HIGH: `cmd_scope_list` had no try/except around `get_trails_dir()` — unhandled exception when data repo unconfigured
+- MEDIUM: `_write_project_yaml` didn't catch `yaml.YAMLError` on existing file read
+- MEDIUM: `_update_env_file` missed `export KEY=value` format in duplicate detection
+- LOW: Stale `import shutil` inside `cmd_bootstrap` body removed
+
+## Validation
+- FAVA_TRAILS_DATA_REPO env var name in bootstrap output is correct (matches config.py primary variable)
+- 39 tests passing after all fixes
+
+## Confidence: 9/10

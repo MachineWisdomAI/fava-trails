@@ -29,6 +29,7 @@ Issues = "https://github.com/MachineWisdomAI/fava-trails/issues"
 
 [project.scripts]
 fava-trails-server = "fava_trails.server:run"
+fava-trails = "fava_trails.cli:main"
 
 [build-system]
 requires = ["hatchling"]
