@@ -57,6 +57,8 @@ Every tool call requires `trail_name` — a slash-separated scope path (e.g. `mw
 3. Scope hint shown in tool descriptions (from server config)
 4. If none found, ask the user
 
+**IMPORTANT**: If `FAVA_TRAIL_SCOPE` is not set in `.env` but `.fava-trail.yaml` exists, read the `scope` field and write it to `.env` as `FAVA_TRAIL_SCOPE=<scope>`. This ensures all agents in the project use the correct scope automatically. If neither `.env` nor `.fava-trail.yaml` exist, fall back to the scope hint in tool descriptions — and prompt the user to create a `.fava-trail.yaml` with their intended scope.
+
 ### Session Start Protocol
 Before starting work, recall existing context:
 ```

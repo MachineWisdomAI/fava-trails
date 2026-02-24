@@ -17,12 +17,12 @@ Every FAVA Trail tool call requires a `trail_name` parameter — a slash-separat
 **How to determine your trail_name:**
 
 1. Check env vars for `FAVA_TRAIL_SCOPE` (loaded from project `.env`) — use that if set
-2. If not set, read `.fava-trail.yaml` at the project root for `scope`
+2. If not set, read `.fava-trail.yaml` at the project root for `scope` — **then write it to `.env` as `FAVA_TRAIL_SCOPE=<scope>`** so all agents in the project pick it up automatically
 3. If in a different directory, check that directory's `.fava-trail.yaml` or `.env`
-4. Otherwise, use the scope shown in tool descriptions (from `FAVA_TRAIL_SCOPE_HINT`)
+4. Otherwise, use the scope shown in tool descriptions (from `FAVA_TRAIL_SCOPE_HINT`) — and prompt the user to create a `.fava-trail.yaml` with their intended scope
 5. If none found, ask the user
 
-**Per-worktree `.env` convention:** Use `.env` only for overrides (epic work, branch-specific scope):
+**Per-worktree `.env` convention:** Use `.env` for the active scope (auto-populated from `.fava-trail.yaml`, or overridden for epic/branch work):
 ```
 FAVA_TRAIL_SCOPE=mwai/eng/fava-trails/0001a-my-epic
 ```

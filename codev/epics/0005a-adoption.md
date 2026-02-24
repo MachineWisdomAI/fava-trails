@@ -6,6 +6,8 @@ External adoption — migrate legacy flat-file memory, codev builder integration
 
 ## Specs
 
+- [ ] Spec 13: OSS Readiness for Early Adopters
+- [ ] Spec 14: FAVA Trails CLI
 - [ ] Spec 9: Toolkit Migration Adapter
 - [ ] Spec 10: codev Integration
 - [ ] Spec 11: OpenClaw Memory Plugin
