@@ -10,15 +10,13 @@ from fava_trails.config import (
     get_data_repo_root,
     get_trails_dir,
     sanitize_namespace,
-    sanitize_trail_name,
+    sanitize_scope_path,
 )
 
 
 def test_fava_home_default(monkeypatch, tmp_path):
     """Default home is ~/.fava-trails when no env var set."""
     monkeypatch.delenv("FAVA_TRAILS_DATA_REPO", raising=False)
-    monkeypatch.delenv("FAVA_TRAIL_DATA_REPO", raising=False)
-    monkeypatch.delenv("FAVA_TRAIL_HOME", raising=False)
     home = get_data_repo_root()
     assert home == Path(os.path.expanduser("~/.fava-trails"))
 
@@ -26,36 +24,8 @@ def test_fava_home_default(monkeypatch, tmp_path):
 def test_fava_home_env_override(monkeypatch, tmp_path):
     """FAVA_TRAILS_DATA_REPO env var overrides default."""
     monkeypatch.setenv("FAVA_TRAILS_DATA_REPO", str(tmp_path / "custom"))
-    monkeypatch.delenv("FAVA_TRAIL_HOME", raising=False)
     home = get_data_repo_root()
     assert home == tmp_path / "custom"
-
-
-def test_fava_home_legacy_env_compat(monkeypatch, tmp_path):
-    """Deprecated FAVA_TRAIL_HOME still works as fallback."""
-    monkeypatch.delenv("FAVA_TRAILS_DATA_REPO", raising=False)
-    monkeypatch.delenv("FAVA_TRAIL_DATA_REPO", raising=False)
-    monkeypatch.setenv("FAVA_TRAIL_HOME", str(tmp_path / "legacy"))
-    home = get_data_repo_root()
-    assert home == tmp_path / "legacy"
-
-
-def test_fava_home_old_env_var_compat(monkeypatch, tmp_path):
-    """Deprecated FAVA_TRAIL_DATA_REPO still works as fallback for existing deployments."""
-    monkeypatch.delenv("FAVA_TRAILS_DATA_REPO", raising=False)
-    monkeypatch.setenv("FAVA_TRAIL_DATA_REPO", str(tmp_path / "old-name"))
-    monkeypatch.delenv("FAVA_TRAIL_HOME", raising=False)
-    home = get_data_repo_root()
-    assert home == tmp_path / "old-name"
-
-
-def test_fava_home_new_env_takes_precedence(monkeypatch, tmp_path):
-    """FAVA_TRAILS_DATA_REPO takes precedence over all deprecated vars."""
-    monkeypatch.setenv("FAVA_TRAILS_DATA_REPO", str(tmp_path / "new"))
-    monkeypatch.setenv("FAVA_TRAIL_DATA_REPO", str(tmp_path / "old-name"))
-    monkeypatch.setenv("FAVA_TRAIL_HOME", str(tmp_path / "older"))
-    home = get_data_repo_root()
-    assert home == tmp_path / "new"
 
 
 def test_trails_dir_relative(monkeypatch, tmp_path):
@@ -123,44 +93,44 @@ def test_trails_dir_env_overrides_config(monkeypatch, tmp_path):
 
 def test_sanitize_valid_names():
     """Valid trail names pass sanitization."""
-    assert sanitize_trail_name("default") == "default"
-    assert sanitize_trail_name("my-project") == "my-project"
-    assert sanitize_trail_name("wise-agents-toolkit") == "wise-agents-toolkit"
-    assert sanitize_trail_name("project_v2") == "project_v2"
-    assert sanitize_trail_name("project.name") == "project.name"
+    assert sanitize_scope_path("default") == "default"
+    assert sanitize_scope_path("my-project") == "my-project"
+    assert sanitize_scope_path("wise-agents-toolkit") == "wise-agents-toolkit"
+    assert sanitize_scope_path("project_v2") == "project_v2"
+    assert sanitize_scope_path("project.name") == "project.name"
 
 
 def test_sanitize_rejects_path_traversal():
     """Path traversal attempts are rejected."""
     with pytest.raises(ValueError, match="Path traversal not allowed"):
-        sanitize_trail_name("../../.ssh")
+        sanitize_scope_path("../../.ssh")
     with pytest.raises(ValueError, match="Path traversal not allowed"):
-        sanitize_trail_name("../etc/passwd")
+        sanitize_scope_path("../etc/passwd")
     with pytest.raises(ValueError, match="Path traversal not allowed"):
-        sanitize_trail_name("foo\\bar")
+        sanitize_scope_path("foo\\bar")
 
 
 def test_sanitize_accepts_scoped_paths():
     """Slash-separated scope paths are valid."""
-    assert sanitize_trail_name("foo/bar") == "foo/bar"
-    assert sanitize_trail_name("mw/eng/fava-trail") == "mw/eng/fava-trail"
-    assert sanitize_trail_name("mw/eng/fava-trail/auth-epic") == "mw/eng/fava-trail/auth-epic"
+    assert sanitize_scope_path("foo/bar") == "foo/bar"
+    assert sanitize_scope_path("mw/eng/fava-trail") == "mw/eng/fava-trail"
+    assert sanitize_scope_path("mw/eng/fava-trail/auth-epic") == "mw/eng/fava-trail/auth-epic"
     # Leading/trailing slashes are stripped
-    assert sanitize_trail_name("/mw/eng/") == "mw/eng"
-    assert sanitize_trail_name("mw/eng/") == "mw/eng"
+    assert sanitize_scope_path("/mw/eng/") == "mw/eng"
+    assert sanitize_scope_path("mw/eng/") == "mw/eng"
 
 
 def test_sanitize_rejects_empty_and_special():
     """Empty strings and special characters are rejected."""
     with pytest.raises(ValueError, match="cannot be empty"):
-        sanitize_trail_name("")
+        sanitize_scope_path("")
     with pytest.raises(ValueError, match="Invalid scope segment"):
-        sanitize_trail_name("-starts-with-dash")
+        sanitize_scope_path("-starts-with-dash")
     with pytest.raises(ValueError, match="Invalid scope segment"):
-        sanitize_trail_name(".hidden")
+        sanitize_scope_path(".hidden")
     # Empty segments (double slash) rejected
     with pytest.raises(ValueError, match="Invalid scope segment"):
-        sanitize_trail_name("a//b")
+        sanitize_scope_path("a//b")
 
 
 def test_trails_dir_tilde_expansion(monkeypatch, tmp_path):
