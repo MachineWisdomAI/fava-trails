@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# DEPRECATED: Use 'fava-trails bootstrap <path>' instead.
+echo "DEPRECATED: Use 'fava-trails bootstrap <path>' instead." >&2
 # Bootstrap a FAVA Trail data repo from an empty git clone.
 #
 # Usage:

@@ -331,6 +331,78 @@ def cmd_scope_list(args: argparse.Namespace) -> int:
     return 0
 
 
+# ─── Doctor ───────────────────────────────────────────────────────────────────
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    """Health check: JJ, data repo, scope. Exits 0 if all pass, 1 if any fail."""
+    import shutil
+
+    any_failed = False
+
+    # Check 1: JJ installed?
+    jj_bin = shutil.which("jj")
+    if not jj_bin:
+        jj_bin = str(Path.home() / ".local" / "bin" / "jj")
+        if not Path(jj_bin).exists():
+            jj_bin = None
+
+    if jj_bin:
+        result = subprocess.run(
+            [jj_bin, "--version"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            version_str = result.stdout.strip().split("\n")[0]
+            print(f"JJ:           installed ({version_str})")
+        else:
+            print(f"JJ:           ERROR (jj --version failed)")
+            any_failed = True
+    else:
+        print("JJ:           NOT FOUND")
+        print("  Fix: bash scripts/install-jj.sh")
+        any_failed = True
+
+    # Check 2: Data repo valid?
+    try:
+        data_repo = get_data_repo_root()
+        if not data_repo.exists():
+            print(f"Data repo:    NOT FOUND (expected: {data_repo})")
+            print(f"  Fix: fava-trails bootstrap <path>")
+            any_failed = True
+        elif not (data_repo / "config.yaml").exists():
+            print(f"Data repo:    INVALID — missing config.yaml at {data_repo}")
+            print(f"  Fix: fava-trails bootstrap <path>")
+            any_failed = True
+        elif not (data_repo / "trails").exists():
+            print(f"Data repo:    INVALID — missing trails/ at {data_repo}")
+            print(f"  Fix: mkdir {data_repo / 'trails'}")
+            any_failed = True
+        else:
+            print(f"Data repo:    {data_repo} (valid)")
+    except (OSError, ValueError) as e:
+        print(f"Data repo:    ERROR ({e})")
+        any_failed = True
+
+    # Check 3: Scope configured?
+    project_dir = Path.cwd()
+    env_scope = _read_env_value(project_dir / ".env", "FAVA_TRAIL_SCOPE")
+    yaml_scope = _read_project_yaml_scope(project_dir)
+
+    if env_scope:
+        print(f"Scope:        {env_scope} (from .env)")
+    elif yaml_scope:
+        print(f"Scope:        {yaml_scope} (from .fava-trail.yaml)")
+    else:
+        print("Scope:        NOT CONFIGURED")
+        print("  Fix: fava-trails init")
+        any_failed = True
+
+    return 1 if any_failed else 0
+
+
 # ─── Argument parser ──────────────────────────────────────────────────────────
 
 
@@ -377,6 +449,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_scope_list.set_defaults(func=cmd_scope_list)
 
     p_scope.set_defaults(func=cmd_scope)
+
+    # doctor
+    p_doctor = subparsers.add_parser("doctor", help="Check JJ, data repo, and scope configuration")
+    p_doctor.set_defaults(func=cmd_doctor)
 
     return parser
 
