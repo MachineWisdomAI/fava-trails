@@ -1,10 +1,10 @@
-# FAVA Trail — Agent Reference 🫛👣
+# FAVA Trails — Agent Reference 🫛👣
 
-Agent-facing reference for FAVA Trail MCP tools. For project setup and configuration, see [README.md](README.md). For the full session protocol with examples, see [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md).
+Agent-facing reference for FAVA Trailss MCP tools. For project setup and configuration, see [README.md](README.md). For the full session protocol with examples, see [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md).
 
 ## Scope Discovery
 
-Every tool call requires `trail_name` — a slash-separated scope path (e.g. `mw/eng/fava-trail`). Resolve in priority order:
+Every tool call requires `trail_name` — a slash-separated scope path (e.g. `mw/eng/fava-trails`). Resolve in priority order:
 
 | Priority | Source | Set where |
 |----------|--------|-----------|
@@ -30,7 +30,7 @@ Use `trail_names` with globs for broader context: `recall(trail_name="<scope>", 
 
 ## Tools Reference
 
-All tools accept a **required** `trail_name` parameter — the scope path (e.g. `mw/eng/fava-trail`). Scope paths are `/`-separated, with each segment validated as a safe slug. Root-level names (no `/`) trigger a non-blocking warning suggesting a scoped path.
+All tools accept a **required** `trail_name` parameter — the scope path (e.g. `mw/eng/fava-trails`). Scope paths are `/`-separated, with each segment validated as a safe slug. Root-level names (no `/`) trigger a non-blocking warning suggesting a scoped path.
 
 ### `start_thought`
 
@@ -235,7 +235,7 @@ Drafts are **working memory**. Promoted thoughts are **institutional memory**.
 
 ### SPIR Meta-Layer Pattern
 
-When using the SPIR protocol (codev/), FAVA Trail thoughts **link to** `codev/` artifacts — they don't duplicate content.
+When using the SPIR protocol (codev/), FAVA Trails thoughts **link to** `codev/` artifacts — they don't duplicate content.
 
 - Use `source_type: observation` with tags like `["spir", "status", "phase-N"]`
 - Content is a broadcast: "Phase 0 Complete — see `codev/reviews/0-repo-separation.md`"
@@ -300,7 +300,7 @@ uv run pytest -v
 uv run pytest tests/test_tools.py -v
 
 # Run with coverage
-uv run pytest --cov=fava_trail
+uv run pytest --cov=fava_trails
 ```
 
 ## SPIR Protocol

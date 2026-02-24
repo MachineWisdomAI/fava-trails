@@ -1,4 +1,4 @@
-# FAVA Trail 🫛👣
+# FAVA Trails 🫛👣
 
 See [AGENTS.md](AGENTS.md) for agent instructions (MCP tools, scope discovery, thought lifecycle, conventions).
 

@@ -1,4 +1,4 @@
-# FAVA Trail
+# FAVA Trails
 
 **Federated Agents Versioned Audit Trail** — VCS-backed memory for AI agents via MCP.
 
@@ -140,7 +140,7 @@ fava-trails (this repo)        fava-trail-data (your repo)
     └── bootstrap-data-repo.sh            └── preferences/
 ```
 
-- **Engine** (`fava-trail`) — stateless MCP server, Apache-2.0
+- **Engine** (`fava-trails`) — stateless MCP server, Apache-2.0
 - **Fuel** (`fava-trail-data`) — your organization's trail data, private
 
 ## Configuration

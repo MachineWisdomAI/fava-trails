@@ -1,12 +1,12 @@
-# Using FAVA Trail
+# Using FAVA Trails
 
-Canonical usage instructions for AI agents using FAVA Trail MCP tools. Other docs reference this file — keep it up to date.
+Canonical usage instructions for AI agents using FAVA Trailss MCP tools. Other docs reference this file — keep it up to date.
 
 > **Auto-injected:** Core guidance from this file is automatically injected via the MCP server's `instructions` field at session init — no manual setup required. The full version below is also available on-demand via the `get_usage_guide` tool. This file is the canonical source for both.
 
 ## Scope Discovery (Three-Layer)
 
-Every FAVA Trail tool call requires a `trail_name` parameter — a slash-separated scope path (e.g. `mwai/eng/fava-trails`). Three sources are checked in priority order:
+Every FAVA Trails tool call requires a `trail_name` parameter — a slash-separated scope path (e.g. `mwai/eng/fava-trails`). Three sources are checked in priority order:
 
 | Priority | Source | Set where | Purpose |
 |----------|--------|-----------|---------|
@@ -35,7 +35,7 @@ scope: mwai/eng/fava-trails
 ## At Session Start
 
 1. **Determine your trail_name** — follow the three-layer resolution above
-2. **Check FAVA Trail first** — use `recall`:
+2. **Check FAVA Trails first** — use `recall`:
    ```
    recall(trail_name="<scope>", query="status", scope={"project": "<project-name>"})
    recall(trail_name="<scope>", query="decisions", scope={"project": "<project-name>"})
@@ -45,8 +45,8 @@ scope: mwai/eng/fava-trails
    ```
    recall(trail_name="<scope>", query="architecture", trail_names=["mwai/eng/*"])
    ```
-3. **If FAVA Trail has thoughts** — use them as your primary context. Decisions, observations, and preferences from other agents are all here.
-4. **If FAVA Trail is empty** — fall back to legacy files:
+3. **If FAVA Trails has thoughts** — use them as your primary context. Decisions, observations, and preferences from other agents are all here.
+4. **If FAVA Trails is empty** — fall back to legacy files:
    - `memory/shared/decisions.md`, `memory/shared/gotchas.md`
    - `memory/branches/<current-branch>/status.md`
    - `codev/branches/<current-branch>/status.md` (if `codev/` exists)
@@ -54,7 +54,7 @@ scope: mwai/eng/fava-trails
 
 ## During Work
 
-Save working thoughts to FAVA Trail as you go:
+Save working thoughts to FAVA Trails as you go:
 
 ```
 save_thought(
@@ -77,7 +77,7 @@ save_thought(
 2. **Save decisions** as `source_type: "decision"` and promote them
 3. **Save gotchas** as `source_type: "observation"` with `tags: ["gotcha"]` and promote them
 4. **Sync** — call `sync(trail_name="...")` to push your thoughts so other agents/machines can see them
-5. **Legacy fallback**: If FAVA Trail is unavailable, update `memory/branches/<branch>/status.md`
+5. **Legacy fallback**: If FAVA Trails is unavailable, update `memory/branches/<branch>/status.md`
 
 ## Agent Identity
 
@@ -132,7 +132,7 @@ If your work contradicts a persisted thought, use `supersede` to create a clear 
 
 ## SPIR Meta-Layer (Optional — codev methodology)
 
-When working under the SPIR protocol, FAVA Trail thoughts **link to** `codev/` artifacts — they don't duplicate content:
+When working under the SPIR protocol, FAVA Trailss thoughts **link to** `codev/` artifacts — they don't duplicate content:
 
 - Use `source_type: observation` with `tags: ["spir", "status", "phase-N"]`
 - Content broadcasts state changes: "Phase 1 Complete — see `codev/reviews/1-name.md`"

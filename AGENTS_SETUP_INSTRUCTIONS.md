@@ -1,6 +1,6 @@
-# Setting Up FAVA Trail
+# Setting Up FAVA Trails
 
-Instructions for creating and configuring a FAVA Trail data repo. For day-to-day usage (scope discovery, session protocol), see [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md).
+Instructions for creating and configuring a FAVA Trails data repo. For day-to-day usage (scope discovery, session protocol), see [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md).
 
 ## Prerequisites
 
