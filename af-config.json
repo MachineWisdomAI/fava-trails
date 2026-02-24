@@ -1,0 +1,1 @@
+{"shell":{"architect":"claude --dangerously-skip-permissions","builder":"claude --model sonnet --dangerously-skip-permissions","shell":"bash"}}
