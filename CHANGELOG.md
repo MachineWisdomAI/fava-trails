@@ -15,28 +15,6 @@ All notable changes to FAVA Trails are documented here.
 ### Changed
 - Version bumped to 0.4.0 (first public release post-rebrand)
 
-### Upgrading from fava-trail to fava-trails
-
-If you were using the previous `fava-trail` package:
-
-| Before | After |
-|--------|-------|
-| `pip install fava-trail` | `pip install fava-trails` |
-| `import fava_trail` | `import fava_trails` |
-| `fava-trail-server` (entry point) | `fava-trails-server` (entry point) |
-
-Update your MCP configuration:
-```json
-{
-  "mcpServers": {
-    "fava-trails": {
-      "command": "uv",
-      "args": ["run", "--directory", "/path/to/fava-trails", "fava-trails-server"]
-    }
-  }
-}
-```
-
 ---
 
 ## [0.3.3] — 2026-02-10
