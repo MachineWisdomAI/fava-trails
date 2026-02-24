@@ -9,7 +9,7 @@ All notable changes to FAVA Trails are documented here.
 - **OSS readiness**: Apache 2.0 license declared in pyproject.toml, CONTRIBUTING.md, CHANGELOG.md, SECURITY.md
 - **GitHub Actions CI**: Automated test + lint on every push and pull request
 - **Issue templates**: Bug report template with JJ/OS/Python version fields
-- **PyPI publishing**: Package now available via `pip install fava-trails`
+- **PyPI publishing workflow**: Added Trusted Publishing GitHub Actions workflow for tag-based releases (`pip install fava-trails` available after first publish)
 - **Full pyproject.toml metadata**: license, authors, readme, classifiers, project URLs
 
 ### Changed
