@@ -71,11 +71,17 @@ def sanitize_namespace(namespace: str) -> str:
 def get_data_repo_root() -> Path:
     """Get the FAVA Trails data repo root directory (monorepo root where .jj/ and .git/ live).
 
-    Checks FAVA_TRAILS_DATA_REPO first, falls back to deprecated FAVA_TRAIL_HOME.
+    Checks FAVA_TRAILS_DATA_REPO first, then deprecated FAVA_TRAIL_DATA_REPO, then FAVA_TRAIL_HOME.
     """
     data_repo = os.environ.get("FAVA_TRAILS_DATA_REPO")
     if data_repo:
         return Path(data_repo)
+    legacy_repo = os.environ.get("FAVA_TRAIL_DATA_REPO")
+    if legacy_repo:
+        logger.warning(
+            "FAVA_TRAIL_DATA_REPO is deprecated, use FAVA_TRAILS_DATA_REPO instead"
+        )
+        return Path(legacy_repo)
     legacy = os.environ.get("FAVA_TRAIL_HOME")
     if legacy:
         logger.warning(

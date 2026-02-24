@@ -17,6 +17,7 @@ from fava_trails.config import (
 def test_fava_home_default(monkeypatch, tmp_path):
     """Default home is ~/.fava-trail when no env var set."""
     monkeypatch.delenv("FAVA_TRAILS_DATA_REPO", raising=False)
+    monkeypatch.delenv("FAVA_TRAIL_DATA_REPO", raising=False)
     monkeypatch.delenv("FAVA_TRAIL_HOME", raising=False)
     home = get_data_repo_root()
     assert home == Path(os.path.expanduser("~/.fava-trail"))
@@ -33,15 +34,26 @@ def test_fava_home_env_override(monkeypatch, tmp_path):
 def test_fava_home_legacy_env_compat(monkeypatch, tmp_path):
     """Deprecated FAVA_TRAIL_HOME still works as fallback."""
     monkeypatch.delenv("FAVA_TRAILS_DATA_REPO", raising=False)
+    monkeypatch.delenv("FAVA_TRAIL_DATA_REPO", raising=False)
     monkeypatch.setenv("FAVA_TRAIL_HOME", str(tmp_path / "legacy"))
     home = get_data_repo_root()
     assert home == tmp_path / "legacy"
 
 
+def test_fava_home_old_env_var_compat(monkeypatch, tmp_path):
+    """Deprecated FAVA_TRAIL_DATA_REPO still works as fallback for existing deployments."""
+    monkeypatch.delenv("FAVA_TRAILS_DATA_REPO", raising=False)
+    monkeypatch.setenv("FAVA_TRAIL_DATA_REPO", str(tmp_path / "old-name"))
+    monkeypatch.delenv("FAVA_TRAIL_HOME", raising=False)
+    home = get_data_repo_root()
+    assert home == tmp_path / "old-name"
+
+
 def test_fava_home_new_env_takes_precedence(monkeypatch, tmp_path):
-    """FAVA_TRAILS_DATA_REPO takes precedence over deprecated FAVA_TRAIL_HOME."""
+    """FAVA_TRAILS_DATA_REPO takes precedence over all deprecated vars."""
     monkeypatch.setenv("FAVA_TRAILS_DATA_REPO", str(tmp_path / "new"))
-    monkeypatch.setenv("FAVA_TRAIL_HOME", str(tmp_path / "old"))
+    monkeypatch.setenv("FAVA_TRAIL_DATA_REPO", str(tmp_path / "old-name"))
+    monkeypatch.setenv("FAVA_TRAIL_HOME", str(tmp_path / "older"))
     home = get_data_repo_root()
     assert home == tmp_path / "new"
 
