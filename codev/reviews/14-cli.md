@@ -65,7 +65,7 @@ The CLI adds a **human-facing layer** to FAVA Trails alongside the existing MCP 
 
 ---
 
-## Lessons Learned
+## Lessons Learned Updates
 
 1. **Consult first, then resolve open questions** — Both open questions in the spec (init/init-data separation, doctor remote check) were cleanly resolved during consultation without bikeshedding in the implementation.
 
