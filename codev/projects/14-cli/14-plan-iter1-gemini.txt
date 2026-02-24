@@ -1,0 +1,27 @@
+# Plan 14 Consultation — Gemini 3 Pro (neutral)
+
+## Verdict: LGTM
+
+The two-phase plan is logically structured and phased appropriately. Phase 1 delivers core user value independently; Phase 2 adds the health-check and polish layer.
+
+## Analysis
+
+### Phase Ordering
+- Phase 1 (Core Commands) is correctly prioritized — `init` and `scope` commands address the immediate scope-discovery gap.
+- Phase 2 (Doctor + Polish) builds on Phase 1 without blocking it. This is good phasing.
+- pyproject.toml entry point registration (1a) must be the first step in Phase 1 — correctly positioned.
+
+### Dependencies
+- `init` and `scope set` both write to `.env` — the `.env` write helper should be a shared internal utility to avoid code duplication. This is implied by the plan but worth making explicit.
+- Phase 2 `doctor` depends on Phase 1's scope resolution and data repo helpers being in place — correctly sequenced.
+
+### Implementation Risks
+- `.env` write safety is the highest-risk step. Line-by-line parsing with in-memory model is the right approach.
+- JJ subprocess calls in `init-data` and `doctor` should use `subprocess.run(check=False, capture_output=True, text=True)` — explicit error handling required.
+
+### Test Coverage
+- Plan 1g covers all core scenarios. Tests use `tmp_path` (correct for isolation) and mock subprocess (correct for JJ calls).
+- Addition recommended: test for "duplicate FAVA_TRAIL_SCOPE in existing .env" scenario.
+
+## Confidence Score
+9/10 — Plan is solid and ready for implementation.
