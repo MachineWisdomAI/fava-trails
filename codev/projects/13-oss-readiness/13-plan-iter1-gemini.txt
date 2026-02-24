@@ -1,0 +1,21 @@
+# Plan 13 Consultation — Code Review (Gemini/GPT-5.1 via Pal MCP codereview)
+# Date: 2026-02-24
+# Tool: Pal MCP (mcp__pal__codereview, continuation_id: 9122a5a3-c633-4cb4-ac86-c075ea1673a2)
+
+## Overall Assessment
+Plan is clear, measurable, and well-ordered. Strong attention to first-run experience and baseline project hygiene. Main gaps are in release automation details and reproducibility assumptions.
+
+## Issues Found
+
+### HIGH
+- Release.yml underspecified for OIDC: `pypa/gh-action-pypi-publish` requires `permissions: id-token: write` — without this the Trusted Publishing step will fail with permission error.
+- `gh release create --notes-file CHANGELOG.md` publishes the ENTIRE changelog as release notes. Should be version-scoped (only v0.4.0 section).
+
+### MEDIUM
+- `uv sync` should be `uv sync --frozen` for deterministic CI (prevents dep drift across runs)
+- Issue template lacks `name`, `description`, default `labels`, and `required` field markings — affects usability for maintainers
+- gitleaks should note to run from a non-shallow clone (`git fetch --unshallow` if needed)
+
+### LOW
+- pyproject.toml already has `requires-python = ">=3.11"` — plan note to "add" is redundant
+- `__version__` in __init__.py is 0.1.0 — plan says to verify/update (correctly addressed)

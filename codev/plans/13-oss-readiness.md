@@ -74,13 +74,13 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --frozen
+      - name: Lint
+        run: uv run ruff check src/ tests/
       - name: Run tests
         run: uv run pytest -v
         env:
           JJ_CONFIG: /dev/null
-      - name: Lint
-        run: uv run ruff check src/ tests/
 ```
 
 Notes:
@@ -162,16 +162,45 @@ Per consultation consensus (all 3 models) and Desktop cross-agent review: PyPI p
 2. Verify wheel content: `python -m zipfile -l dist/fava_trails-0.4.0-py3-none-any.whl`
 3. First manual publish: `uv publish` (requires `UV_PUBLISH_TOKEN` env var with PyPI API token)
 4. Add `.github/workflows/release.yml` for future automated releases using Trusted Publishing (OIDC → PyPI):
-   - Triggers on `push` to tags matching `v*`
-   - Uses `pypa/gh-action-pypi-publish@release/v1` with `attestations: true`
+
+```yaml
+name: Release
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write  # REQUIRED for OIDC Trusted Publishing
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.11"
+      - run: uv build
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          attestations: true
+```
+
+Note: `id-token: write` is mandatory for OIDC Trusted Publishing — without it GitHub will not issue the OIDC token and the publish step will fail with a permissions error.
 
 ### 2c: GitHub Topics + Release (Post-Merge)
 
-Document `gh` commands to run after merge + repo rename:
+Create version-scoped release notes first, then create the release:
 ```bash
+# Extract only the v0.4.0 section from CHANGELOG.md
+sed -n '/^## \[0.4.0\]/,/^## \[/p' CHANGELOG.md | head -n -1 > /tmp/release-notes-v0.4.0.md
+
 gh repo edit --add-topic mcp,ai-agents,memory,jujutsu,python,mcp-server
-gh release create v0.4.0 --title "v0.4.0 — FAVA Trails" --notes-file CHANGELOG.md
+gh release create v0.4.0 --title "v0.4.0 — FAVA Trails" --notes-file /tmp/release-notes-v0.4.0.md
 ```
+
+Note: Use version-scoped notes (not entire CHANGELOG.md) — GitHub renders the full file as release notes otherwise, which is noisy.
 
 ---
 
