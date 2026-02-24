@@ -48,14 +48,23 @@ def _update_env_file(env_path: Path, key: str, value: str) -> None:
         for idx in reversed(key_indices[:-1]):
             lines.pop(idx)
 
-    env_path.write_text("".join(lines))
+    # Atomic write: write to temp file then replace, preventing corruption on interruption
+    tmp = env_path.with_suffix(env_path.suffix + ".tmp")
+    tmp.write_text("".join(lines))
+    tmp.replace(env_path)
 
 
 def _read_env_value(env_path: Path, key: str) -> str | None:
-    """Read a key's value from .env file. Returns None if not present."""
+    """Read a key's value from .env file. Returns None if not present.
+
+    Handles both `KEY=value` and `export KEY=value` formats.
+    """
     prefix = f"{key}="
     for line in _read_env_file(env_path):
         stripped = line.strip()
+        # Handle optional `export ` prefix
+        if stripped.startswith("export "):
+            stripped = stripped[len("export "):].lstrip()
         if stripped.startswith(prefix):
             return stripped[len(prefix):].strip()
     return None
@@ -167,8 +176,8 @@ def cmd_init(args: argparse.Namespace) -> int:
             print(f"  Run: fava-trails bootstrap <path>")
         else:
             print(f"Data repo:    {data_repo}")
-    except Exception:
-        print("Data repo not configured. Run: fava-trails bootstrap <path>")
+    except (OSError, ValueError) as e:
+        print(f"Data repo not configured ({e}). Run: fava-trails bootstrap <path>")
 
     print(f"Scope:        {scope}")
     return 0
@@ -193,6 +202,14 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     # Check if already bootstrapped
     if (target / ".jj").exists():
         print(f"Error: {target} already has a .jj/ directory. Already bootstrapped.", file=sys.stderr)
+        return 1
+
+    # Refuse to overwrite existing config files to prevent data loss
+    if (target / "config.yaml").exists():
+        print(f"Error: {target}/config.yaml already exists. Refusing to overwrite.", file=sys.stderr)
+        return 1
+    if (target / ".gitignore").exists():
+        print(f"Error: {target}/.gitignore already exists. Refusing to overwrite.", file=sys.stderr)
         return 1
 
     remote_url: str | None = getattr(args, "remote", None)
@@ -368,20 +385,11 @@ def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    if args.command is None:
+    if not hasattr(args, "func"):
         parser.print_help()
         sys.exit(0)
 
-    # For 'scope' with a subcommand, dispatch to subcommand func
-    if args.command == "scope" and getattr(args, "scope_command", None):
-        func = args.func
-    elif hasattr(args, "func"):
-        func = args.func
-    else:
-        parser.print_help()
-        sys.exit(0)
-
-    sys.exit(func(args))
+    sys.exit(args.func(args))
 
 
 if __name__ == "__main__":

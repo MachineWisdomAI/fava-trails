@@ -1,20 +1,28 @@
 id: '14'
 title: cli
 protocol: spir
-phase: plan
-plan_phases: []
-current_plan_phase: null
+phase: implement
+plan_phases:
+  - id: phase_1
+    title: Core Commands
+    status: in_progress
+  - id: phase_2
+    title: Doctor + Polish
+    status: pending
+current_plan_phase: phase_1
 gates:
   spec-approval:
     status: approved
     requested_at: '2026-02-24T17:47:47.850Z'
     approved_at: '2026-02-24T17:59:36.992Z'
   plan-approval:
-    status: pending
+    status: approved
+    requested_at: '2026-02-24T18:02:10.105Z'
+    approved_at: '2026-02-24T18:07:17.823Z'
   pr:
     status: pending
 iteration: 1
 build_complete: true
 history: []
 started_at: '2026-02-24T17:42:56.662Z'
-updated_at: '2026-02-24T18:00:23.626Z'
+updated_at: '2026-02-24T18:12:12.573Z'
