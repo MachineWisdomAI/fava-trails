@@ -65,7 +65,7 @@ Agents need to know which `trail_name` to pass on every tool call. Three sources
 
 The server never auto-applies a default scope. The agent always passes `trail_name` explicitly — these sources just tell it *what value to use*.
 
-For full scope discovery protocol, session start/end conventions, and agent identity rules, see [CLAUDE_USAGE_INSTRUCTIONS.md](CLAUDE_USAGE_INSTRUCTIONS.md).
+For full scope discovery protocol, session start/end conventions, and agent identity rules, see [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md).
 
 ### Global Config (`config.yaml`)
 

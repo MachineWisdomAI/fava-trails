@@ -153,6 +153,7 @@ uv run pytest --cov       # with coverage
 ## Docs
 
 - [CLAUDE.md](CLAUDE.md) — Agent-facing: MCP tools reference, data repo setup, push semantics
-- [CLAUDE_USAGE_INSTRUCTIONS.md](CLAUDE_USAGE_INSTRUCTIONS.md) — Canonical usage: scope discovery, session protocol, agent identity
+- [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md) — Canonical usage: scope discovery, session protocol, agent identity
+- [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) — Data repo setup, config reference, trust gate prompts
 - [AGENTS.md](AGENTS.md) — Agent onboarding cheat sheet: session start/end protocol
 - [docs/fava_trail_faq.md](docs/fava_trail_faq.md) — Detailed FAQ for framework authors and ML engineers
