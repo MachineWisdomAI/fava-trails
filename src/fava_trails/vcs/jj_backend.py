@@ -10,7 +10,6 @@ import asyncio
 import logging
 import shutil
 from pathlib import Path
-from typing import Optional
 
 from .base import (
     RebaseResult,
@@ -91,7 +90,7 @@ class JjBackend(VcsBackend):
     # --- Semantic translation helpers ---
 
     @staticmethod
-    def _parse_log_line(line: str) -> Optional[VcsChange]:
+    def _parse_log_line(line: str) -> VcsChange | None:
         """Parse a single jj log template output line into VcsChange."""
         # Template outputs: change_id SEP commit_id SEP description SEP author SEP timestamp SEP empty
         parts = line.split("\x1f")
@@ -308,7 +307,7 @@ class JjBackend(VcsBackend):
         return f"Restored to operation {op_id}"
 
     @staticmethod
-    def parse_snapshot_conflict(text: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    def parse_snapshot_conflict(text: str) -> tuple[str | None, str | None, str | None]:
         """Parse JJ snapshot-style conflict markers from file content.
 
         Returns (side_a, base, side_b). All None if unparseable.
@@ -330,7 +329,7 @@ class JjBackend(VcsBackend):
         side_a_parts: list[str] = []
         base_parts: list[str] = []
         side_b_parts: list[str] = []
-        current_section: Optional[str] = None
+        current_section: str | None = None
 
         for line in text.splitlines():
             if line.startswith("<<<<<<< Conflict"):
@@ -366,7 +365,7 @@ class JjBackend(VcsBackend):
             "\n".join(side_b_parts) if side_b_parts else None,
         )
 
-    async def get_conflict_content(self) -> dict[str, tuple[Optional[str], Optional[str], Optional[str]]]:
+    async def get_conflict_content(self) -> dict[str, tuple[str | None, str | None, str | None]]:
         """Read conflicted working copy files and parse snapshot-style conflict markers.
 
         Returns dict mapping file_path -> (side_a, base, side_b).
@@ -443,7 +442,7 @@ class JjBackend(VcsBackend):
 
         return conflicts
 
-    async def current_change(self) -> Optional[VcsChange]:
+    async def current_change(self) -> VcsChange | None:
         """Get current working change. Uses revset @, NOT path-scoped."""
         args = ["log", "--no-graph", "-T", self.LOG_TEMPLATE, "-n", "1", "-r", "@"]
         stdout, _ = await self._run(*args)

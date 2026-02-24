@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Optional
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 from ulid import ULID
 
 
-class SourceType(str, Enum):
+class SourceType(StrEnum):
     OBSERVATION = "observation"
     INFERENCE = "inference"
     USER_INPUT = "user_input"
@@ -18,7 +18,7 @@ class SourceType(str, Enum):
     DECISION = "decision"
 
 
-class ValidationStatus(str, Enum):
+class ValidationStatus(StrEnum):
     DRAFT = "draft"
     PROPOSED = "proposed"
     APPROVED = "approved"
@@ -27,7 +27,7 @@ class ValidationStatus(str, Enum):
     TOMBSTONED = "tombstoned"
 
 
-class RelationshipType(str, Enum):
+class RelationshipType(StrEnum):
     DEPENDS_ON = "DEPENDS_ON"
     REVISED_BY = "REVISED_BY"
     AUTHORED_BY = "AUTHORED_BY"
@@ -41,8 +41,8 @@ class Relationship(BaseModel):
 
 
 class ThoughtMetadata(BaseModel):
-    project: Optional[str] = None
-    branch: Optional[str] = None
+    project: str | None = None
+    branch: str | None = None
     tags: list[str] = Field(default_factory=list)
     extra: dict[str, Any] = Field(default_factory=dict)
 
@@ -52,20 +52,20 @@ class ThoughtFrontmatter(BaseModel):
 
     schema_version: int = 1
     thought_id: str = Field(default_factory=lambda: str(ULID()))
-    parent_id: Optional[str] = None
-    superseded_by: Optional[str] = None
+    parent_id: str | None = None
+    superseded_by: str | None = None
     agent_id: str = "unknown"
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     source_type: SourceType = SourceType.OBSERVATION
     validation_status: ValidationStatus = ValidationStatus.DRAFT
-    intent_ref: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    intent_ref: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     relationships: list[Relationship] = Field(default_factory=list)
     metadata: ThoughtMetadata = Field(default_factory=ThoughtMetadata)
 
     @field_validator("thought_id", "parent_id", "superseded_by", "intent_ref", mode="before")
     @classmethod
-    def validate_ulid_format(cls, v: Optional[str]) -> Optional[str]:
+    def validate_ulid_format(cls, v: str | None) -> str | None:
         if v is not None and v != "":
             # Accept any non-empty string — ULIDs are 26 chars but we don't enforce strictly
             # to allow flexibility during testing
@@ -157,7 +157,7 @@ class GlobalConfig(BaseModel):
     """Global FAVA Trail configuration."""
 
     trails_dir: str = "trails"
-    remote_url: Optional[str] = None
+    remote_url: str | None = None
     push_strategy: str = "manual"  # manual | immediate
     trust_gate: str = "llm-oneshot"  # llm-oneshot | human (future)
     openrouter_api_key_env: str = "OPENROUTER_API_KEY"

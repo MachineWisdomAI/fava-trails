@@ -1,7 +1,7 @@
 """Tests for JjBackend VCS operations."""
 
 import subprocess
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -20,7 +20,7 @@ async def test_init_trail(jj_backend):
 @pytest.mark.asyncio
 async def test_init_trail_idempotent(jj_backend):
     """Re-initializing should not fail."""
-    result = await jj_backend.init_trail()
+    await jj_backend.init_trail()
     # Trail dir already exists, should report that
     assert jj_backend.trail_path.exists()
 
@@ -134,7 +134,7 @@ async def test_log_does_not_show_other_trails(jj_backend):
     other_file = other_trail / "other.md"
     other_file.write_text("# Other trail")
     # Commit via JJ at repo root (bypassing the backend's commit_files assertion)
-    proc = subprocess.run(
+    subprocess.run(
         ["jj", "describe", "-m", "other trail commit"],
         cwd=str(jj_backend.repo_root), capture_output=True,
     )

@@ -718,7 +718,7 @@ async def test_resolve_scope_globs_double_star(nested_trail_managers, tmp_fava_h
 @pytest.mark.asyncio
 async def test_root_level_trail_warning(tmp_fava_home):
     """Writing to a root-level trail should succeed but include a warning."""
-    from fava_trails.server import _get_trail, _is_root_level
+    from fava_trails.server import _is_root_level
 
     assert _is_root_level("scratch")
     assert not _is_root_level("mw/scratch")
