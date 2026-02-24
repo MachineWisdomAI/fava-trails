@@ -156,7 +156,6 @@ class TrailConfig(BaseModel):
 class GlobalConfig(BaseModel):
     """Global FAVA Trail configuration."""
 
-    default_trail: str = "default"
     trails_dir: str = "trails"
     remote_url: Optional[str] = None
     push_strategy: str = "manual"  # manual | immediate
