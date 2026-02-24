@@ -1,0 +1,21 @@
+## PR Review — Codex (via Pal MCP codereview)
+
+APPROVED (with fixes applied)
+
+## Assessment
+
+Implementation quality is high. Package renaming, CLI updates, env-var compatibility shims, and documentation split are thorough and well tested.
+
+### Issues Found and Fixed
+
+**[LOW] "FAVA Trailss" double-s typo** in AGENTS.md and AGENTS_USAGE_INSTRUCTIONS.md. Fixed.
+**[LOW] README.md** cross-machine sync section still said "FAVA Trail". Fixed.
+**[LOW] server.py** runtime strings (usage guide header, tool description, startup log) still said "FAVA Trail". Fixed.
+**[LOW] config.py docstring** scope path example updated.
+
+### Test Coverage
+- 128 tests pass
+- test_fava_home_old_env_var_compat verifies FAVA_TRAIL_DATA_REPO shim
+- Priority chain: FAVA_TRAILS_DATA_REPO > FAVA_TRAIL_DATA_REPO (deprecated) > FAVA_TRAIL_HOME (legacy) > default
+
+APPROVED.
