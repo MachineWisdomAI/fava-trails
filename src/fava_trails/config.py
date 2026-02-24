@@ -33,7 +33,7 @@ VALID_NAMESPACES = frozenset({
 def sanitize_scope_path(name: str) -> str:
     """Validate scope path: slash-separated segments, each a safe slug.
 
-    Accepts both single-segment ('default') and multi-segment ('mw/eng/fava-trail') paths.
+    Accepts both single-segment ('default') and multi-segment ('mw/eng/fava-trails') paths.
     Rejects path traversal attempts (.., \\) and invalid characters.
     """
     if not name:

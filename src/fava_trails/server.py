@@ -48,7 +48,7 @@ def _build_server_instructions() -> str:
     Covers core behavioral guidance — scope discovery, session protocol,
     promotion mandate, agent identity, and recalled-thought safety.
     """
-    return """## FAVA Trail — Core Usage Guide
+    return """## FAVA Trails — Core Usage Guide
 
 ### Scope Discovery
 Every tool call requires `trail_name` — a slash-separated scope path (e.g. `mw/eng/my-project`). Resolve it in priority order:
@@ -431,7 +431,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "get_usage_guide",
-        "description": "Returns the full FAVA Trail usage guide for agents. Call once at session start for detailed protocol, examples, and trust calibration guidance. Zero cost until called.",
+        "description": "Returns the full FAVA Trails usage guide for agents. Call once at session start for detailed protocol, examples, and trust calibration guidance. Zero cost until called.",
         "inputSchema": {
             "type": "object",
             "properties": {},
@@ -459,7 +459,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 
 @server.list_tools()
 async def handle_list_tools() -> list[Tool]:
-    """List all FAVA Trail tools."""
+    """List all FAVA Trails tools."""
     return [
         Tool(
             name=td["name"],
@@ -629,7 +629,7 @@ def run():
         ensure_data_repo_root()
         await _init_server()
 
-        logger.info("FAVA Trail MCP Server starting...")
+        logger.info("FAVA Trails MCP Server starting...")
         logger.info(f"Tools: {len(TOOL_DEFINITIONS)}")
 
         async with stdio_server() as (read_stream, write_stream):
