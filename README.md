@@ -123,7 +123,7 @@ jj bookmark set main -r @-
 jj git push --bookmark main
 ```
 
-**NEVER use `git push origin main`** after JJ colocates — it misses thought commits. See CLAUDE.md "Pushing to Remote" for why.
+**NEVER use `git push origin main`** after JJ colocates — it misses thought commits. See [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md#pushing-to-remote) for the correct protocol.
 
 ## Architecture
 
@@ -143,6 +143,29 @@ fava-trail (this repo)         fava-trail-data (your repo)
 - **Engine** (`fava-trail`) — stateless MCP server, Apache-2.0
 - **Fuel** (`fava-trail-data`) — your organization's trail data, private
 
+## Configuration
+
+Environment variables:
+
+| Variable | Read by | Purpose | Default |
+|----------|---------|---------|---------|
+| `FAVA_TRAILS_DATA_REPO` | Server | Root directory for trail data (monorepo root) | `~/.fava-trail` |
+| `FAVA_TRAILS_DIR` | Server | Override trails directory location (absolute path) | `$FAVA_TRAILS_DATA_REPO/trails` |
+| `FAVA_TRAIL_SCOPE_HINT` | Server | Broad scope hint baked into tool descriptions | *(none)* |
+| `FAVA_TRAIL_SCOPE` | Agent | Project-specific scope from `.env` file | *(none)* |
+
+The server reads `$FAVA_TRAILS_DATA_REPO/config.yaml` for global settings. Minimal `config.yaml`:
+
+```yaml
+trails_dir: trails          # relative to FAVA_TRAILS_DATA_REPO
+remote_url: null            # git remote URL (optional)
+push_strategy: manual       # manual | immediate
+```
+
+When `push_strategy: immediate`, the server auto-pushes after every successful write. Push failures are non-fatal.
+
+See [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) for full config reference including trust gate and per-trail overrides.
+
 ## Development
 
 ```bash
@@ -152,8 +175,7 @@ uv run pytest --cov       # with coverage
 
 ## Docs
 
-- [CLAUDE.md](CLAUDE.md) — Agent-facing: MCP tools reference, data repo setup, push semantics
+- [AGENTS.md](AGENTS.md) — Agent-facing: MCP tools reference, scope discovery, thought lifecycle, agent conventions
 - [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md) — Canonical usage: scope discovery, session protocol, agent identity
 - [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) — Data repo setup, config reference, trust gate prompts
-- [AGENTS.md](AGENTS.md) — Agent onboarding cheat sheet: session start/end protocol
 - [docs/fava_trail_faq.md](docs/fava_trail_faq.md) — Detailed FAQ for framework authors and ML engineers
