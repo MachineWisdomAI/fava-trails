@@ -1,6 +1,6 @@
 # Using FAVA Trails
 
-Canonical usage instructions for AI agents using FAVA Trailss MCP tools. Other docs reference this file — keep it up to date.
+Canonical usage instructions for AI agents using FAVA Trails MCP tools. Other docs reference this file — keep it up to date.
 
 > **Auto-injected:** Core guidance from this file is automatically injected via the MCP server's `instructions` field at session init — no manual setup required. The full version below is also available on-demand via the `get_usage_guide` tool. This file is the canonical source for both.
 
@@ -132,7 +132,7 @@ If your work contradicts a persisted thought, use `supersede` to create a clear 
 
 ## SPIR Meta-Layer (Optional — codev methodology)
 
-When working under the SPIR protocol, FAVA Trailss thoughts **link to** `codev/` artifacts — they don't duplicate content:
+When working under the SPIR protocol, FAVA Trails thoughts **link to** `codev/` artifacts — they don't duplicate content:
 
 - Use `source_type: observation` with `tags: ["spir", "status", "phase-N"]`
 - Content broadcasts state changes: "Phase 1 Complete — see `codev/reviews/1-name.md`"

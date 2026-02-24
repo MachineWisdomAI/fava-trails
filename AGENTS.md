@@ -1,6 +1,6 @@
 # FAVA Trails — Agent Reference 🫛👣
 
-Agent-facing reference for FAVA Trailss MCP tools. For project setup and configuration, see [README.md](README.md). For the full session protocol with examples, see [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md).
+Agent-facing reference for FAVA Trails MCP tools. For project setup and configuration, see [README.md](README.md). For the full session protocol with examples, see [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md).
 
 ## Scope Discovery
 

@@ -86,7 +86,7 @@ recall(query="X")
 
 ## Cross-Machine Sync
 
-FAVA Trail uses git remotes for cross-machine sync. The bootstrap script sets `push_strategy: immediate` which auto-pushes after every write.
+FAVA Trails uses git remotes for cross-machine sync. The bootstrap script sets `push_strategy: immediate` which auto-pushes after every write.
 
 ### Setting up a second machine
 
