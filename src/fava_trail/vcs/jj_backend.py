@@ -503,7 +503,7 @@ class JjBackend(VcsBackend):
         return "Pushed to git remote"
 
     async def push(self) -> str:
-        """Push all bookmarks to remote.
+        """Push main bookmark to remote.
 
         Advances the 'main' bookmark to the latest committed change (@-)
         before pushing — necessary because JJ colocated mode keeps HEAD
@@ -515,7 +515,7 @@ class JjBackend(VcsBackend):
                 await self._run("bookmark", "set", self.DEFAULT_BOOKMARK, "-r", "@-")
             except JjError as e:
                 logger.warning(f"Could not advance main bookmark: {e}")
-            return await self._git_push()
+            return await self._git_push(bookmark=self.DEFAULT_BOOKMARK)
 
     async def try_push(self) -> dict:
         """Non-throwing push wrapper. Returns status dict.

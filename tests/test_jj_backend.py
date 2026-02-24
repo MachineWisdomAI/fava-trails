@@ -355,3 +355,31 @@ async def test_push_uses_default_bookmark_constant(jj_backend):
     bookmark_calls = [c for c in calls if c[0] == "bookmark" and "set" in c]
     assert len(bookmark_calls) == 1
     assert JjBackend.DEFAULT_BOOKMARK in bookmark_calls[0]
+
+
+@pytest.mark.asyncio
+async def test_push_uses_bookmark_flag_not_all(jj_backend):
+    """push() must use -b <bookmark> instead of --all to avoid pushing stale changes."""
+    from fava_trail.vcs.jj_backend import JjBackend
+
+    calls = []
+    original_run = jj_backend._run
+
+    async def tracking_run(*args, **kwargs):
+        calls.append(args)
+        return await original_run(*args, **kwargs)
+
+    with patch.object(jj_backend, "_run", side_effect=tracking_run):
+        try:
+            await jj_backend.push()
+        except Exception:
+            pass
+
+    push_calls = [c for c in calls if c[0] == "git" and "push" in c]
+    assert len(push_calls) == 1
+    push_args = push_calls[0]
+    assert "-b" in push_args, f"Expected -b flag in push args: {push_args}"
+    assert JjBackend.DEFAULT_BOOKMARK in push_args, (
+        f"Expected bookmark '{JjBackend.DEFAULT_BOOKMARK}' in push args: {push_args}"
+    )
+    assert "--all" not in push_args, f"--all should not be used: {push_args}"
