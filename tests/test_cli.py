@@ -18,6 +18,7 @@ from fava_trails.cli import (
     _write_project_yaml,
     build_parser,
     cmd_bootstrap,
+    cmd_doctor,
     cmd_init,
     cmd_scope,
     cmd_scope_list,
@@ -417,6 +418,110 @@ def test_cli_help():
     assert "init" in result.stdout
     assert "bootstrap" in result.stdout
     assert "scope" in result.stdout
+
+
+# ─── cmd_doctor ───────────────────────────────────────────────────────────────
+
+
+def _make_valid_data_repo(tmp_path: Path) -> Path:
+    """Create a minimal valid data repo structure."""
+    data_repo = tmp_path / "data-repo"
+    data_repo.mkdir()
+    (data_repo / "config.yaml").write_text("trails_dir: trails\n")
+    (data_repo / "trails").mkdir()
+    return data_repo
+
+
+def test_doctor_all_green(tmp_path, monkeypatch, capsys):
+    """doctor exits 0 when JJ, data repo, and scope are all configured."""
+    monkeypatch.chdir(tmp_path)
+    data_repo = _make_valid_data_repo(tmp_path)
+    (tmp_path / ".env").write_text(f"FAVA_TRAIL_SCOPE=mw/eng/test\n")
+
+    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
+        with patch("shutil.which", return_value="/usr/bin/jj"):
+            with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
+                mock_run.return_value.stdout = "jj 0.25.0\n"
+                rc = cmd_doctor(_make_args())
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "JJ:" in out
+    assert "Data repo:" in out
+    assert "Scope:" in out
+
+
+def test_doctor_missing_jj(tmp_path, monkeypatch, capsys):
+    """doctor exits 1 and suggests install when JJ is missing."""
+    monkeypatch.chdir(tmp_path)
+    data_repo = _make_valid_data_repo(tmp_path)
+    (tmp_path / ".env").write_text("FAVA_TRAIL_SCOPE=mw/eng/test\n")
+
+    fallback = Path.home() / ".local" / "bin" / "jj"
+    real_exists = Path.exists
+
+    def exists_side_effect(self):
+        if self == fallback:
+            return False
+        return real_exists(self)
+
+    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
+        with patch("shutil.which", return_value=None):
+            with patch.object(Path, "exists", exists_side_effect):
+                rc = cmd_doctor(_make_args())
+
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "NOT FOUND" in out
+    assert "install-jj.sh" in out
+
+
+def test_doctor_missing_data_repo(tmp_path, monkeypatch, capsys):
+    """doctor exits 1 and suggests bootstrap when data repo is absent."""
+    monkeypatch.chdir(tmp_path)
+    missing = tmp_path / "nonexistent"
+    (tmp_path / ".env").write_text("FAVA_TRAIL_SCOPE=mw/eng/test\n")
+
+    with patch("fava_trails.cli.get_data_repo_root", return_value=missing):
+        with patch("shutil.which", return_value="/usr/bin/jj"):
+            with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
+                mock_run.return_value.stdout = "jj 0.25.0\n"
+                rc = cmd_doctor(_make_args())
+
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "NOT FOUND" in out
+    assert "bootstrap" in out
+
+
+def test_doctor_missing_scope(tmp_path, monkeypatch, capsys):
+    """doctor exits 1 and suggests init when scope is not configured."""
+    monkeypatch.chdir(tmp_path)
+    data_repo = _make_valid_data_repo(tmp_path)
+
+    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
+        with patch("shutil.which", return_value="/usr/bin/jj"):
+            with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
+                mock_run.return_value.stdout = "jj 0.25.0\n"
+                rc = cmd_doctor(_make_args())
+
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "NOT CONFIGURED" in out
+    assert "fava-trails init" in out
+
+
+def test_doctor_in_help(capsys):
+    """doctor subcommand appears in fava-trails --help output."""
+    result = subprocess.run(
+        [sys.executable, "-m", "fava_trails.cli", "--help"],
+        capture_output=True,
+        text=True,
+    )
+    assert "doctor" in result.stdout
+
+
+# ─── Additional bootstrap tests ───────────────────────────────────────────────
 
 
 def test_bootstrap_refuses_existing_config(tmp_path):
