@@ -15,12 +15,12 @@ from fava_trails.config import (
 
 
 def test_fava_home_default(monkeypatch, tmp_path):
-    """Default home is ~/.fava-trail when no env var set."""
+    """Default home is ~/.fava-trails when no env var set."""
     monkeypatch.delenv("FAVA_TRAILS_DATA_REPO", raising=False)
     monkeypatch.delenv("FAVA_TRAIL_DATA_REPO", raising=False)
     monkeypatch.delenv("FAVA_TRAIL_HOME", raising=False)
     home = get_data_repo_root()
-    assert home == Path(os.path.expanduser("~/.fava-trail"))
+    assert home == Path(os.path.expanduser("~/.fava-trails"))
 
 
 def test_fava_home_env_override(monkeypatch, tmp_path):

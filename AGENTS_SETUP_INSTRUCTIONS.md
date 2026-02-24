@@ -24,10 +24,10 @@ The data repo is a plain git repository that the MCP server JJ-colocates on firs
 
 ```bash
 # 1. Create an empty repo on GitHub, then clone it
-git clone https://github.com/YOUR-ORG/fava-trail-data.git
+git clone https://github.com/YOUR-ORG/fava-trails-data.git
 
 # 2. Run the bootstrap script
-bash scripts/bootstrap-data-repo.sh fava-trail-data
+bash scripts/bootstrap-data-repo.sh fava-trails-data
 ```
 
 The script validates the repo is empty, creates `config.yaml` + `.gitignore`, commits via git (once), initializes JJ colocated mode, and tracks the remote bookmark.
@@ -35,8 +35,8 @@ The script validates the repo is empty, creates `config.yaml` + `.gitignore`, co
 ### Manual
 
 ```bash
-git clone https://github.com/YOUR-ORG/fava-trail-data.git
-cd fava-trail-data
+git clone https://github.com/YOUR-ORG/fava-trails-data.git
+cd fava-trails-data
 ```
 
 Create exactly **two files** — nothing else:
@@ -44,7 +44,7 @@ Create exactly **two files** — nothing else:
 **`config.yaml`:**
 ```yaml
 trails_dir: trails
-remote_url: "https://github.com/YOUR-ORG/fava-trail-data.git"
+remote_url: "https://github.com/YOUR-ORG/fava-trails-data.git"
 push_strategy: immediate
 ```
 
@@ -63,7 +63,7 @@ Do not add a README, CLAUDE.md, Makefile, or any other files. The MCP server cre
 ```bash
 # Commit and push (git — bootstrap only, LAST time you use git push)
 git add config.yaml .gitignore
-git commit -m "Bootstrap fava-trail-data"
+git commit -m "Bootstrap fava-trails-data"
 git push origin main
 
 # Initialize JJ colocated mode
@@ -81,10 +81,10 @@ Register the MCP server (see [CLAUDE.md](CLAUDE.md#mcp-registration)), then use 
 
 ```bash
 # 1. Clone the SAME data repo
-git clone https://github.com/YOUR-ORG/fava-trail-data.git
+git clone https://github.com/YOUR-ORG/fava-trails-data.git
 
 # 2. Initialize JJ colocated mode + track remote
-cd fava-trail-data
+cd fava-trails-data
 jj git init --colocate
 jj bookmark track main@origin
 
@@ -179,7 +179,7 @@ Prompt files are cached in memory at server startup and never re-read during a s
 
 **If you need to push manually:**
 ```bash
-# From within fava-trail-data:
+# From within fava-trails-data:
 jj bookmark set main -r @-     # advance main bookmark to latest committed change
 jj git push --bookmark main    # push to remote
 ```

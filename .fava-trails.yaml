@@ -1,0 +1,4 @@
+# Committed project scope for FAVA Trails.
+# Agents read this to determine their trail_name on every tool call.
+# Override per-worktree via FAVA_TRAILS_SCOPE in .env (gitignored).
+scope: mwai/eng/fava-trails

@@ -28,8 +28,8 @@ class TestServerInstructions:
         """Instructions must cover scope discovery protocol."""
         instructions = _build_server_instructions()
         assert "Scope Discovery" in instructions
-        assert "FAVA_TRAIL_SCOPE" in instructions
-        assert ".fava-trail.yaml" in instructions
+        assert "FAVA_TRAILS_SCOPE" in instructions
+        assert ".fava-trails.yaml" in instructions
 
     def test_instructions_contain_session_protocol(self):
         """Instructions must cover session start protocol."""

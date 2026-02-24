@@ -8,11 +8,11 @@ Every tool call requires `trail_name` — a slash-separated scope path (e.g. `mw
 
 | Priority | Source | Set where |
 |----------|--------|-----------|
-| 1 | `FAVA_TRAIL_SCOPE` env var | `.env` (gitignored) — per-worktree override |
-| 2 | `.fava-trail.yaml` `scope` | Project root (committed) — default for all clones |
-| 3 | `FAVA_TRAIL_SCOPE_HINT` | MCP server `env` block — broad fallback |
+| 1 | `FAVA_TRAILS_SCOPE` env var | `.env` (gitignored) — per-worktree override |
+| 2 | `.fava-trails.yaml` `scope` | Project root (committed) — default for all clones |
+| 3 | `FAVA_TRAILS_SCOPE_HINT` | MCP server `env` block — broad fallback |
 
-**If `FAVA_TRAIL_SCOPE` is not set** but `.fava-trail.yaml` exists, read the `scope` field and write it to `.env` as `FAVA_TRAIL_SCOPE=<scope>`. If neither exists, use the scope hint from tool descriptions and prompt the user to create a `.fava-trail.yaml`.
+**If `FAVA_TRAILS_SCOPE` is not set** but `.fava-trails.yaml` exists, read the `scope` field and write it to `.env` as `FAVA_TRAILS_SCOPE=<scope>`. If neither exists, use the scope hint from tool descriptions and prompt the user to create a `.fava-trails.yaml`.
 
 See [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md) for full scope discovery protocol with examples.
 

@@ -42,7 +42,7 @@ Update your MCP configuration:
 ## [0.3.3] — 2026-02-10
 
 ### Fixed
-- Scope discovery reliability: `.fava-trail.yaml` now correctly propagates scope to `.env` for all agents in a project
+- Scope discovery reliability: `.fava-trails.yaml` now correctly propagates scope to `.env` for all agents in a project
 - CLI spec improvements for `fava-trails-server` startup behavior
 
 ---

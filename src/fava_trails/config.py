@@ -13,7 +13,7 @@ from .models import GlobalConfig, TrailConfig
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_FAVA_HOME = os.path.expanduser("~/.fava-trail")
+DEFAULT_FAVA_HOME = os.path.expanduser("~/.fava-trails")
 
 # Scope path segment: alphanumeric + hyphens/dots/underscores, starts with alphanumeric
 _SCOPE_SEGMENT_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
@@ -133,7 +133,7 @@ def load_trail_config(trail_name: str) -> TrailConfig:
     """Load trail-specific configuration."""
     safe_name = sanitize_trail_name(trail_name)
     trail_dir = get_trails_dir() / safe_name
-    config_path = trail_dir / ".fava-trail.yaml"
+    config_path = trail_dir / ".fava-trails.yaml"
     if config_path.exists():
         with open(config_path) as f:
             data = yaml.safe_load(f) or {}
@@ -146,7 +146,7 @@ def save_trail_config(trail_name: str, config: TrailConfig) -> None:
     """Save trail-specific configuration."""
     safe_name = sanitize_trail_name(trail_name)
     trail_dir = get_trails_dir() / safe_name
-    config_path = trail_dir / ".fava-trail.yaml"
+    config_path = trail_dir / ".fava-trails.yaml"
     trail_dir.mkdir(parents=True, exist_ok=True)
     with open(config_path, "w") as f:
         yaml.dump(config.model_dump(), f, default_flow_style=False, sort_keys=False)
@@ -192,7 +192,7 @@ def ensure_data_repo_root() -> Path:
 def get_trust_gate_policy(trail_name: str) -> str:
     """Resolve the trust gate policy for a given trail.
 
-    Priority: trail-level .fava-trail.yaml > global config.yaml > default ("llm-oneshot").
+    Priority: trail-level .fava-trails.yaml > global config.yaml > default ("llm-oneshot").
     """
     trail_config = load_trail_config(trail_name)
     if trail_config.trust_gate_policy != "llm-oneshot":
