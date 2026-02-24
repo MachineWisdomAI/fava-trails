@@ -80,7 +80,7 @@
       },
       "checks": {
         "build": {
-          "command": "uv run python -c 'import fava_trail; print(\"ok\")'",
+          "command": "uv run python -c 'import fava_trails; print(\"ok\")'",
           "description": "Verify fava_trail package imports successfully",
           "on_fail": "retry",
           "max_retries": 2
@@ -122,7 +122,7 @@
           "description": "PR must be created before signaling completion"
         },
         "build": {
-          "command": "uv run python -c 'import fava_trail; print(\"ok\")'",
+          "command": "uv run python -c 'import fava_trails; print(\"ok\")'",
           "description": "Verify fava_trail package imports successfully"
         },
         "tests": {
@@ -153,7 +153,7 @@
     }
   },
   "phase_completion": {
-    "build_succeeds": "uv run python -c 'import fava_trail; print(\"ok\")' 2>&1",
+    "build_succeeds": "uv run python -c 'import fava_trails; print(\"ok\")' 2>&1",
     "tests_pass": "uv run pytest tests/ -v --tb=short 2>&1",
     "commit_has_code": "git log -1 --name-only --pretty=format: | grep -qE '\\.(ts|tsx|js|jsx|py|go|rs)$'"
   },
@@ -165,7 +165,7 @@
       "parallel": true
     },
     "checks": {
-      "build": { "command": "uv run python -c 'import fava_trail; print(\"ok\")'" },
+      "build": { "command": "uv run python -c 'import fava_trails; print(\"ok\")'" },
       "test": { "command": "uv run pytest tests/ -v --tb=short" }
     }
   }
