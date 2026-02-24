@@ -1,0 +1,18 @@
+## Phase 2 Review — Gemini (via Pal MCP codereview)
+
+APPROVED (with one fix applied)
+
+## Assessment
+
+Package rename is complete and correct. All 127 tests pass.
+
+### Issue Found and Fixed
+**[HIGH] FAVA_TRAIL_DATA_REPO backwards compatibility**: The old env var was silently dropped. Existing deployments would fall back to ~/.fava-trail without warning.
+→ **Fixed**: Added FAVA_TRAIL_DATA_REPO deprecation shim in config.py, emits logger.warning. New test test_fava_home_old_env_var_compat verifies this. Priority order: FAVA_TRAILS_DATA_REPO > FAVA_TRAIL_DATA_REPO > FAVA_TRAIL_HOME > default.
+
+### Deferred to Phase 3
+- README quickstart examples still show fava-trail-server (old CLI name) — Phase 3 external refs
+- README architecture diagram shows fava_trail/ (old path) — Phase 3 external refs
+- server.py scope examples show mw/eng/fava-trail — Phase 3 cosmetic cleanup
+
+APPROVED for phase advancement.

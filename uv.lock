@@ -193,8 +193,8 @@ wheels = [
 ]
 
 [[package]]
-name = "fava-trail"
-version = "0.1.0"
+name = "fava-trails"
+version = "0.3.3"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },

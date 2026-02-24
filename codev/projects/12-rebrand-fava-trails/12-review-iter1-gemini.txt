@@ -1,0 +1,24 @@
+## PR Review — Gemini (via Pal MCP codereview)
+
+APPROVED (with fixes applied)
+
+## Assessment
+
+All three phases are complete. Package rename, env var rename, doc split, and external references are thorough.
+
+### Issues Found and Fixed
+
+**[LOW] "FAVA Trailss" double-s typo** in AGENTS.md:3 and AGENTS_USAGE_INSTRUCTIONS.md:3,135 — caused by double sed pass. Fixed.
+
+**[LOW] README.md cross-machine section** — "FAVA Trail uses git remotes" → "FAVA Trails uses git remotes". Fixed.
+
+**[LOW] server.py** — usage guide return string, tool description, docstring, startup log still said "FAVA Trail". Fixed to "FAVA Trails".
+
+**[LOW] config.py docstring example** — `mw/eng/fava-trail` → `mw/eng/fava-trails`. Fixed.
+
+### Positive Aspects
+- Backwards-compat shim for FAVA_TRAIL_DATA_REPO is thoughtfully implemented with warnings and tests
+- Documentation split (README vs AGENTS vs setup/usage guides) is clean and avoids duplication
+- 128 tests with explicit compat coverage
+
+APPROVED for merge.

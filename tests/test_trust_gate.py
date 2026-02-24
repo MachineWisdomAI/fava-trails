@@ -25,8 +25,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from fava_trail.models import SourceType, ThoughtFrontmatter, ThoughtMetadata, ThoughtRecord, ValidationStatus
-from fava_trail.trust_gate import (
+from fava_trails.models import SourceType, ThoughtFrontmatter, ThoughtMetadata, ThoughtRecord, ValidationStatus
+from fava_trails.trust_gate import (
     TrustGateConfigError,
     TrustGatePromptCache,
     TrustResult,
@@ -63,7 +63,7 @@ def prompt_cache(tmp_fava_home):
 @pytest.fixture
 def sample_thought():
     """Create a sample ThoughtRecord for testing."""
-    from fava_trail.models import ThoughtFrontmatter, ThoughtMetadata, ThoughtRecord
+    from fava_trails.models import ThoughtFrontmatter, ThoughtMetadata, ThoughtRecord
 
     return ThoughtRecord(
         frontmatter=ThoughtFrontmatter(
@@ -107,7 +107,7 @@ async def test_review_thought_approve(sample_thought):
     """LLM-oneshot approves → TrustResult(verdict="approve")."""
     mock_response = _make_openrouter_response("approve", "High quality decision.", 0.95)
 
-    with patch("fava_trail.trust_gate._call_openrouter", new_callable=AsyncMock) as mock_call:
+    with patch("fava_trails.trust_gate._call_openrouter", new_callable=AsyncMock) as mock_call:
         mock_call.return_value = mock_response
 
         result = await review_thought(
@@ -132,7 +132,7 @@ async def test_review_thought_reject(sample_thought):
     """LLM-oneshot rejects → TrustResult(verdict="reject") with reasoning."""
     mock_response = _make_openrouter_response("reject", "Contains emotional language.", 0.85)
 
-    with patch("fava_trail.trust_gate._call_openrouter", new_callable=AsyncMock) as mock_call:
+    with patch("fava_trails.trust_gate._call_openrouter", new_callable=AsyncMock) as mock_call:
         mock_call.return_value = mock_response
 
         result = await review_thought(
@@ -356,7 +356,7 @@ async def test_provenance_fields_populated(trail_manager, tmp_fava_home):
 @pytest.mark.asyncio
 async def test_fail_closed_network_error(sample_thought):
     """Network error → TrustResult(verdict="error")."""
-    with patch("fava_trail.trust_gate._call_openrouter", new_callable=AsyncMock) as mock_call:
+    with patch("fava_trails.trust_gate._call_openrouter", new_callable=AsyncMock) as mock_call:
         mock_call.side_effect = httpx.ConnectError("Connection refused")
 
         result = await review_thought(
@@ -373,7 +373,7 @@ async def test_fail_closed_network_error(sample_thought):
 @pytest.mark.asyncio
 async def test_fail_closed_timeout(sample_thought):
     """Timeout → TrustResult(verdict="error")."""
-    with patch("fava_trail.trust_gate._call_openrouter", new_callable=AsyncMock) as mock_call:
+    with patch("fava_trails.trust_gate._call_openrouter", new_callable=AsyncMock) as mock_call:
         mock_call.side_effect = httpx.TimeoutException("Request timed out")
 
         result = await review_thought(
@@ -394,7 +394,7 @@ async def test_fail_closed_http_error(sample_thought):
     mock_response.status_code = 500
     mock_response.text = "Internal Server Error"
 
-    with patch("fava_trail.trust_gate._call_openrouter", new_callable=AsyncMock) as mock_call:
+    with patch("fava_trails.trust_gate._call_openrouter", new_callable=AsyncMock) as mock_call:
         mock_call.side_effect = httpx.HTTPStatusError(
             "Server Error",
             request=MagicMock(),
@@ -443,7 +443,7 @@ async def test_fail_closed_invalid_json(sample_thought):
     """Invalid JSON response → error after 1 retry (fail-closed, infrastructure failure)."""
     invalid_response = {"choices": [{"message": {"content": "not valid json at all"}}]}
 
-    with patch("fava_trail.trust_gate._call_openrouter", new_callable=AsyncMock) as mock_call:
+    with patch("fava_trails.trust_gate._call_openrouter", new_callable=AsyncMock) as mock_call:
         mock_call.return_value = invalid_response
 
         result = await review_thought(
@@ -469,7 +469,7 @@ async def test_fail_closed_missing_verdict_field(sample_thought):
         "choices": [{"message": {"content": json.dumps({"reasoning": "looks good"})}}]
     }
 
-    with patch("fava_trail.trust_gate._call_openrouter", new_callable=AsyncMock) as mock_call:
+    with patch("fava_trails.trust_gate._call_openrouter", new_callable=AsyncMock) as mock_call:
         mock_call.return_value = bad_response
 
         result = await review_thought(
@@ -538,7 +538,7 @@ async def test_structured_output_parameters(sample_thought):
     """OpenRouter should be called with temp=0 and response_format json_object."""
     mock_response = _make_openrouter_response("approve", "Good.", 0.9)
 
-    with patch("fava_trail.trust_gate.httpx.AsyncClient") as mock_client_cls:
+    with patch("fava_trails.trust_gate.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -548,7 +548,7 @@ async def test_structured_output_parameters(sample_thought):
         mock_http_response.raise_for_status = MagicMock()
         mock_client.post.return_value = mock_http_response
 
-        from fava_trail.trust_gate import _call_openrouter
+        from fava_trails.trust_gate import _call_openrouter
         await _call_openrouter(
             system_msg="test prompt",
             user_msg="test thought",

@@ -1,0 +1,24 @@
+## Phase 1 Review — Gemini (via Pal MCP codereview)
+
+APPROVED (with one fix applied)
+
+## Assessment
+
+The documentation split is architecturally sound. AGENTS.md is comprehensive and serves as a strong context-injection file for agents. CLAUDE.md minimal stub pattern is correct and efficient.
+
+### Issue Found and Fixed
+**[HIGH] README.md env var inconsistency**: The JSON examples used `FAVA_TRAIL_DATA_REPO` (old singular) while the new config table used `FAVA_TRAILS_DATA_REPO` (new plural per architect spec). This would cause user confusion.
+→ **Fixed**: All occurrences in README.md updated to `FAVA_TRAILS_DATA_REPO`.
+
+### Notes on FAVA_TRAILS_DIR vs FAVA_TRAIL_SCOPE
+These use different prefixes intentionally per architect specification:
+- `FAVA_TRAILS_DIR` — existing variable name (already plural)
+- `FAVA_TRAIL_SCOPE` — singular confirmed by architect ("this is the TRAIL for the particular agent")
+Not a bug; intentional design.
+
+### Quality Highlights
+- Clear Engine/Fuel split metaphor maintained
+- AGENTS.md defines behavior protocol, not just tool list
+- No content duplication between files
+
+APPROVED for phase advancement.

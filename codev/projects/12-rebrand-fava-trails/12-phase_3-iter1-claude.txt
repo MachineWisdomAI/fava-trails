@@ -1,0 +1,19 @@
+## Phase 3 Review — Claude Synthesis
+
+APPROVED
+
+## Fix Applied
+
+Product name "FAVA Trail" → "FAVA Trails" applied across all 5 user-facing doc files
+(README.md, AGENTS.md, AGENTS_SETUP_INSTRUCTIONS.md, AGENTS_USAGE_INSTRUCTIONS.md, CLAUDE.md)
+in headings and body text. Scope examples in AGENTS.md updated to mw/eng/fava-trails.
+pytest coverage target fixed from fava_trail → fava_trails (functional breakage).
+
+## Phase 3 Complete
+
+All three phases of spec 12 are now complete:
+- Phase 1: Documentation split (README human-facing, AGENTS.md agent reference, CLAUDE.md stub)
+- Phase 2: Package rename fava_trail → fava_trails, CLI fava-trail-server → fava-trails-server, FAVA_TRAIL_DATA_REPO → FAVA_TRAILS_DATA_REPO with backwards-compat shim
+- Phase 3: External references updated — MCP registration examples, architecture diagram, doc headings/body text, scope examples, dev commands
+
+128 tests pass. Ready for PR.

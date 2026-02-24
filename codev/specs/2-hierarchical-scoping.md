@@ -1,6 +1,6 @@
 # Spec 2: Hierarchical Scoping
 
-**Status:** in-progress
+**Status:** integrated
 **Source:** Claude Desktop handoff spec + code analysis
 **Prerequisites:** Spec 1b (storage substrate amendments) — integrated
 **Supersedes:** Old Spec 9 (codev integration file watcher — dropped)

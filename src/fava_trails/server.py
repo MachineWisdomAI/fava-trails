@@ -1,4 +1,4 @@
-"""FAVA Trail MCP Server — Federated Agents Versioned Audit Trail.
+"""FAVA Trails MCP Server 🫛👣 — Federated Agents Versioned Audit Trail.
 
 Provides 16 MCP tools for versioned agent memory via JJ (Jujutsu) VCS.
 All tool responses are token-optimized JSON summaries — no raw VCS output.
@@ -48,7 +48,7 @@ def _build_server_instructions() -> str:
     Covers core behavioral guidance — scope discovery, session protocol,
     promotion mandate, agent identity, and recalled-thought safety.
     """
-    return """## FAVA Trail — Core Usage Guide
+    return """## FAVA Trails — Core Usage Guide
 
 ### Scope Discovery
 Every tool call requires `trail_name` — a slash-separated scope path (e.g. `mw/eng/my-project`). Resolve it in priority order:
@@ -99,14 +99,14 @@ def _load_usage_guide() -> str:
     """
     # Try importlib.resources (works when installed as package)
     try:
-        ref = importlib.resources.files("fava_trail") / "AGENTS_USAGE_INSTRUCTIONS.md"
+        ref = importlib.resources.files("fava_trails") / "AGENTS_USAGE_INSTRUCTIONS.md"
         return ref.read_text(encoding="utf-8")
     except (FileNotFoundError, TypeError, ModuleNotFoundError):
         pass
 
     # Fallback: file relative to this source file (development mode)
     src_dir = Path(__file__).resolve().parent
-    # src/fava_trail/server.py -> project root is ../../
+    # src/fava_trails/server.py -> project root is ../../
     project_root = src_dir.parent.parent
     usage_file = project_root / "AGENTS_USAGE_INSTRUCTIONS.md"
     if usage_file.exists():
@@ -115,7 +115,7 @@ def _load_usage_guide() -> str:
     return "Error: AGENTS_USAGE_INSTRUCTIONS.md not found. Check your installation."
 
 
-server = Server("fava-trail", instructions=_build_server_instructions())
+server = Server("fava-trails", instructions=_build_server_instructions())
 
 # Trail manager cache: trail_name -> TrailManager
 _trail_managers: dict[str, TrailManager] = {}
@@ -139,7 +139,7 @@ async def _init_server() -> None:
     except ValueError:
         raise RuntimeError(
             f"FAVA_TRAILS_DIR ({trails_dir}) must be inside data repo root ({repo_root}). "
-            "Check your FAVA_TRAIL_DATA_REPO and FAVA_TRAILS_DIR environment variables."
+            "Check your FAVA_TRAILS_DATA_REPO and FAVA_TRAILS_DIR environment variables."
         )
 
     _shared_backend = JjBackend(repo_root=repo_root, trail_path=trails_dir)
@@ -157,7 +157,7 @@ async def _get_trail(trail_name: str | None = None) -> TrailManager:
     """
     if not trail_name:
         raise ValueError(
-            "trail_name is required. Pass your scope path (e.g. 'mw/eng/fava-trail')."
+            "trail_name is required. Pass your scope path (e.g. 'mw/eng/fava-trails')."
         )
 
     safe_name = sanitize_scope_path(trail_name)
@@ -183,7 +183,7 @@ def _is_root_level(trail_name: str) -> bool:
 
 def _build_trail_name_desc() -> str:
     """Build trail_name description, including FAVA_TRAIL_SCOPE hint if set."""
-    base = "Scope path (e.g. 'mw/eng/fava-trail'). Required."
+    base = "Scope path (e.g. 'mw/eng/fava-trails'). Required."
     scope = os.environ.get("FAVA_TRAIL_SCOPE_HINT", "").strip()
     if scope:
         return (
@@ -431,7 +431,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "get_usage_guide",
-        "description": "Returns the full FAVA Trail usage guide for agents. Call once at session start for detailed protocol, examples, and trust calibration guidance. Zero cost until called.",
+        "description": "Returns the full FAVA Trails usage guide for agents. Call once at session start for detailed protocol, examples, and trust calibration guidance. Zero cost until called.",
         "inputSchema": {
             "type": "object",
             "properties": {},
@@ -459,7 +459,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 
 @server.list_tools()
 async def handle_list_tools() -> list[Tool]:
-    """List all FAVA Trail tools."""
+    """List all FAVA Trails tools."""
     return [
         Tool(
             name=td["name"],
@@ -616,7 +616,7 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
 
 
 def run():
-    """Entry point for fava-trail-server."""
+    """Entry point for fava-trails-server."""
     async def main():
         # Verify JJ installation
         try:
@@ -629,7 +629,7 @@ def run():
         ensure_data_repo_root()
         await _init_server()
 
-        logger.info("FAVA Trail MCP Server starting...")
+        logger.info("FAVA Trails MCP Server starting...")
         logger.info(f"Tools: {len(TOOL_DEFINITIONS)}")
 
         async with stdio_server() as (read_stream, write_stream):
