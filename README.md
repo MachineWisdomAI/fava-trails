@@ -1,4 +1,4 @@
-# FAVA Trail
+# FAVA Trails
 
 **Federated Agents Versioned Audit Trail** — VCS-backed memory for AI agents via MCP.
 
@@ -41,12 +41,12 @@ Add to `~/.claude.json` (Claude Code) or `claude_desktop_config.json` (Claude De
 ```json
 {
   "mcpServers": {
-    "fava-trail": {
+    "fava-trails": {
       "type": "stdio",
       "command": "uv",
-      "args": ["run", "--directory", "/path/to/fava-trail", "fava-trail-server"],
+      "args": ["run", "--directory", "/path/to/fava-trails", "fava-trails-server"],
       "env": {
-        "FAVA_TRAIL_DATA_REPO": "/path/to/fava-trail-data"
+        "FAVA_TRAILS_DATA_REPO": "/path/to/fava-trail-data"
       }
     }
   }
@@ -58,11 +58,11 @@ For Claude Desktop on Windows (accessing WSL):
 ```json
 {
   "mcpServers": {
-    "fava-trail": {
+    "fava-trails": {
       "command": "wsl.exe",
       "args": [
         "-e", "bash", "-lc",
-        "FAVA_TRAIL_DATA_REPO=/path/to/fava-trail-data uv run --directory /path/to/fava-trail fava-trail-server"
+        "FAVA_TRAILS_DATA_REPO=/path/to/fava-trail-data uv run --directory /path/to/fava-trails fava-trails-server"
       ]
     }
   }
@@ -86,7 +86,7 @@ recall(query="X")
 
 ## Cross-Machine Sync
 
-FAVA Trail uses git remotes for cross-machine sync. The bootstrap script sets `push_strategy: immediate` which auto-pushes after every write.
+FAVA Trails uses git remotes for cross-machine sync. The bootstrap script sets `push_strategy: immediate` which auto-pushes after every write.
 
 ### Setting up a second machine
 
@@ -105,10 +105,10 @@ jj git init --colocate
 jj bookmark track main@origin
 
 # 4. Clone the engine
-git clone https://github.com/YOUR-ORG/fava-trail.git
+git clone https://github.com/YOUR-ORG/fava-trails.git
 
 # 5. Install engine dependencies
-cd fava-trail && uv sync
+cd fava-trails && uv sync
 
 # 6. Register MCP (same config as above, with local paths)
 ```
@@ -123,13 +123,13 @@ jj bookmark set main -r @-
 jj git push --bookmark main
 ```
 
-**NEVER use `git push origin main`** after JJ colocates — it misses thought commits. See CLAUDE.md "Pushing to Remote" for why.
+**NEVER use `git push origin main`** after JJ colocates — it misses thought commits. See [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md#pushing-to-remote) for the correct protocol.
 
 ## Architecture
 
 ```
-fava-trail (this repo)         fava-trail-data (your repo)
-├── src/fava_trail/            ├── config.yaml
+fava-trails (this repo)        fava-trail-data (your repo)
+├── src/fava_trails/           ├── config.yaml
 │   ├── server.py  ←── MCP ──→├── .gitignore
 │   ├── trail.py               └── trails/
 │   ├── config.py                  └── default/
@@ -140,8 +140,31 @@ fava-trail (this repo)         fava-trail-data (your repo)
     └── bootstrap-data-repo.sh            └── preferences/
 ```
 
-- **Engine** (`fava-trail`) — stateless MCP server, Apache-2.0
+- **Engine** (`fava-trails`) — stateless MCP server, Apache-2.0
 - **Fuel** (`fava-trail-data`) — your organization's trail data, private
+
+## Configuration
+
+Environment variables:
+
+| Variable | Read by | Purpose | Default |
+|----------|---------|---------|---------|
+| `FAVA_TRAILS_DATA_REPO` | Server | Root directory for trail data (monorepo root) | `~/.fava-trail` |
+| `FAVA_TRAILS_DIR` | Server | Override trails directory location (absolute path) | `$FAVA_TRAILS_DATA_REPO/trails` |
+| `FAVA_TRAIL_SCOPE_HINT` | Server | Broad scope hint baked into tool descriptions | *(none)* |
+| `FAVA_TRAIL_SCOPE` | Agent | Project-specific scope from `.env` file | *(none)* |
+
+The server reads `$FAVA_TRAILS_DATA_REPO/config.yaml` for global settings. Minimal `config.yaml`:
+
+```yaml
+trails_dir: trails          # relative to FAVA_TRAILS_DATA_REPO
+remote_url: null            # git remote URL (optional)
+push_strategy: manual       # manual | immediate
+```
+
+When `push_strategy: immediate`, the server auto-pushes after every successful write. Push failures are non-fatal.
+
+See [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) for full config reference including trust gate and per-trail overrides.
 
 ## Development
 
@@ -152,8 +175,7 @@ uv run pytest --cov       # with coverage
 
 ## Docs
 
-- [CLAUDE.md](CLAUDE.md) — Agent-facing: MCP tools reference, data repo setup, push semantics
+- [AGENTS.md](AGENTS.md) — Agent-facing: MCP tools reference, scope discovery, thought lifecycle, agent conventions
 - [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md) — Canonical usage: scope discovery, session protocol, agent identity
 - [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) — Data repo setup, config reference, trust gate prompts
-- [AGENTS.md](AGENTS.md) — Agent onboarding cheat sheet: session start/end protocol
 - [docs/fava_trail_faq.md](docs/fava_trail_faq.md) — Detailed FAQ for framework authors and ML engineers

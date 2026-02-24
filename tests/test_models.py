@@ -1,6 +1,6 @@
 """Tests for Pydantic models and markdown serialization."""
 
-from fava_trail.models import (
+from fava_trails.models import (
     DEFAULT_NAMESPACE,
     NAMESPACE_ROUTES,
     Relationship,

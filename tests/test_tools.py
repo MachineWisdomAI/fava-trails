@@ -2,8 +2,8 @@
 
 import pytest
 
-from fava_trail.models import SourceType
-from fava_trail.trail import recall_multi
+from fava_trails.models import SourceType
+from fava_trails.trail import recall_multi
 
 
 @pytest.mark.asyncio
@@ -424,12 +424,12 @@ async def test_update_thought_preserves_frontmatter(trail_manager):
 @pytest.mark.asyncio
 async def test_update_thought_content_freeze_approved(trail_manager):
     """update_thought on approved thought should raise ValueError."""
-    from fava_trail.models import ValidationStatus
+    from fava_trails.models import ValidationStatus
 
     record = await trail_manager.save_thought(content="Decision.", agent_id="test")
     # Manually set to approved by writing to disk
     path = trail_manager._find_thought_path(record.thought_id)
-    from fava_trail.models import ThoughtRecord
+    from fava_trails.models import ThoughtRecord
     loaded = ThoughtRecord.from_markdown(path.read_text())
     loaded.frontmatter.validation_status = ValidationStatus.APPROVED
     path.write_text(loaded.to_markdown())
@@ -441,11 +441,11 @@ async def test_update_thought_content_freeze_approved(trail_manager):
 @pytest.mark.asyncio
 async def test_update_thought_content_freeze_rejected(trail_manager):
     """update_thought on rejected thought should raise ValueError."""
-    from fava_trail.models import ValidationStatus
+    from fava_trails.models import ValidationStatus
 
     record = await trail_manager.save_thought(content="Rejected idea.", agent_id="test")
     path = trail_manager._find_thought_path(record.thought_id)
-    from fava_trail.models import ThoughtRecord
+    from fava_trails.models import ThoughtRecord
     loaded = ThoughtRecord.from_markdown(path.read_text())
     loaded.frontmatter.validation_status = ValidationStatus.REJECTED
     path.write_text(loaded.to_markdown())
@@ -457,11 +457,11 @@ async def test_update_thought_content_freeze_rejected(trail_manager):
 @pytest.mark.asyncio
 async def test_update_thought_content_freeze_tombstoned(trail_manager):
     """update_thought on tombstoned thought should raise ValueError."""
-    from fava_trail.models import ValidationStatus
+    from fava_trails.models import ValidationStatus
 
     record = await trail_manager.save_thought(content="Old stale draft.", agent_id="test")
     path = trail_manager._find_thought_path(record.thought_id)
-    from fava_trail.models import ThoughtRecord
+    from fava_trails.models import ThoughtRecord
     loaded = ThoughtRecord.from_markdown(path.read_text())
     loaded.frontmatter.validation_status = ValidationStatus.TOMBSTONED
     path.write_text(loaded.to_markdown())
@@ -653,7 +653,7 @@ async def test_supersede_same_scope_default(trail_manager):
 @pytest.mark.asyncio
 async def test_list_scopes_recursive(nested_trail_managers, tmp_fava_home):
     """list_scopes discovers nested scopes recursively."""
-    from fava_trail.tools.navigation import handle_list_scopes
+    from fava_trails.tools.navigation import handle_list_scopes
 
     result = await handle_list_scopes({})
     assert result["status"] == "ok"
@@ -667,7 +667,7 @@ async def test_list_scopes_recursive(nested_trail_managers, tmp_fava_home):
 @pytest.mark.asyncio
 async def test_list_scopes_prefix_filter(nested_trail_managers, tmp_fava_home):
     """list_scopes with prefix filters results."""
-    from fava_trail.tools.navigation import handle_list_scopes
+    from fava_trails.tools.navigation import handle_list_scopes
 
     result = await handle_list_scopes({"prefix": "mw/eng/fava-trail"})
     paths = [s["path"] for s in result["scopes"]]
@@ -680,7 +680,7 @@ async def test_list_scopes_prefix_filter(nested_trail_managers, tmp_fava_home):
 @pytest.mark.asyncio
 async def test_list_scopes_include_stats(nested_trail_managers, tmp_fava_home):
     """list_scopes with include_stats returns thought counts."""
-    from fava_trail.tools.navigation import handle_list_scopes
+    from fava_trails.tools.navigation import handle_list_scopes
 
     project = nested_trail_managers["project"]
     await project.save_thought(content="A thought.", agent_id="test")
@@ -694,7 +694,7 @@ async def test_list_scopes_include_stats(nested_trail_managers, tmp_fava_home):
 @pytest.mark.asyncio
 async def test_resolve_scope_globs_star(nested_trail_managers, tmp_fava_home):
     """Glob * matches one level only."""
-    from fava_trail.config import resolve_scope_globs
+    from fava_trails.config import resolve_scope_globs
 
     trails_dir = tmp_fava_home / "trails"
     resolved = resolve_scope_globs(trails_dir, ["mw/eng/*"])
@@ -706,7 +706,7 @@ async def test_resolve_scope_globs_star(nested_trail_managers, tmp_fava_home):
 @pytest.mark.asyncio
 async def test_resolve_scope_globs_double_star(nested_trail_managers, tmp_fava_home):
     """Glob ** matches any depth."""
-    from fava_trail.config import resolve_scope_globs
+    from fava_trails.config import resolve_scope_globs
 
     trails_dir = tmp_fava_home / "trails"
     resolved = resolve_scope_globs(trails_dir, ["mw/**"])
@@ -718,7 +718,7 @@ async def test_resolve_scope_globs_double_star(nested_trail_managers, tmp_fava_h
 @pytest.mark.asyncio
 async def test_root_level_trail_warning(tmp_fava_home):
     """Writing to a root-level trail should succeed but include a warning."""
-    from fava_trail.server import _get_trail, _is_root_level
+    from fava_trails.server import _get_trail, _is_root_level
 
     assert _is_root_level("scratch")
     assert not _is_root_level("mw/scratch")
@@ -727,7 +727,7 @@ async def test_root_level_trail_warning(tmp_fava_home):
 @pytest.mark.asyncio
 async def test_trail_name_required():
     """_get_trail with None trail_name should raise ValueError."""
-    from fava_trail.server import _get_trail
+    from fava_trails.server import _get_trail
 
     with pytest.raises(ValueError, match="trail_name is required"):
         await _get_trail(None)
@@ -739,7 +739,7 @@ async def test_trail_name_required():
 @pytest.mark.asyncio
 async def test_path_traversal_rejected():
     """Path traversal attempts should be rejected."""
-    from fava_trail.config import sanitize_scope_path
+    from fava_trails.config import sanitize_scope_path
 
     with pytest.raises(ValueError, match="Path traversal"):
         sanitize_scope_path("../etc/passwd")
