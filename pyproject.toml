@@ -13,6 +13,7 @@ dependencies = [
 
 [project.scripts]
 fava-trails-server = "fava_trails.server:run"
+fava-trails = "fava_trails.cli:main"
 
 [build-system]
 requires = ["hatchling"]
