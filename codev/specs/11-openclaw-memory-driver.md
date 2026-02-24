@@ -1,7 +1,7 @@
 # Spec 11: OpenClaw Memory Plugin
 
 **Status:** not started
-**Epic:** 0005a-adoption
+**Epic:** 0006a-openclaw
 **Source:** Claude Desktop research + consensus (GPT-5.2 FOR 7/10, Gemini 3 Pro AGAINST 8/10)
 **Prerequisites:** Spec 2 (Hierarchical Scoping — complete), Spec 7 (Semantic Recall), Spec 12 (Rebrand)
 **Supersedes:** Previous Spec 11 (OpenClaw Memory Driver — thin adapter stub)
