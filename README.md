@@ -178,7 +178,7 @@ uv run pytest --cov       # with coverage
 - [AGENTS.md](AGENTS.md) — Agent-facing: MCP tools reference, scope discovery, thought lifecycle, agent conventions
 - [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md) — Canonical usage: scope discovery, session protocol, agent identity
 - [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) — Data repo setup, config reference, trust gate prompts
-- [docs/fava_trail_faq.md](docs/fava_trail_faq.md) — Detailed FAQ for framework authors and ML engineers
+- [docs/fava_trails_faq.md](docs/fava_trails_faq.md) — Detailed FAQ for framework authors and ML engineers
 
 ## Contributing
 

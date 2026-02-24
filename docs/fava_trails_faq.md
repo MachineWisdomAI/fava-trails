@@ -1,4 +1,4 @@
-# FAVA Trail: Frequently Asked Questions
+# FAVA Trails: Frequently Asked Questions
 
 **Federated Agentic Versioned Audit Trail**
 *For agent framework authors, MLE/AI engineers, and agentic memory researchers*
@@ -15,7 +15,7 @@ DoltHub's independent testing measured the phenomenon precisely: raw coding agen
 
 When your agent writes a flawed hypothesis (Thought A), then corrects it (Thought A'), a vector search for the topic retrieves *both* — because they're semantically identical. This is what we call Contextual Flattening. Your agent now has contradictory beliefs with no mechanism to distinguish which one is current.
 
-FAVA Trail solves this with supersession tracking: Thought A gets tombstoned when Thought A' is created. Default retrieval never surfaces superseded thoughts. The agent sees only the current truth unless it explicitly asks for the full lineage.
+FAVA Trails solves this with supersession tracking: Thought A gets tombstoned when Thought A' is created. Default retrieval never surfaces superseded thoughts. The agent sees only the current truth unless it explicitly asks for the full lineage.
 
 ### What is the "Correctness-Congruence Gap"?
 
@@ -23,13 +23,13 @@ Technical correctness asks: "Is this response schema-compliant and internally co
 
 Intent alignment (what we call Congruence) asks: "Is this response consistent with the historical context, unstated constraints, and strategic direction established across months of prior work?" That's an open-world problem requiring temporal provenance that flat retrieval systems structurally cannot provide.
 
-FAVA Trail bridges this gap by making version history, relationship graphs, and provenance chains queryable. Every memory carries its full lineage: what was believed, when it changed, why it changed, and who approved the change.
+FAVA Trails bridges this gap by making version history, relationship graphs, and provenance chains queryable. Every memory carries its full lineage: what was believed, when it changed, why it changed, and who approved the change.
 
-### What is "memory poisoning" and how does FAVA Trail prevent it?
+### What is "memory poisoning" and how does FAVA Trails prevent it?
 
 Memory poisoning occurs when an agent's false beliefs — hallucinations, outdated facts, incorrect inferences — enter shared memory and subsequently inform other agents' reasoning. In systems without governance, every agent write immediately becomes "truth." Bad data propagates exponentially.
 
-FAVA Trail prevents this through the **Trust Gate** — a gated promotion workflow borrowed directly from software engineering's pull request model. Agents work in isolated draft branches. Their drafts are invisible to other agents. When an agent wants to promote a belief to shared truth, it submits a proposal that passes through a validation gate (a Critic Agent, a human reviewer, or both) before it becomes visible to the broader system.
+FAVA Trails prevents this through the **Trust Gate** — a gated promotion workflow borrowed directly from software engineering's pull request model. Agents work in isolated draft branches. Their drafts are invisible to other agents. When an agent wants to promote a belief to shared truth, it submits a proposal that passes through a validation gate (a Critic Agent, a human reviewer, or both) before it becomes visible to the broader system.
 
 If the Trust Gate rejects the proposal, the hallucination stays contained in draft. It never enters shared memory. No cleanup required. No downstream contamination.
 
@@ -43,11 +43,11 @@ This is not post-hoc rollback — it is **containment at the source**. The hallu
 
 Three critical differences.
 
-**Crash-proof by design.** Git maintains a "dirty working copy" between explicit commits. If your agent crashes, that uncommitted work is lost. FAVA Trail's architecture requires automatic persistence — every state change is durably written before the operation returns. There is no concept of unsaved work.
+**Crash-proof by design.** Git maintains a "dirty working copy" between explicit commits. If your agent crashes, that uncommitted work is lost. FAVA Trails's architecture requires automatic persistence — every state change is durably written before the operation returns. There is no concept of unsaved work.
 
-**Conflict-tolerant storage.** Git blocks operations when conflicts occur. An agent cannot stop to resolve merge conflicts. FAVA Trail requires that contradictory beliefs be storable as structured data — the system records the conflict as a first-class artifact for later resolution rather than halting the agent's workflow.
+**Conflict-tolerant storage.** Git blocks operations when conflicts occur. An agent cannot stop to resolve merge conflicts. FAVA Trails requires that contradictory beliefs be storable as structured data — the system records the conflict as a first-class artifact for later resolution rather than halting the agent's workflow.
 
-**Governance workflows.** Git's branch protection rules exist but are designed for human developers. FAVA Trail's Trust Gate is designed for autonomous agents: automated validation, configurable strictness per knowledge domain, and human override capability for high-stakes decisions.
+**Governance workflows.** Git's branch protection rules exist but are designed for human developers. FAVA Trails's Trust Gate is designed for autonomous agents: automated validation, configurable strictness per knowledge domain, and human override capability for high-stakes decisions.
 
 ### What is the Trust Gate, concretely?
 
@@ -86,9 +86,9 @@ Database-backed systems can be engineered to provide some of these capabilities,
 
 ## For Agent Framework Authors
 
-### How do I integrate FAVA Trail with my agent framework?
+### How do I integrate FAVA Trails with my agent framework?
 
-FAVA Trail exposes all memory operations as **MCP (Model Context Protocol) tools**. If your framework speaks MCP, integration is a configuration change, not a code change.
+FAVA Trails exposes all memory operations as **MCP (Model Context Protocol) tools**. If your framework speaks MCP, integration is a configuration change, not a code change.
 
 Core MCP tools:
 
@@ -105,23 +105,23 @@ Agents interact with memories as semantic objects (Markdown with structured fron
 
 ### What does integration look like for a system like Disarray?
 
-For ML engineering agents running long-horizon tasks (12+ hour Kaggle competitions, multi-day model development), FAVA Trail addresses three specific failure modes:
+For ML engineering agents running long-horizon tasks (12+ hour Kaggle competitions, multi-day model development), FAVA Trails addresses three specific failure modes:
 
-1. **Session persistence across context window resets.** When the context window fills and the agent needs to continue, FAVA Trail provides the full history of what was tried, what worked, what didn't, and why — reconstructable from versioned memory rather than lost when the window rolls over.
+1. **Session persistence across context window resets.** When the context window fills and the agent needs to continue, FAVA Trails provides the full history of what was tried, what worked, what didn't, and why — reconstructable from versioned memory rather than lost when the window rolls over.
 
 2. **Experiment branch isolation.** The agent can branch three parallel hypotheses (different model architectures, different feature engineering approaches) without cross-contamination. Each branch carries its own reasoning chain. The winning branch merges to main; the losing branches are atomically discarded.
 
 3. **Preventing re-exploration of dead ends.** Supersession tracking means that when a hyperparameter search proves fruitless and is explicitly abandoned, future recall queries will not resurface that abandoned line of reasoning. The agent doesn't waste tokens re-discovering that "learning rate 0.1 diverges" if that was already established and marked as superseded.
 
-### Can I use FAVA Trail as a drop-in replacement for my current memory backend?
+### Can I use FAVA Trails as a drop-in replacement for my current memory backend?
 
-FAVA Trail provides adapter patterns for common memory interfaces. The implementation plan includes a mapping layer where `search()` maps to `recall_semantic` + `recall`, `readFile()` maps to `get_thought`, and `sync()` maps to `sync`.
+FAVA Trails provides adapter patterns for common memory interfaces. The implementation plan includes a mapping layer where `search()` maps to `recall_semantic` + `recall`, `readFile()` maps to `get_thought`, and `sync()` maps to `sync`.
 
 For frameworks with custom memory abstractions, the MCP interface is the universal integration point.
 
 ### What about performance? My agent loop runs at millisecond timescales.
 
-FAVA Trail distinguishes between working memory (draft operations) and shared truth (promotion operations). Phase 1 latency targets, measured against single-agent local-disk workloads:
+FAVA Trails distinguishes between working memory (draft operations) and shared truth (promotion operations). Phase 1 latency targets, measured against single-agent local-disk workloads:
 
 - **Draft save:** < 50ms target. This is the "inner loop" — it must not block the agent's reasoning.
 - **Draft recall:** < 100ms target. Context assembly is latency-sensitive.
@@ -140,14 +140,14 @@ The architecture separates the hot path (draft reads/writes) from the governance
 
 ML engineering agents face a specific version of the memory problem: experiments generate vast amounts of structured state (hyperparameters, metrics, error logs, dataset versioning) across multi-day runs. Current agents lose this state when sessions reset.
 
-FAVA Trail's contribution:
+FAVA Trails's contribution:
 
 - **Every experiment checkpoint is a versioned thought.** Hyperparameter configurations, training metrics, error traces — all persisted with full lineage. When the agent resumes after a crash or context reset, it can reconstruct exactly where it was.
 - **Branching enables parallel hypothesis testing.** Three model architectures explored simultaneously, each on its own branch, with zero cross-contamination. Results merge back to main only when validated.
 - **Dead-end marking prevents re-exploration.** When the agent discovers that a particular approach diverges, that finding is persisted with supersession semantics. The next agent session (or a different agent) won't waste compute re-discovering the same dead end.
 - **Audit trail for reproducibility.** Every decision in the ML pipeline — why this learning rate, why that feature set, why we switched from ResNet to ViT — is traceable through the version history.
 
-### My agents run in multi-agent swarms. How does FAVA Trail handle coordination?
+### My agents run in multi-agent swarms. How does FAVA Trails handle coordination?
 
 Each agent gets its own isolated draft workspace. Agents never step on each other's work because drafts are invisible across workspaces. Coordination happens through shared truth:
 
@@ -162,23 +162,23 @@ This is eventual consistency with governance — the same pattern that lets team
 
 ## Security, Performance, and Enterprise Adoption
 
-### How does FAVA Trail protect my proprietary data and corporate IP?
+### How does FAVA Trails protect my proprietary data and corporate IP?
 
-FAVA Trail follows an **Engine vs. Fuel** architecture that makes this a non-issue by design.
+FAVA Trails follows an **Engine vs. Fuel** architecture that makes this a non-issue by design.
 
-The MCP server (`fava-trail`) is a stateless, open-source engine. It contains zero knowledge about your organization. It processes requests, translates them to VCS operations, and returns structured results. It holds no state between calls.
+The MCP server (`fava-trails`) is a stateless, open-source engine. It contains zero knowledge about your organization. It processes requests, translates them to VCS operations, and returns structured results. It holds no state between calls.
 
 Your actual data — the memory graph, the versioned repository, every thought your agents have ever produced — lives in a separate, isolated, locally controlled directory. This is the Fuel. You host it wherever your security policy requires: a local directory on the developer's machine, a private NFS mount, an air-gapped server, or a privately hosted Git remote for backup.
 
 The architectural guarantee: **context never leaks into the tool's source code, its dependencies, or any external service.** No telemetry is collected. No cloud dependency exists. The MCP server is a pure function: input in, output out, nothing persisted. Your corporate IP stays on your infrastructure, governed by your access controls, backed up by your retention policies.
 
-This separation also means you can update the engine independently of your data. Upgrading FAVA Trail's MCP server does not touch, migrate, or expose your repository.
+This separation also means you can update the engine independently of your data. Upgrading FAVA Trails's MCP server does not touch, migrate, or expose your repository.
 
 ### Doesn't wrapping memory in a Version Control System add latency and token bloat?
 
 This is the most common objection from engineers who have worked with MemGPT, Goodmem, or similar systems — and it's a reasonable one. Raw VCS output is verbose, structurally complex, and would burn through context windows if surfaced directly.
 
-FAVA Trail addresses this through a **Semantic Translation Layer** that sits between the agent and the VCS substrate.
+FAVA Trails addresses this through a **Semantic Translation Layer** that sits between the agent and the VCS substrate.
 
 What the agent sees: token-optimized, JSON-formatted semantic summaries returned through MCP tool calls. Structured recall results with relationship metadata, confidence scores, and supersession status. Clean, parseable, minimal.
 
@@ -196,7 +196,7 @@ The design principle: the VCS is an implementation detail that provides crash-sa
 
 ## Technical Details
 
-### What VCS does FAVA Trail use under the hood?
+### What VCS does FAVA Trails use under the hood?
 
 The current implementation uses JJ (Jujutsu) with a colocated Git backend. The PRD is deliberately substrate-agnostic — it defines *capability requirements* (crash-proof persistence, conflict-tolerant storage, persistent identity, atomic operations) rather than prescribing a specific tool.
 
@@ -243,32 +243,32 @@ Thoughts are append-only (immutable content, one exception: the `superseded_by` 
 
 **Phase 4:** Temporal Knowledge Graph (entity extraction, property graph projection, episodic summaries), enterprise federation.
 
-### Is FAVA Trail open source?
+### Is FAVA Trails open source?
 
-FAVA Trail is developed by Machine Wisdom Solutions Inc. as an open-source project. The MCP server is a standalone Python package designed for integration with any MCP-compatible agent framework.
+FAVA Trails is developed by Machine Wisdom Solutions Inc. as an open-source project. The MCP server is a standalone Python package designed for integration with any MCP-compatible agent framework.
 
 ---
 
 ## The Competitive Landscape
 
-### How does FAVA Trail compare to Beads/Dolt?
+### How does FAVA Trails compare to Beads/Dolt?
 
-Steve Yegge's Beads system, now running on Dolt, demonstrated the 10× session duration improvement that validates the versioned memory thesis. Beads and FAVA Trail share the same foundational insight: agents need version-controlled structured data.
+Steve Yegge's Beads system, now running on Dolt, demonstrated the 10× session duration improvement that validates the versioned memory thesis. Beads and FAVA Trails share the same foundational insight: agents need version-controlled structured data.
 
-The key architectural difference: Beads uses SQL tables (Dolt) while FAVA Trail uses Markdown files with structured frontmatter. This reflects a design philosophy choice about cognitive ergonomics — LLMs are natively trained on and optimized for reading and writing Markdown, not managing SQL schemas and resolving row-level relational merges. Dolt provides versioned SQL primitives that *can* achieve gated merges and supersession through custom workflows, but these are application-layer concerns, not first-class primitives with built-in audit hooks and defaults. For orchestrating multi-agent swarms where work is rigidly defined as tickets, Dolt excels. For agents whose primary mode is reasoning in natural language, FAVA Trail's Markdown-native approach reduces cognitive overhead.
+The key architectural difference: Beads uses SQL tables (Dolt) while FAVA Trails uses Markdown files with structured frontmatter. This reflects a design philosophy choice about cognitive ergonomics — LLMs are natively trained on and optimized for reading and writing Markdown, not managing SQL schemas and resolving row-level relational merges. Dolt provides versioned SQL primitives that *can* achieve gated merges and supersession through custom workflows, but these are application-layer concerns, not first-class primitives with built-in audit hooks and defaults. For orchestrating multi-agent swarms where work is rigidly defined as tickets, Dolt excels. For agents whose primary mode is reasoning in natural language, FAVA Trails's Markdown-native approach reduces cognitive overhead.
 
-### How does FAVA Trail compare to Goodmem or other vector memory APIs?
+### How does FAVA Trails compare to Goodmem or other vector memory APIs?
 
 Vector memory APIs (Goodmem, Mem0, Zep) provide zero-friction semantic retrieval. They are excellent for simple RAG over static documentation and optimized for the recall path.
 
-FAVA Trail optimizes for a different surface: governance, provenance, and state evolution. When agents need temporal queries ("what did we believe last Tuesday?"), supersession tracking (hiding invalidated beliefs from default recall), draft isolation (preventing work-in-progress from polluting shared memory), or audit trails (proving provenance for compliance), these capabilities require versioned persistence as a foundational substrate.
+FAVA Trails optimizes for a different surface: governance, provenance, and state evolution. When agents need temporal queries ("what did we believe last Tuesday?"), supersession tracking (hiding invalidated beliefs from default recall), draft isolation (preventing work-in-progress from polluting shared memory), or audit trails (proving provenance for compliance), these capabilities require versioned persistence as a foundational substrate.
 
-Many memory tools optimize for recall speed and simplicity. FAVA Trail adds governance and provenance as first-class primitives alongside recall. These are complementary concerns, not competing ones — FAVA Trail can optionally use a vector store as a *derived index* for semantic queries, but the vector store is never the source of truth. It can be rebuilt from version history at any time.
+Many memory tools optimize for recall speed and simplicity. FAVA Trails adds governance and provenance as first-class primitives alongside recall. These are complementary concerns, not competing ones — FAVA Trails can optionally use a vector store as a *derived index* for semantic queries, but the vector store is never the source of truth. It can be rebuilt from version history at any time.
 
-### How does FAVA Trail compare to Graphiti or other temporal knowledge graphs?
+### How does FAVA Trails compare to Graphiti or other temporal knowledge graphs?
 
-Graphiti provides relationship tracking and temporal awareness — capabilities that FAVA Trail's roadmap includes in Phase 4 (Temporal Knowledge Graph). The difference is architectural: Graphiti is a graph database that agents write to directly. FAVA Trail's graph layer is a *derived projection* from the versioned store.
+Graphiti provides relationship tracking and temporal awareness — capabilities that FAVA Trails's roadmap includes in Phase 4 (Temporal Knowledge Graph). The difference is architectural: Graphiti is a graph database that agents write to directly. FAVA Trails's graph layer is a *derived projection* from the versioned store.
 
-This distinction matters for trust and governance. In FAVA Trail, the graph can be rebuilt from the versioned history at any time. Graph corruption doesn't mean data loss. And the Trust Gate governs what enters the versioned store — the graph inherits those governance guarantees.
+This distinction matters for trust and governance. In FAVA Trails, the graph can be rebuilt from the versioned history at any time. Graph corruption doesn't mean data loss. And the Trust Gate governs what enters the versioned store — the graph inherits those governance guarantees.
 
-For teams that need graph intelligence today, FAVA Trail's Phase 1 schema includes typed relationships in thought frontmatter that can be projected to Graphiti or Neo4j as a downstream consumer.
+For teams that need graph intelligence today, FAVA Trails's Phase 1 schema includes typed relationships in thought frontmatter that can be projected to Graphiti or Neo4j as a downstream consumer.
