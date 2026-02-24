@@ -2,6 +2,8 @@
 
 Canonical usage instructions for AI agents using FAVA Trail MCP tools. Other docs reference this file — keep it up to date.
 
+> **Auto-injected:** Core guidance from this file is automatically injected via the MCP server's `instructions` field at session init — no manual setup required. The full version below is also available on-demand via the `get_usage_guide` tool. This file is the canonical source for both.
+
 ## Scope Discovery (Three-Layer)
 
 Every FAVA Trail tool call requires a `trail_name` parameter — a slash-separated scope path (e.g. `mwai/eng/fava-trails`). Three sources are checked in priority order:
@@ -128,7 +130,7 @@ If your work contradicts a persisted thought, use `supersede` to create a clear 
 
 **Don't supersede on a hunch.** Save a new thought with your hypothesis and let it coexist until evidence settles it.
 
-## SPIR Meta-Layer
+## SPIR Meta-Layer (Optional — codev methodology)
 
 When working under the SPIR protocol, FAVA Trail thoughts **link to** `codev/` artifacts — they don't duplicate content:
 
