@@ -1,0 +1,20 @@
+# Plan 13 Consultation — Code Review (O3-Pro/Claude via Pal MCP codereview)
+# Date: 2026-02-24
+# Tool: Pal MCP (mcp__pal__codereview, continuation_id: 9122a5a3-c633-4cb4-ac86-c075ea1673a2)
+
+## Overall Assessment
+Plan is actionable and complete. The two-phase approach is correct. gitleaks inclusion is appropriate. PyPI inclusion (upgraded from deferred) addresses the adoption friction concern from the spec.
+
+## Issues Found
+
+### HIGH
+- release.yml Trusted Publishing requires `id-token: write` permission. Without this, GitHub Actions OIDC token for PyPI will not be issued.
+- gh release notes should be scoped to v0.4.0 section only, not full CHANGELOG.md
+
+### MEDIUM
+- uv sync --frozen ensures CI uses committed lockfile (uv.lock exists)
+- Issue template YAML should include: `name`, `description`, `labels: [bug]`, mark required fields
+
+### LOW
+- Version sync: explicit check `python -c "import fava_trails; assert fava_trails.__version__ == '0.4.0'"` would make acceptance criteria testable
+- Note that pytest and ruff are in dev dependency group — `uv sync` installs them via `[dependency-groups]`

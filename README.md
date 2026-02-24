@@ -74,13 +74,13 @@ For Claude Desktop on Windows (accessing WSL):
 Agents call MCP tools. Core workflow:
 
 ```
-save_thought("My finding about X", source_type="observation")
+save_thought(trail_name="myorg/eng/my-project", content="My finding about X", source_type="observation")
   → creates a draft in drafts/
 
-propose_truth(thought_id)
+propose_truth(trail_name="myorg/eng/my-project", thought_id=thought_id)
   → promotes to observations/ (visible to all agents)
 
-recall(query="X")
+recall(trail_name="myorg/eng/my-project", query="X")
   → finds the promoted thought
 ```
 
@@ -179,3 +179,9 @@ uv run pytest --cov       # with coverage
 - [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md) — Canonical usage: scope discovery, session protocol, agent identity
 - [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) — Data repo setup, config reference, trust gate prompts
 - [docs/fava_trail_faq.md](docs/fava_trail_faq.md) — Detailed FAQ for framework authors and ML engineers
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, how to run tests, and PR expectations.
+
+See [CHANGELOG.md](CHANGELOG.md) for release history. If you're upgrading from `fava-trail`, see the [0.4.0 upgrade notes](CHANGELOG.md#040--2026-02-24).

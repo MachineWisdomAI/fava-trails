@@ -1,0 +1,19 @@
+# Phase 1 Consultation — Code Review (via Pal MCP codereview)
+# Date: 2026-02-24
+# Tool: Pal MCP (mcp__pal__codereview, continuation_id: b6decaf5-49f5-4927-8de3-69d020256a0b)
+
+## Overall Assessment
+Phase 1 is strong. CI is minimal and sensible. Metadata largely complete. Documentation practical for early adopters. Main gap: packaging (sdist incomplete).
+
+## Issues Found
+
+### CRITICAL
+- sdist include list omits README.md and LICENSE. Since pyproject.toml references `readme = "README.md"`, this would cause builds-from-sdist to fail. Fix: expand sdist include to add README.md, LICENSE, CHANGELOG.md, CONTRIBUTING.md, SECURITY.md.
+
+### MEDIUM
+- CHANGELOG claims "Package now available via pip install fava-trails" but package isn't published yet. Should say workflow was added, not package is available.
+- Confirm uv.lock is committed (it is — confirmed in the repo).
+
+### LOW
+- Emojis in package description may render oddly on some tooling (non-blocking)
+- CONTRIBUTING JJ install note is Linux-specific — acceptable since install-jj.sh only supports Linux

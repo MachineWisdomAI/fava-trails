@@ -1,0 +1,37 @@
+# Spec 13 Consultation — O3-Pro (neutral stance)
+# Date: 2026-02-24
+# Tool: Pal MCP (mcp__pal__consensus, continuation_id: 482c978a-5d1b-40be-8ff4-77eedbd5afd5)
+
+## Verdict
+Solid foundation—technically feasible and low-risk—but a few missing "table-stakes" OSS elements (PyPI first publish, CODE_OF_CONDUCT / SECURITY.md, multi-platform CI, packaging metadata) should be closed before flipping the repo public.
+
+## Confidence Score
+8/10
+
+## Critical Gaps / Improvements
+
+A. Immediate PyPI publish
+   - Add `[project.readme]`, classifiers, `requires-python >=3.11`, and an sdist/wheel build test step (`uv build`) in CI.
+   - Create `release.yml` now, use Trusted Publishing; perform first publish during the OSS pass.
+
+B. Community & Compliance files
+   - Add `CODE_OF_CONDUCT.md` (Contributor Covenant v2.1 suffices) and `SECURITY.md` describing JJ/Python version support window and contact email.
+   - Mention "no vulnerability disclosure on public issues" in templates.
+
+C. Multi-platform CI matrix
+   - `runs-on: [ubuntu-latest, macos-latest, windows-latest]` with conditional JJ install. Catches hidden path or newline issues before users do.
+
+D. Packaging correctness
+   - Ensure `__init__.__version__` matches `pyproject.toml`.
+   - Explicit `packages = ["fava_trails"]` or `dynamic = ["version"]` to avoid accidental empty wheels.
+   - Verify `.gitignore` includes `.env`, `*.key`, `__pycache__/`.
+
+E. Automated secret & dep scanning
+   - Enable GitHub Advanced Security or free `secret-scanning` + Dependabot alerts.
+
+## Key Takeaways
+- Do the first PyPI publish in this same pass—nothing builds community faster than `pip install`.
+- Add CODE_OF_CONDUCT.md and SECURITY.md; they are low-effort but expected by most devs and some corporate firewalls.
+- Expand CI to macOS and Windows to pre-empt environment bugs and raise credibility.
+- Insert full packaging metadata (classifiers, readme, version sync) to avoid broken PyPI artifacts later.
+- Enable secret scanning/Dependabot to automate security hygiene from day one.

@@ -13,11 +13,10 @@ from __future__ import annotations
 import html
 import json
 import logging
-import os
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 import httpx
 import yaml
@@ -40,8 +39,8 @@ class TrustResult:
     verdict: Literal["approve", "reject", "error"]
     reasoning: str
     reviewer: str  # "llm-oneshot:<model>" or "human:<user_id>"
-    reviewed_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    confidence: Optional[float] = None
+    reviewed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    confidence: float | None = None
 
 
 class TrustGatePromptCache:

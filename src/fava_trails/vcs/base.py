@@ -6,7 +6,6 @@ import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 
 @dataclass
@@ -35,9 +34,9 @@ class VcsConflict:
     file_path: str
     description: str
     sides: list[str] = field(default_factory=list)
-    side_a: Optional[str] = None
-    side_b: Optional[str] = None
-    base: Optional[str] = None
+    side_a: str | None = None
+    side_b: str | None = None
+    base: str | None = None
 
 
 @dataclass
@@ -124,7 +123,7 @@ class VcsBackend(ABC):
         ...
 
     @abstractmethod
-    async def current_change(self) -> Optional[VcsChange]:
+    async def current_change(self) -> VcsChange | None:
         """Get the current working change."""
         ...
 

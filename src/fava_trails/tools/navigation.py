@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-from pathlib import Path
 from typing import Any
 
 from ..config import get_trails_dir, get_trust_gate_policy, load_global_config
