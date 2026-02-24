@@ -22,7 +22,7 @@ Additionally, the current `CLAUDE.md` serves as both project documentation and a
 - Update all imports, references, docs
 - Adopt 🫛👣 (FAVA Trails) as project icon/flare in docs and branding
 - Update MCP server registration examples
-- Update `wise-fava-trail` data repo references if needed
+- No changes to data repo storage layer — `fava-trail-data` path remains stable
 
 ### Documentation Split
 - Create `README.md` (human-facing): project intro, quick start, installation, MCP registration, architecture overview, full configuration reference (all env vars with "Read by" column), data repo setup, pushing to remote
@@ -35,8 +35,8 @@ Single authoritative env var reference with "Read by" column:
 
 | Variable | Read by | Purpose | Default |
 |----------|---------|---------|---------|
-| `FAVA_TRAIL_DATA_REPO` | Server | Root directory for trail data | `~/.fava-trail` |
-| `FAVA_TRAILS_DIR` | Server | Override trails directory location | `$FAVA_TRAIL_DATA_REPO/trails` |
+| `FAVA_TRAILS_DATA_REPO` | Server | Root directory for trail data | `~/.fava-trail` |
+| `FAVA_TRAILS_DIR` | Server | Override trails directory location | `$FAVA_TRAILS_DATA_REPO/trails` |
 | `FAVA_TRAIL_SCOPE_HINT` | Server | Broad scope hint baked into tool descriptions | *(none)* |
 | `FAVA_TRAIL_SCOPE` | Agent | Project-specific scope from `.env` | *(none)* |
 

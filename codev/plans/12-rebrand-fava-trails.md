@@ -23,12 +23,12 @@
 
 ## Phase 3: Rename external references
 
-- Update `AGENTS.md`, `README.md`, `CLAUDE.md` stub
+- Update `AGENTS.md`, `README.md`, `CLAUDE.md` stub with new package/CLI names
 - Update MCP registration examples in all files
 - Update codev docs and status files
-- Update `.env-example`
+- Update `.env-example` (rename `FAVA_TRAIL_DATA_REPO` → `FAVA_TRAILS_DATA_REPO`)
 - Rename GitHub repo (coordinate with org)
-- Update `wise-fava-trail` references
+- No changes to data repo storage layer — `fava-trail-data` path remains stable
 
 ## Done Criteria
 
@@ -39,3 +39,17 @@
 - `AGENTS.md` has agent-facing docs (scope, lifecycle, conventions)
 - `CLAUDE.md` stub points to `AGENTS.md`
 - 🫛👣 flare appears in project branding
+
+## Phases (Machine Readable)
+
+<!-- REQUIRED: porch uses this JSON to track phase progress. -->
+
+```json
+{
+  "phases": [
+    {"id": "phase_1", "title": "Documentation split"},
+    {"id": "phase_2", "title": "Rename package internals"},
+    {"id": "phase_3", "title": "Rename external references"}
+  ]
+}
+```

@@ -1,0 +1,19 @@
+id: '12'
+title: rebrand-fava-trails
+protocol: spir
+phase: specify
+plan_phases: []
+current_plan_phase: null
+gates:
+  spec-approval:
+    status: pending
+    requested_at: '2026-02-24T16:22:58.053Z'
+  plan-approval:
+    status: pending
+  pr:
+    status: pending
+iteration: 1
+build_complete: true
+history: []
+started_at: '2026-02-24T16:16:03.796Z'
+updated_at: '2026-02-24T16:22:58.053Z'
