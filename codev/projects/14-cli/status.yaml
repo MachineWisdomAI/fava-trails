@@ -5,11 +5,11 @@ phase: implement
 plan_phases:
   - id: phase_1
     title: Core Commands
-    status: in_progress
+    status: complete
   - id: phase_2
     title: Doctor + Polish
-    status: pending
-current_plan_phase: phase_1
+    status: in_progress
+current_plan_phase: phase_2
 gates:
   spec-approval:
     status: approved
@@ -23,6 +23,22 @@ gates:
     status: pending
 iteration: 1
 build_complete: true
-history: []
+history:
+  - iteration: 1
+    plan_phase: phase_1
+    build_output: ''
+    reviews:
+      - model: gemini
+        verdict: REQUEST_CHANGES
+        file: >-
+          /home/younes/git/MachineWisdomAI/fava-trail/.builders/spir-14-cli/codev/projects/14-cli/14-phase_1-iter1-gemini.txt
+      - model: codex
+        verdict: REQUEST_CHANGES
+        file: >-
+          /home/younes/git/MachineWisdomAI/fava-trail/.builders/spir-14-cli/codev/projects/14-cli/14-phase_1-iter1-codex.txt
+      - model: claude
+        verdict: REQUEST_CHANGES
+        file: >-
+          /home/younes/git/MachineWisdomAI/fava-trail/.builders/spir-14-cli/codev/projects/14-cli/14-phase_1-iter1-claude.txt
 started_at: '2026-02-24T17:42:56.662Z'
-updated_at: '2026-02-24T18:12:12.573Z'
+updated_at: '2026-02-24T18:18:13.325Z'

@@ -1,0 +1,16 @@
+# Phase 2 Implementation Review — GPT-5.1-Codex (neutral)
+
+## Verdict: REQUEST_CHANGES
+
+### HIGH
+- jj --version has no timeout and no OSError handling — subprocess can hang or crash doctor
+- _read_project_yaml_scope doesn't catch yaml.YAMLError — corrupted .fava-trail.yaml crashes doctor/init/scope
+
+### MEDIUM
+- doctor scope check doesn't validate the scope value with sanitize_scope_path
+- with_suffix('.tmp') on .env (no suffix) produces .tmp not .env.tmp — use with_name
+
+### LOW
+- import shutil inside function body
+
+## Status: Issues resolved in iteration.

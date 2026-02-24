@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -49,7 +50,8 @@ def _update_env_file(env_path: Path, key: str, value: str) -> None:
             lines.pop(idx)
 
     # Atomic write: write to temp file then replace, preventing corruption on interruption
-    tmp = env_path.with_suffix(env_path.suffix + ".tmp")
+    # Use with_name (not with_suffix) so dotfiles like .env get .env.tmp, not just .tmp
+    tmp = env_path.with_name(env_path.name + ".tmp")
     tmp.write_text("".join(lines))
     tmp.replace(env_path)
 
@@ -88,11 +90,14 @@ def _is_env_gitignored(project_dir: Path) -> bool:
 
 
 def _read_project_yaml_scope(project_dir: Path) -> str | None:
-    """Read scope from .fava-trail.yaml in project_dir."""
+    """Read scope from .fava-trail.yaml in project_dir. Returns None if missing or invalid."""
     yaml_path = project_dir / ".fava-trail.yaml"
     if not yaml_path.exists():
         return None
-    data = yaml.safe_load(yaml_path.read_text()) or {}
+    try:
+        data = yaml.safe_load(yaml_path.read_text()) or {}
+    except (OSError, yaml.YAMLError):
+        return None
     return data.get("scope")
 
 
@@ -336,8 +341,6 @@ def cmd_scope_list(args: argparse.Namespace) -> int:
 
 def cmd_doctor(args: argparse.Namespace) -> int:
     """Health check: JJ, data repo, scope. Exits 0 if all pass, 1 if any fail."""
-    import shutil
-
     any_failed = False
 
     # Check 1: JJ installed?
@@ -348,18 +351,24 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             jj_bin = None
 
     if jj_bin:
-        result = subprocess.run(
-            [jj_bin, "--version"],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0:
-            version_str = result.stdout.strip().split("\n")[0]
-            print(f"JJ:           installed ({version_str})")
-        else:
-            print(f"JJ:           ERROR (jj --version failed)")
+        try:
+            result = subprocess.run(
+                [jj_bin, "--version"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+        except (OSError, subprocess.TimeoutExpired) as e:
+            print(f"JJ:           ERROR (failed to run jj --version: {e})")
             any_failed = True
+        else:
+            if result.returncode == 0:
+                version_str = result.stdout.strip().splitlines()[0] if result.stdout.strip() else "unknown version"
+                print(f"JJ:           installed ({version_str})")
+            else:
+                print("JJ:           ERROR (jj --version failed)")
+                any_failed = True
     else:
         print("JJ:           NOT FOUND")
         print("  Fix: bash scripts/install-jj.sh")
@@ -386,15 +395,22 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print(f"Data repo:    ERROR ({e})")
         any_failed = True
 
-    # Check 3: Scope configured?
+    # Check 3: Scope configured and valid?
     project_dir = Path.cwd()
-    env_scope = _read_env_value(project_dir / ".env", "FAVA_TRAIL_SCOPE")
-    yaml_scope = _read_project_yaml_scope(project_dir)
+    scope_value = _read_env_value(project_dir / ".env", "FAVA_TRAIL_SCOPE")
+    scope_source = ".env"
+    if not scope_value:
+        scope_value = _read_project_yaml_scope(project_dir)
+        scope_source = ".fava-trail.yaml"
 
-    if env_scope:
-        print(f"Scope:        {env_scope} (from .env)")
-    elif yaml_scope:
-        print(f"Scope:        {yaml_scope} (from .fava-trail.yaml)")
+    if scope_value:
+        try:
+            sanitize_scope_path(scope_value)
+            print(f"Scope:        {scope_value} (from {scope_source})")
+        except ValueError as e:
+            print(f"Scope:        INVALID ({e}) (from {scope_source})")
+            print("  Fix: fava-trails scope set <valid-scope>")
+            any_failed = True
     else:
         print("Scope:        NOT CONFIGURED")
         print("  Fix: fava-trails init")
