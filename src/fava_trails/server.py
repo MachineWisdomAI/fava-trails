@@ -106,7 +106,7 @@ def _load_usage_guide() -> str:
 
     # Fallback: file relative to this source file (development mode)
     src_dir = Path(__file__).resolve().parent
-    # src/fava_trail/server.py -> project root is ../../
+    # src/fava_trails/server.py -> project root is ../../
     project_root = src_dir.parent.parent
     usage_file = project_root / "AGENTS_USAGE_INSTRUCTIONS.md"
     if usage_file.exists():
@@ -157,7 +157,7 @@ async def _get_trail(trail_name: str | None = None) -> TrailManager:
     """
     if not trail_name:
         raise ValueError(
-            "trail_name is required. Pass your scope path (e.g. 'mw/eng/fava-trail')."
+            "trail_name is required. Pass your scope path (e.g. 'mw/eng/fava-trails')."
         )
 
     safe_name = sanitize_scope_path(trail_name)
@@ -183,7 +183,7 @@ def _is_root_level(trail_name: str) -> bool:
 
 def _build_trail_name_desc() -> str:
     """Build trail_name description, including FAVA_TRAIL_SCOPE hint if set."""
-    base = "Scope path (e.g. 'mw/eng/fava-trail'). Required."
+    base = "Scope path (e.g. 'mw/eng/fava-trails'). Required."
     scope = os.environ.get("FAVA_TRAIL_SCOPE_HINT", "").strip()
     if scope:
         return (

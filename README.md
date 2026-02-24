@@ -41,10 +41,10 @@ Add to `~/.claude.json` (Claude Code) or `claude_desktop_config.json` (Claude De
 ```json
 {
   "mcpServers": {
-    "fava-trail": {
+    "fava-trails": {
       "type": "stdio",
       "command": "uv",
-      "args": ["run", "--directory", "/path/to/fava-trail", "fava-trail-server"],
+      "args": ["run", "--directory", "/path/to/fava-trails", "fava-trails-server"],
       "env": {
         "FAVA_TRAILS_DATA_REPO": "/path/to/fava-trail-data"
       }
@@ -58,11 +58,11 @@ For Claude Desktop on Windows (accessing WSL):
 ```json
 {
   "mcpServers": {
-    "fava-trail": {
+    "fava-trails": {
       "command": "wsl.exe",
       "args": [
         "-e", "bash", "-lc",
-        "FAVA_TRAILS_DATA_REPO=/path/to/fava-trail-data uv run --directory /path/to/fava-trail fava-trail-server"
+        "FAVA_TRAILS_DATA_REPO=/path/to/fava-trail-data uv run --directory /path/to/fava-trails fava-trails-server"
       ]
     }
   }
@@ -105,10 +105,10 @@ jj git init --colocate
 jj bookmark track main@origin
 
 # 4. Clone the engine
-git clone https://github.com/YOUR-ORG/fava-trail.git
+git clone https://github.com/YOUR-ORG/fava-trails.git
 
 # 5. Install engine dependencies
-cd fava-trail && uv sync
+cd fava-trails && uv sync
 
 # 6. Register MCP (same config as above, with local paths)
 ```
@@ -128,8 +128,8 @@ jj git push --bookmark main
 ## Architecture
 
 ```
-fava-trail (this repo)         fava-trail-data (your repo)
-├── src/fava_trail/            ├── config.yaml
+fava-trails (this repo)        fava-trail-data (your repo)
+├── src/fava_trails/           ├── config.yaml
 │   ├── server.py  ←── MCP ──→├── .gitignore
 │   ├── trail.py               └── trails/
 │   ├── config.py                  └── default/
