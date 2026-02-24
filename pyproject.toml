@@ -21,6 +21,12 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/fava_trail"]
 
+[tool.hatch.build.targets.sdist]
+include = ["src/fava_trail", "AGENTS_USAGE_INSTRUCTIONS.md"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"AGENTS_USAGE_INSTRUCTIONS.md" = "fava_trail/AGENTS_USAGE_INSTRUCTIONS.md"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

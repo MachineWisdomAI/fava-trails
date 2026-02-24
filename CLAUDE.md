@@ -49,7 +49,7 @@ The server reads `$FAVA_TRAIL_DATA_REPO/config.yaml` for global settings and man
 
 ### Scope Discovery
 
-Agents pass `trail_name` on every tool call. Three sources determine the value — see [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md) for the full resolution protocol.
+Core usage guidance (including scope discovery) is auto-injected via the MCP server's `instructions` field at session init. The full protocol is available on-demand via the `get_usage_guide` tool. Agents pass `trail_name` on every tool call. Three sources determine the value — see the server instructions or [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md) for details.
 
 | Priority | Source | Set where |
 |----------|--------|-----------|
