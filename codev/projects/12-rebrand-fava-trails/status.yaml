@@ -1,19 +1,30 @@
 id: '12'
 title: rebrand-fava-trails
 protocol: spir
-phase: specify
-plan_phases: []
-current_plan_phase: null
+phase: implement
+plan_phases:
+  - id: phase_1
+    title: Documentation split
+    status: in_progress
+  - id: phase_2
+    title: Rename package internals
+    status: pending
+  - id: phase_3
+    title: Rename external references
+    status: pending
+current_plan_phase: phase_1
 gates:
   spec-approval:
-    status: pending
+    status: approved
     requested_at: '2026-02-24T16:22:58.053Z'
+    approved_at: '2026-02-24T16:35:06.764Z'
   plan-approval:
-    status: pending
+    status: approved
+    approved_at: '2026-02-24T16:39:10.519Z'
   pr:
     status: pending
 iteration: 1
-build_complete: true
+build_complete: false
 history: []
 started_at: '2026-02-24T16:16:03.796Z'
-updated_at: '2026-02-24T16:22:58.053Z'
+updated_at: '2026-02-24T16:39:12.609Z'

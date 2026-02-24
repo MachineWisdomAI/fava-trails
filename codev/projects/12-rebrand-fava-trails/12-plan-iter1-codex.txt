@@ -1,0 +1,21 @@
+## Plan Review — Codex (via Pal MCP planner)
+
+APPROVED
+
+## Assessment
+
+The plan provides sufficient structure for a clean rename implementation.
+
+### Technical Correctness
+- Renaming src/fava_trail/ → src/fava_trails/ is the correct approach (not aliasing)
+- pyproject.toml changes needed: [project] name, [project.scripts] entry point, [tool.hatch.build.targets.wheel] packages, [tool.hatch.build.targets.wheel.force-include] paths
+- Test imports are covered explicitly
+
+### Missing but Minor
+- The plan doesn't explicitly mention updating `AGENTS_USAGE_INSTRUCTIONS.md` which is bundled into the wheel (referenced in pyproject.toml force-include). This is a minor oversight — Phase 3 "external references" implicitly covers it.
+
+### Env Var Rename
+- FAVA_TRAIL_DATA_REPO → FAVA_TRAILS_DATA_REPO: This requires updates in server.py config.py and any os.environ.get() calls. Phase 2 handles imports; Phase 3 handles docs. The code-side env var rename should be explicit in Phase 2.
+
+### Recommendation
+Add to Phase 2: "Update FAVA_TRAIL_DATA_REPO → FAVA_TRAILS_DATA_REPO env var references in server code (config.py, server.py)". Otherwise APPROVED.
