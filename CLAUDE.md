@@ -47,22 +47,25 @@ Add to Claude Desktop `claude_desktop_config.json` or `~/.claude.json`:
 
 The server reads `$FAVA_TRAIL_DATA_REPO/config.yaml` for global settings and manages trails under `$FAVA_TRAIL_DATA_REPO/trails/`.
 
-### Scope Discovery (Two-Layer)
+### Scope Discovery (Three-Layer)
 
-Agents need to know which `trail_name` to pass on every tool call. Two env vars work together:
+Agents need to know which `trail_name` to pass on every tool call. Three sources are checked in priority order:
 
-| Env Var | Set where | Read by | Purpose |
-|---------|-----------|---------|---------|
-| `FAVA_TRAIL_SCOPE_HINT` | MCP server `env` block | Server at startup | Broad org/team hint baked into tool descriptions |
-| `FAVA_TRAIL_SCOPE` | Project `.env` file | Agent (via env vars) | Project-specific scope, overrides the hint |
+| Source | Set where | Purpose |
+|--------|-----------|---------|
+| `FAVA_TRAIL_SCOPE` env var | `.env` file (gitignored) | Per-worktree override for epic/branch work |
+| `.fava-trail.yaml` `scope` | Project root (committed) | Default project scope, shared across clones |
+| `FAVA_TRAIL_SCOPE_HINT` | MCP server `env` block | Broad org/team fallback baked into tool descriptions |
 
 **Resolution order:**
-1. If `FAVA_TRAIL_SCOPE` is in your env vars (loaded from project `.env`) — use that
-2. If working in a different directory with its own `.env` — read that instead
-3. Otherwise, use the scope shown in tool descriptions (from `FAVA_TRAIL_SCOPE_HINT`)
+1. `FAVA_TRAIL_SCOPE` env var (from `.env`) — use if set; intended for epic/branch overrides
+2. `.fava-trail.yaml` at project root — committed default, propagates to all clones and worktrees
+3. Scope shown in tool descriptions (from `FAVA_TRAIL_SCOPE_HINT`) — broad fallback
 4. Create sub-scopes as needed (e.g. `mwai/eng/fava-trails/auth-epic` for focused work)
 
-The server never auto-applies a default scope. The agent always passes `trail_name` explicitly — these env vars just tell it *what value to use*.
+The server never auto-applies a default scope. The agent always passes `trail_name` explicitly — these sources just tell it *what value to use*.
+
+For full scope discovery protocol, session start/end conventions, and agent identity rules, see [CLAUDE_USAGE_INSTRUCTIONS.md](CLAUDE_USAGE_INSTRUCTIONS.md).
 
 ### Global Config (`config.yaml`)
 
@@ -145,7 +148,7 @@ Register the MCP server (see MCP Registration above), then use MCP tools (`save_
 - Thought commits live on the detached HEAD chain, not on the `main` git branch
 - `git push origin main` only pushes the git `main` bookmark — it misses all thought commits
 
-**If `push_strategy: immediate` is set** (recommended), the server auto-pushes via `jj git push --all` after every write. No manual action needed.
+**If `push_strategy: immediate` is set** (recommended), the server auto-pushes the main bookmark after every write. No manual action needed.
 
 **If you need to push manually:**
 ```bash
