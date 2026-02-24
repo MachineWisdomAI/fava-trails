@@ -1,6 +1,6 @@
 # Plan 13: OSS Readiness for Early Adopters
 
-**Status:** not started
+**Status:** complete
 **Spec:** `codev/specs/13-oss-readiness.md`
 **Epic:** 0005a-adoption
 **Prerequisites:** Spec 12 (rebrand) must be integrated first
