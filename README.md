@@ -46,7 +46,7 @@ Add to `~/.claude.json` (Claude Code) or `claude_desktop_config.json` (Claude De
       "command": "uv",
       "args": ["run", "--directory", "/path/to/fava-trail", "fava-trail-server"],
       "env": {
-        "FAVA_TRAIL_DATA_REPO": "/path/to/fava-trail-data"
+        "FAVA_TRAILS_DATA_REPO": "/path/to/fava-trail-data"
       }
     }
   }
@@ -62,7 +62,7 @@ For Claude Desktop on Windows (accessing WSL):
       "command": "wsl.exe",
       "args": [
         "-e", "bash", "-lc",
-        "FAVA_TRAIL_DATA_REPO=/path/to/fava-trail-data uv run --directory /path/to/fava-trail fava-trail-server"
+        "FAVA_TRAILS_DATA_REPO=/path/to/fava-trail-data uv run --directory /path/to/fava-trail fava-trail-server"
       ]
     }
   }
