@@ -140,7 +140,7 @@ class VcsBackend(ABC):
 
     @abstractmethod
     async def push(self) -> str:
-        """Push all bookmarks to remote. Returns semantic summary."""
+        """Push main bookmark to remote. Returns semantic summary."""
         ...
 
     @abstractmethod
