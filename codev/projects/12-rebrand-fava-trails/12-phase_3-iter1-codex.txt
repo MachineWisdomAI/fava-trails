@@ -1,0 +1,28 @@
+## Phase 3 Review — Codex (via Pal MCP codereview)
+
+APPROVED (with fixes applied)
+
+## Assessment
+
+All command-line references, package paths, and MCP server registration examples are correctly updated.
+
+### Issues Found and Fixed
+
+**[MEDIUM] Product name "FAVA Trail" not updated in doc headings/intros across 5 files**
+- README.md h1, AGENTS.md h1, AGENTS_SETUP_INSTRUCTIONS.md h1, AGENTS_USAGE_INSTRUCTIONS.md h1, CLAUDE.md h1
+→ Fixed: All updated to "FAVA Trails".
+
+**[MEDIUM] AGENTS.md — two body text scope examples still showed `mw/eng/fava-trail`**
+→ Fixed: Updated to `mw/eng/fava-trails`.
+
+**[MEDIUM] AGENTS.md — `pytest --cov=fava_trail` command broken (module no longer exists)**
+→ Fixed: Updated to `--cov=fava_trails`.
+
+### Intentionally Preserved
+- `fava-trail-data` data repo references — correct per architect spec
+- `.fava-trail.yaml` config filename — intentionally singular
+- `FAVA_TRAIL_SCOPE` env var — intentionally singular per architect review comment
+
+128 tests pass. All external references now consistent.
+
+APPROVED.

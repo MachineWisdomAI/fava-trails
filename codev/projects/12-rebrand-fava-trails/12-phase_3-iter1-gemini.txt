@@ -1,0 +1,34 @@
+## Phase 3 Review — Gemini (via Pal MCP codereview)
+
+APPROVED (with fixes applied)
+
+## Assessment
+
+External reference rename is complete after iteration.
+
+### Issues Found and Fixed
+
+**[MEDIUM] README, AGENTS, AGENTS_SETUP_INSTRUCTIONS, AGENTS_USAGE_INSTRUCTIONS, CLAUDE.md — headings and body text still said "FAVA Trail" (singular)**
+→ Fixed: All headings and product name references in body text updated to "FAVA Trails".
+
+**[MEDIUM] AGENTS.md scope examples — `mw/eng/fava-trail` in two body text locations**
+→ Fixed: Updated to `mw/eng/fava-trails`.
+
+**[MEDIUM] AGENTS.md dev commands — `pytest --cov=fava_trail` (functionally broken after rename)**
+→ Fixed: Updated to `--cov=fava_trails`.
+
+**[LOW] README.md Engine label — `fava-trail` in Architecture section**
+→ Fixed: Updated to `fava-trails`.
+
+### Correctly Preserved (Intentional)
+- `fava-trail-data` — data repo name stays unchanged (per architect directive)
+- `~/.fava-trail` — default home dir, intentionally unchanged
+- `.fava-trail.yaml` — config filename, intentionally singular
+- `FAVA_TRAIL_SCOPE`, `FAVA_TRAIL_SCOPE_HINT` — intentionally singular per spec
+
+### Positive Aspects
+- MCP registration examples correctly show fava-trails-server and /path/to/fava-trails
+- Architecture diagram src/fava_trails/ updated
+- FAVA_TRAIL_DATA_REPO → FAVA_TRAILS_DATA_REPO in AGENTS_SETUP_INSTRUCTIONS.md
+
+APPROVED for PR.
