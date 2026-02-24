@@ -1,6 +1,6 @@
 [project]
 name = "fava-trail"
-version = "0.1.0"
+version = "0.3.3"
 description = "FAVA Trail — Federated Agents Versioned Audit Trail. VCS-backed memory for AI agents via MCP."
 requires-python = ">=3.11"
 dependencies = [
