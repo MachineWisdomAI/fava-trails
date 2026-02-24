@@ -1,0 +1,17 @@
+## Phase 2 Review — Claude Synthesis
+
+APPROVED
+
+## Fix Applied
+FAVA_TRAIL_DATA_REPO backwards-compat shim added to config.py. Existing deployments silently
+failing was a real regression. Added test_fava_home_old_env_var_compat to verify.
+Priority chain: FAVA_TRAILS_DATA_REPO > FAVA_TRAIL_DATA_REPO (deprecated) > FAVA_TRAIL_HOME (legacy) > default.
+
+## Deferred to Phase 3
+README and server.py string updates for the new CLI/package names — those are external references,
+correctly scoped to Phase 3.
+
+## Phase 2 Complete
+- 127 tests pass (128 after new compat test)
+- No stale fava_trail imports in src/ or tests/
+- Backwards compatibility maintained for existing FAVA_TRAIL_DATA_REPO users
