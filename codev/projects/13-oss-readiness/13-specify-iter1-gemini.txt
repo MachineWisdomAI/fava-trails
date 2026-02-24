@@ -1,0 +1,17 @@
+# Spec 13 Consultation — Gemini 3 Pro (against stance)
+# Date: 2026-02-24
+# Tool: Pal MCP (mcp__pal__consensus, continuation_id: 482c978a-5d1b-40be-8ff4-77eedbd5afd5)
+
+## Verdict
+The specification is technically sound and comprehensive for an initial OSS release, correctly identifying the unique `jj` dependency challenge, though the security audit methodology (`grep`) is fragile compared to automated standards.
+
+## Confidence Score
+9/10
+
+## Key Takeaways
+
+- **Upgrade Security Audit**: Replace manual `grep` with **gitleaks** or **trufflehog** in the pre-public audit phase to catch high-entropy strings or secrets hidden in commit history, not just current files.
+- **CI Enhancements**: Add `workflow_dispatch` to `.github/workflows/test.yml` to allow manual trigger of tests without pushing commits (useful for debugging CI setup).
+- **Python Matrix**: Consider testing against the minimum supported Python version (3.11) and the latest (3.13) in CI, rather than just the default runner version, to ensure broad compatibility for early adopters.
+- **Name Squatting Risk**: Even if PyPI publishing is deferred, register/reserve the `fava-trails` project name on PyPI *immediately* to prevent name squatting once the repo goes public.
+- **JJ Script Validation**: Ensure `scripts/install-jj.sh` is strictly non-interactive and handles errors gracefully, as CI logs can be hard to debug if the script hangs on a prompt.

@@ -1,0 +1,14 @@
+id: '13'
+title: oss-readiness
+protocol: aspir
+phase: plan
+plan_phases: []
+current_plan_phase: null
+gates:
+  pr:
+    status: pending
+iteration: 1
+build_complete: false
+history: []
+started_at: '2026-02-24T17:42:49.629Z'
+updated_at: '2026-02-24T17:48:27.393Z'
