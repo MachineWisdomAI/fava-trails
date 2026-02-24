@@ -1,6 +1,6 @@
 # FAVA Trail — Agent Onboarding
 
-Cheat sheet for AI agents using FAVA Trail MCP tools. For full tool reference, see [CLAUDE.md](CLAUDE.md).
+Cheat sheet for AI agents using FAVA Trail MCP tools. For scope discovery and full session protocol, see [CLAUDE_USAGE_INSTRUCTIONS.md](CLAUDE_USAGE_INSTRUCTIONS.md). For tool reference, see [CLAUDE.md](CLAUDE.md).
 
 ## At Session Start
 
