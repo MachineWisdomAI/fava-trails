@@ -1,4 +1,4 @@
-"""FAVA Trail MCP Server — Federated Agents Versioned Audit Trail.
+"""FAVA Trails MCP Server 🫛👣 — Federated Agents Versioned Audit Trail.
 
 Provides 16 MCP tools for versioned agent memory via JJ (Jujutsu) VCS.
 All tool responses are token-optimized JSON summaries — no raw VCS output.
@@ -99,7 +99,7 @@ def _load_usage_guide() -> str:
     """
     # Try importlib.resources (works when installed as package)
     try:
-        ref = importlib.resources.files("fava_trail") / "AGENTS_USAGE_INSTRUCTIONS.md"
+        ref = importlib.resources.files("fava_trails") / "AGENTS_USAGE_INSTRUCTIONS.md"
         return ref.read_text(encoding="utf-8")
     except (FileNotFoundError, TypeError, ModuleNotFoundError):
         pass
@@ -115,7 +115,7 @@ def _load_usage_guide() -> str:
     return "Error: AGENTS_USAGE_INSTRUCTIONS.md not found. Check your installation."
 
 
-server = Server("fava-trail", instructions=_build_server_instructions())
+server = Server("fava-trails", instructions=_build_server_instructions())
 
 # Trail manager cache: trail_name -> TrailManager
 _trail_managers: dict[str, TrailManager] = {}
@@ -139,7 +139,7 @@ async def _init_server() -> None:
     except ValueError:
         raise RuntimeError(
             f"FAVA_TRAILS_DIR ({trails_dir}) must be inside data repo root ({repo_root}). "
-            "Check your FAVA_TRAIL_DATA_REPO and FAVA_TRAILS_DIR environment variables."
+            "Check your FAVA_TRAILS_DATA_REPO and FAVA_TRAILS_DIR environment variables."
         )
 
     _shared_backend = JjBackend(repo_root=repo_root, trail_path=trails_dir)
@@ -616,7 +616,7 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
 
 
 def run():
-    """Entry point for fava-trail-server."""
+    """Entry point for fava-trails-server."""
     async def main():
         # Verify JJ installation
         try:

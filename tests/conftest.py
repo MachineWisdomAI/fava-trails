@@ -16,11 +16,11 @@ if not Path(jj_bin).exists():
 
 @pytest.fixture
 def tmp_fava_home(tmp_path):
-    """Create a temporary FAVA_TRAIL_DATA_REPO with monorepo initialized at root."""
+    """Create a temporary FAVA_TRAILS_DATA_REPO with monorepo initialized at root."""
     home = tmp_path / "fava-trail-data"
     home.mkdir()
     (home / "trails").mkdir()
-    os.environ["FAVA_TRAIL_DATA_REPO"] = str(home)
+    os.environ["FAVA_TRAILS_DATA_REPO"] = str(home)
     # Init monorepo at root (not per-trail)
     subprocess.run([jj_bin, "git", "init", "--colocate"], cwd=str(home), check=True)
     subprocess.run(
@@ -32,13 +32,13 @@ def tmp_fava_home(tmp_path):
         cwd=str(home), check=True,
     )
     yield home
-    os.environ.pop("FAVA_TRAIL_DATA_REPO", None)
+    os.environ.pop("FAVA_TRAILS_DATA_REPO", None)
 
 
 @pytest_asyncio.fixture
 async def jj_backend(tmp_fava_home):
     """Create a JjBackend with monorepo at root, trail as subdirectory."""
-    from fava_trail.vcs.jj_backend import JjBackend
+    from fava_trails.vcs.jj_backend import JjBackend
 
     trail_path = tmp_fava_home / "trails" / "test-jj"
     trail_path.mkdir(parents=True)
@@ -50,8 +50,8 @@ async def jj_backend(tmp_fava_home):
 @pytest_asyncio.fixture
 async def trail_manager(tmp_fava_home):
     """Create and initialize a TrailManager with a test trail."""
-    from fava_trail.trail import TrailManager
-    from fava_trail.vcs.jj_backend import JjBackend
+    from fava_trails.trail import TrailManager
+    from fava_trails.vcs.jj_backend import JjBackend
 
     trail_path = tmp_fava_home / "trails" / "test"
     backend = JjBackend(repo_root=tmp_fava_home, trail_path=trail_path)
@@ -67,8 +67,8 @@ async def nested_trail_managers(tmp_fava_home):
     Returns dict with keys: 'company', 'team', 'project', 'epic'
     mapped to TrailManagers for mw, mw/eng, mw/eng/fava-trail, mw/eng/fava-trail/auth-epic.
     """
-    from fava_trail.trail import TrailManager
-    from fava_trail.vcs.jj_backend import JjBackend
+    from fava_trails.trail import TrailManager
+    from fava_trails.vcs.jj_backend import JjBackend
 
     managers = {}
     for name, key in [

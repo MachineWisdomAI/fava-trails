@@ -28,7 +28,7 @@ async def test_init_trail_idempotent(jj_backend):
 @pytest.mark.asyncio
 async def test_init_monorepo_three_case_existing_git(tmp_path):
     """Case 1: .git exists, no .jj → colocate JJ on top."""
-    from fava_trail.vcs.jj_backend import JjBackend
+    from fava_trails.vcs.jj_backend import JjBackend
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -59,7 +59,7 @@ async def test_init_monorepo_three_case_both_exist(jj_backend):
 @pytest.mark.asyncio
 async def test_init_monorepo_three_case_neither(tmp_path):
     """Case 3: Neither exists → fresh init."""
-    from fava_trail.vcs.jj_backend import JjBackend
+    from fava_trails.vcs.jj_backend import JjBackend
 
     repo = tmp_path / "fresh-repo"
     trail = repo / "trails" / "test"
@@ -73,7 +73,7 @@ async def test_init_monorepo_three_case_neither(tmp_path):
 @pytest.mark.asyncio
 async def test_init_monorepo_sets_snapshot_conflict_style(tmp_path):
     """init_monorepo configures snapshot-style conflict markers."""
-    from fava_trail.vcs.jj_backend import JjBackend
+    from fava_trails.vcs.jj_backend import JjBackend
 
     repo = tmp_path / "snap-repo"
     trail = repo / "trails" / "test"
@@ -214,7 +214,7 @@ async def test_gc(jj_backend):
 
 def test_parse_snapshot_conflict_single():
     """Parse a single snapshot-style conflict block."""
-    from fava_trail.vcs.jj_backend import JjBackend
+    from fava_trails.vcs.jj_backend import JjBackend
 
     text = """\
 <<<<<<< Conflict 1 of 1
@@ -235,7 +235,7 @@ Side B content line 1
 
 def test_parse_snapshot_conflict_multiple():
     """Parse multiple conflict blocks in one file (e.g., frontmatter + content)."""
-    from fava_trail.vcs.jj_backend import JjBackend
+    from fava_trails.vcs.jj_backend import JjBackend
 
     text = """\
 Some preamble
@@ -269,7 +269,7 @@ content side B
 
 def test_parse_snapshot_conflict_no_markers():
     """File without conflict markers returns all None."""
-    from fava_trail.vcs.jj_backend import JjBackend
+    from fava_trails.vcs.jj_backend import JjBackend
 
     text = "Normal file content\nNo conflicts here."
     side_a, base, side_b = JjBackend.parse_snapshot_conflict(text)
@@ -280,7 +280,7 @@ def test_parse_snapshot_conflict_no_markers():
 
 def test_parse_snapshot_conflict_unparseable():
     """Malformed markers (no section headers) return all None."""
-    from fava_trail.vcs.jj_backend import JjBackend
+    from fava_trails.vcs.jj_backend import JjBackend
 
     text = """\
 <<<<<<< Conflict 1 of 1
@@ -337,7 +337,7 @@ async def test_push_advances_bookmark_before_git_push(jj_backend):
 @pytest.mark.asyncio
 async def test_push_uses_default_bookmark_constant(jj_backend):
     """push() should use DEFAULT_BOOKMARK, not a hardcoded string."""
-    from fava_trail.vcs.jj_backend import JjBackend
+    from fava_trails.vcs.jj_backend import JjBackend
 
     calls = []
     original_run = jj_backend._run
@@ -360,7 +360,7 @@ async def test_push_uses_default_bookmark_constant(jj_backend):
 @pytest.mark.asyncio
 async def test_push_uses_bookmark_flag_not_all(jj_backend):
     """push() must use -b <bookmark> instead of --all to avoid pushing stale changes."""
-    from fava_trail.vcs.jj_backend import JjBackend
+    from fava_trails.vcs.jj_backend import JjBackend
 
     calls = []
     original_run = jj_backend._run
