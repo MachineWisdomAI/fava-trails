@@ -38,7 +38,15 @@ build-backend = "hatchling.build"
 packages = ["src/fava_trails"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/fava_trails", "AGENTS_USAGE_INSTRUCTIONS.md"]
+include = [
+    "src/fava_trails/**",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "AGENTS_USAGE_INSTRUCTIONS.md",
+]
 
 [tool.hatch.build.targets.wheel.force-include]
 "AGENTS_USAGE_INSTRUCTIONS.md" = "fava_trails/AGENTS_USAGE_INSTRUCTIONS.md"

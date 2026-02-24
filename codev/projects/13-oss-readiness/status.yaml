@@ -1,9 +1,15 @@
 id: '13'
 title: oss-readiness
 protocol: aspir
-phase: plan
-plan_phases: []
-current_plan_phase: null
+phase: implement
+plan_phases:
+  - id: phase_1
+    title: Documentation, Metadata & Scaffolding
+    status: in_progress
+  - id: phase_2
+    title: Security Audit, PyPI Publishing & Release Prep
+    status: pending
+current_plan_phase: phase_1
 gates:
   pr:
     status: pending
@@ -11,4 +17,4 @@ iteration: 1
 build_complete: true
 history: []
 started_at: '2026-02-24T17:42:49.629Z'
-updated_at: '2026-02-24T17:51:48.572Z'
+updated_at: '2026-02-24T18:02:56.873Z'
