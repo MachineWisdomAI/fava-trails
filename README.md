@@ -184,4 +184,4 @@ uv run pytest --cov       # with coverage
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, how to run tests, and PR expectations.
 
-See [CHANGELOG.md](CHANGELOG.md) for release history. If you're upgrading from `fava-trail`, see the [0.4.0 upgrade notes](CHANGELOG.md#040--2026-02-24).
+See [CHANGELOG.md](CHANGELOG.md) for release history.
