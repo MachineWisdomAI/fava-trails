@@ -34,8 +34,15 @@ def _update_env_file(env_path: Path, key: str, value: str) -> None:
     prefix = f"{key}="
     new_line = f"{key}={value}\n"
 
+    def _line_matches_key(line: str) -> bool:
+        """Match both `KEY=value` and `export KEY=value` forms."""
+        s = line.strip()
+        if s.startswith("export "):
+            s = s[len("export "):].lstrip()
+        return s.startswith(prefix)
+
     # Find all indices where this key appears
-    key_indices = [i for i, line in enumerate(lines) if line.startswith(prefix)]
+    key_indices = [i for i, line in enumerate(lines) if _line_matches_key(line)]
 
     if not key_indices:
         # Key not present — append (ensure file ends with newline first)
@@ -106,7 +113,10 @@ def _write_project_yaml(project_dir: Path, scope: str) -> None:
     yaml_path = project_dir / ".fava-trail.yaml"
     existing: dict = {}
     if yaml_path.exists():
-        existing = yaml.safe_load(yaml_path.read_text()) or {}
+        try:
+            existing = yaml.safe_load(yaml_path.read_text()) or {}
+        except (OSError, yaml.YAMLError):
+            existing = {}
     existing["scope"] = scope
     yaml_path.write_text(yaml.dump(existing, default_flow_style=False, sort_keys=False))
 
@@ -193,7 +203,6 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     target = Path(args.path).expanduser().resolve()
 
     # Validate JJ is available
-    import shutil
     jj_bin = shutil.which("jj")
     if not jj_bin:
         jj_bin = str(Path.home() / ".local" / "bin" / "jj")
@@ -309,7 +318,12 @@ def cmd_scope_set(args: argparse.Namespace) -> int:
 
 def cmd_scope_list(args: argparse.Namespace) -> int:
     """List all scopes in the data repo."""
-    trails_dir = get_trails_dir()
+    try:
+        trails_dir = get_trails_dir()
+    except (OSError, ValueError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        print("  Run: fava-trails bootstrap <path>", file=sys.stderr)
+        return 1
 
     if not trails_dir.exists():
         print(f"No trails directory found at {trails_dir}.", file=sys.stderr)
