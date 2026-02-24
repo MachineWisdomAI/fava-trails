@@ -1,6 +1,6 @@
 """Tests for MCP server instructions field and tool description enhancements."""
 
-from fava_trail.server import (
+from fava_trails.server import (
     TOOL_DEFINITIONS,
     _build_server_instructions,
     _load_usage_guide,

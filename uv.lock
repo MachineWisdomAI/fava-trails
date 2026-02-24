@@ -193,7 +193,7 @@ wheels = [
 ]
 
 [[package]]
-name = "fava-trail"
+name = "fava-trails"
 version = "0.3.3"
 source = { editable = "." }
 dependencies = [
