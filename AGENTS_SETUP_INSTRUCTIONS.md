@@ -97,7 +97,7 @@ Both machines push/pull through the same git remote. Use the `sync` MCP tool to 
 
 ```yaml
 # Required
-trails_dir: trails                        # relative to FAVA_TRAIL_DATA_REPO
+trails_dir: trails                        # relative to FAVA_TRAILS_DATA_REPO
 remote_url: "https://github.com/..."      # git remote URL (null if local-only)
 push_strategy: immediate                  # manual | immediate
 
@@ -140,7 +140,7 @@ The Trust Gate uses a `trust-gate-prompt.md` file to instruct the reviewing LLM 
 ### Placement
 
 ```
-FAVA_TRAIL_DATA_REPO/
+FAVA_TRAILS_DATA_REPO/
 ├── config.yaml
 └── trails/
     ├── trust-gate-prompt.md              # Root prompt — applies to all trails
@@ -187,7 +187,7 @@ jj git push --bookmark main    # push to remote
 ## Data Repo Layout
 
 ```
-FAVA_TRAIL_DATA_REPO/           # Monorepo root (.jj/ + .git/)
+FAVA_TRAILS_DATA_REPO/          # Monorepo root (.jj/ + .git/)
 ├── config.yaml                 # Global config
 ├── .gitignore
 └── trails/
