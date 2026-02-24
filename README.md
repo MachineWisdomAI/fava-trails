@@ -28,10 +28,10 @@ uv sync
 
 ```bash
 # Create an empty repo on GitHub (or any git remote), then clone it
-git clone https://github.com/YOUR-ORG/fava-trail-data.git
+git clone https://github.com/YOUR-ORG/fava-trails-data.git
 
 # Bootstrap it (creates config, .gitignore, initializes JJ)
-bash scripts/bootstrap-data-repo.sh fava-trail-data
+bash scripts/bootstrap-data-repo.sh fava-trails-data
 ```
 
 ### Register the MCP server
@@ -46,7 +46,7 @@ Add to `~/.claude.json` (Claude Code) or `claude_desktop_config.json` (Claude De
       "command": "uv",
       "args": ["run", "--directory", "/path/to/fava-trails", "fava-trails-server"],
       "env": {
-        "FAVA_TRAILS_DATA_REPO": "/path/to/fava-trail-data"
+        "FAVA_TRAILS_DATA_REPO": "/path/to/fava-trails-data"
       }
     }
   }
@@ -62,7 +62,7 @@ For Claude Desktop on Windows (accessing WSL):
       "command": "wsl.exe",
       "args": [
         "-e", "bash", "-lc",
-        "FAVA_TRAILS_DATA_REPO=/path/to/fava-trail-data uv run --directory /path/to/fava-trails fava-trails-server"
+        "FAVA_TRAILS_DATA_REPO=/path/to/fava-trails-data uv run --directory /path/to/fava-trails fava-trails-server"
       ]
     }
   }
@@ -97,10 +97,10 @@ On the second machine:
 bash scripts/install-jj.sh
 
 # 2. Clone the SAME data repo
-git clone https://github.com/YOUR-ORG/fava-trail-data.git
+git clone https://github.com/YOUR-ORG/fava-trails-data.git
 
 # 3. Initialize JJ colocated mode + track remote
-cd fava-trail-data
+cd fava-trails-data
 jj git init --colocate
 jj bookmark track main@origin
 
@@ -118,7 +118,7 @@ That's it. Both machines push/pull through the same git remote. Use the `sync` M
 ### Manual push (if auto-push is off)
 
 ```bash
-cd /path/to/fava-trail-data
+cd /path/to/fava-trails-data
 jj bookmark set main -r @-
 jj git push --bookmark main
 ```
@@ -128,7 +128,7 @@ jj git push --bookmark main
 ## Architecture
 
 ```
-fava-trails (this repo)        fava-trail-data (your repo)
+fava-trails (this repo)        fava-trails-data (your repo)
 ├── src/fava_trails/           ├── config.yaml
 │   ├── server.py  ←── MCP ──→├── .gitignore
 │   ├── trail.py               └── trails/
@@ -141,7 +141,7 @@ fava-trails (this repo)        fava-trail-data (your repo)
 ```
 
 - **Engine** (`fava-trails`) — stateless MCP server, Apache-2.0
-- **Fuel** (`fava-trail-data`) — your organization's trail data, private
+- **Fuel** (`fava-trails-data`) — your organization's trail data, private
 
 ## Configuration
 
@@ -149,10 +149,10 @@ Environment variables:
 
 | Variable | Read by | Purpose | Default |
 |----------|---------|---------|---------|
-| `FAVA_TRAILS_DATA_REPO` | Server | Root directory for trail data (monorepo root) | `~/.fava-trail` |
+| `FAVA_TRAILS_DATA_REPO` | Server | Root directory for trail data (monorepo root) | `~/.fava-trails` |
 | `FAVA_TRAILS_DIR` | Server | Override trails directory location (absolute path) | `$FAVA_TRAILS_DATA_REPO/trails` |
-| `FAVA_TRAIL_SCOPE_HINT` | Server | Broad scope hint baked into tool descriptions | *(none)* |
-| `FAVA_TRAIL_SCOPE` | Agent | Project-specific scope from `.env` file | *(none)* |
+| `FAVA_TRAILS_SCOPE_HINT` | Server | Broad scope hint baked into tool descriptions | *(none)* |
+| `FAVA_TRAILS_SCOPE` | Agent | Project-specific scope from `.env` file | *(none)* |
 
 The server reads `$FAVA_TRAILS_DATA_REPO/config.yaml` for global settings. Minimal `config.yaml`:
 

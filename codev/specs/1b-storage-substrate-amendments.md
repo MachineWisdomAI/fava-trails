@@ -2,7 +2,7 @@
 
 **Status:** integrated
 **Author:** Claude (SPIR with 3-way consensus)
-**Amends:** Spec 0 (`0-repo-separation.md`), Spec 1 (`1-wise-fava-trail.md`)
+**Amends:** Spec 0 (`0-repo-separation.md`), Spec 1 (`1-wise-fava-trails.md`)
 **Mutability Consensus:** GPT 5.2 (8/10 FOR), Gemini 3 Pro (9/10 AGAINST), Grok (8/10 NEUTRAL) — Unanimous support
 **Mutability Consensus Continuation ID:** `437211f0-0754-4002-b29a-25f42b63bdb9`
 **Monorepo Consensus:** GPT 5.2 (8/10 FOR), Gemini 3 Pro (9/10 AGAINST), Grok (8/10 NEUTRAL) — Unanimous support
@@ -30,7 +30,7 @@ You could replace JJ with `mkdir` + `cp` + a timestamp and get the same behavior
 
 ### Problem 2: Per-Trail Repos Have No Remote Storage
 
-Every trail at `wise-fava-trail/trails/{name}/` (being renamed to `fava-trail-data/` — see Naming section) is currently an independent JJ colocated repo with its own `.git/` and `.jj/`. None have a git remote configured. The data is entirely local — 20+ changes in the default trail with zero backup. Machine death = total data loss.
+Every trail at `wise-fava-trails/trails/{name}/` (being renamed to `fava-trails-data/` — see Naming section) is currently an independent JJ colocated repo with its own `.git/` and `.jj/`. None have a git remote configured. The data is entirely local — 20+ changes in the default trail with zero backup. Machine death = total data loss.
 
 Three approaches were evaluated for trail remote storage:
 
@@ -40,9 +40,9 @@ Three approaches were evaluated for trail remote storage:
 | **Single repo, orphan branches per trail** | Rejected | JJ "Global DAG Pollution" — `jj git fetch` in one trail downloads ALL other trails' objects into its `.git/`. `jj log` then shows every trail's history, breaking isolation. |
 | **Monorepo with JJ workspaces** | **Accepted** | None fatal. DAG pollution mitigated by path-filtered `jj log`. This is the pattern the JJ community has converged on for AI agent parallelism. |
 
-### Naming: `wise-fava-trail` -> `fava-trail-data`
+### Naming: `wise-fava-trails` -> `fava-trails-data`
 
-As part of this spec, the internal data repo is renamed from `wise-fava-trail` to `fava-trail-data`. This makes the naming pattern generic: `fava-trail` (engine) + `fava-trail-data` (fuel) — any organization can follow this without wondering what "wise" means. The rename propagates to: GitHub repo name, `FAVA_TRAIL_DATA_REPO` env var references, MCP registration JSON, and all spec/doc references.
+As part of this spec, the internal data repo is renamed from `wise-fava-trails` to `fava-trails-data`. This makes the naming pattern generic: `fava-trails` (engine) + `fava-trails-data` (fuel) — any organization can follow this without wondering what "wise" means. The rename propagates to: GitHub repo name, `FAVA_TRAILS_DATA_REPO` env var references, MCP registration JSON, and all spec/doc references.
 
 ---
 
@@ -227,7 +227,7 @@ The `conflicts` tool response gains richer structure. **Note:** `file_path` is a
 
 **Before (current — per-trail repos):**
 ```
-wise-fava-trail/              <- outer git repo (config only)
+wise-fava-trails/              <- outer git repo (config only)
 ├── .git/
 ├── config.yaml
 └── trails/
@@ -243,7 +243,7 @@ wise-fava-trail/              <- outer git repo (config only)
 
 **After (proposed — monorepo):**
 ```
-fava-trail-data/              <- single JJ colocated repo (ALL data)
+fava-trails-data/              <- single JJ colocated repo (ALL data)
 ├── .git/                     <- one git backend for everything
 ├── .jj/                      <- one JJ state (op log, index)
 ├── config.yaml
@@ -251,14 +251,14 @@ fava-trail-data/              <- single JJ colocated repo (ALL data)
 ├── Makefile
 └── trails/
     ├── default/
-    │   ├── .fava-trail.yaml  <- trail-specific config
+    │   ├── .fava-trails.yaml  <- trail-specific config
     │   └── thoughts/...      <- trail content (just directories, no inner .git/.jj)
     └── project-x/
-        ├── .fava-trail.yaml
+        ├── .fava-trails.yaml
         └── thoughts/...
 ```
 
-**One remote:** `git@github.com:MachineWisdomAI/fava-trail-data.git`
+**One remote:** `git@github.com:MachineWisdomAI/fava-trails-data.git`
 **One push:** `jj git push` syncs everything.
 **One DAG:** All trail history in a unified graph, scoped per trail via path-filtered `jj log`.
 
@@ -268,7 +268,7 @@ When two agents need to work simultaneously on different trails:
 
 ```bash
 # Primary working copy (already exists)
-fava-trail-data/              <- default workspace
+fava-trails-data/              <- default workspace
 
 # Agent A gets a workspace scoped to default trail
 jj workspace add ../agent-a-ws --name agent-a
@@ -300,13 +300,13 @@ Sparse patterns restrict file materialization: Agent A's workspace literally onl
 The `JjBackend` is rewritten once with all changes — monorepo root as cwd, trail path as file prefix, path-scoped log, and mutable content support.
 
 **Constructor change:** The `JjBackend` constructor must accept both `repo_root` (where `.jj/` lives — the monorepo root) and `trail_path` (where thoughts live — the trail subdirectory). These are different paths in the monorepo model:
-- `repo_root`: `/path/to/fava-trail-data/` (where `.jj/` lives, where JJ commands run)
-- `trail_path`: `/path/to/fava-trail-data/trails/default/` (where thoughts live)
+- `repo_root`: `/path/to/fava-trails-data/` (where `.jj/` lives, where JJ commands run)
+- `trail_path`: `/path/to/fava-trails-data/trails/default/` (where thoughts live)
 
 **Modified: `_run()` method** — Currently runs JJ commands with `cwd=self.trail_path` (the per-trail directory). In the monorepo, JJ commands must run with `cwd=self.repo_root` (where `.jj/` lives).
 
 **New: `init_monorepo()`** — Called once on first server start. Three-case detection:
-- If `.git/` exists but `.jj/` doesn't → `jj git init --colocate` (wraps existing git history — the current `fava-trail-data` repo already has git history from config.yaml commits, CLAUDE.md, etc. This history is intentionally preserved in the monorepo DAG as initial history.)
+- If `.git/` exists but `.jj/` doesn't → `jj git init --colocate` (wraps existing git history — the current `fava-trails-data` repo already has git history from config.yaml commits, CLAUDE.md, etc. This history is intentionally preserved in the monorepo DAG as initial history.)
 - If both `.git/` and `.jj/` exist → already initialized, skip
 - If neither exists → `jj git init --colocate` (fresh repo)
 
@@ -368,7 +368,7 @@ The `VcsBackend` base class gains a `repo_root` property alongside the existing 
 
 ### `list_trails` Change
 
-Currently checks for `(p / ".jj").exists()` to detect trails (`navigation.py:28`). In the monorepo, trails are just directories — check for `(p / "thoughts").exists()` or `(p / ".fava-trail.yaml").exists()` instead.
+Currently checks for `(p / ".jj").exists()` to detect trails (`navigation.py:28`). In the monorepo, trails are just directories — check for `(p / "thoughts").exists()` or `(p / ".fava-trails.yaml").exists()` instead.
 
 ### `_get_trail()` in server.py
 
@@ -376,11 +376,11 @@ Currently auto-initializes by checking `(manager.trail_path / ".jj").exists()` (
 
 ### config.py Changes
 
-**Rename `get_fava_home()` to `get_data_repo_root()`** — Returns the monorepo root path (`FAVA_TRAIL_DATA_REPO`). This is the directory containing `.jj/` and `.git/`. `get_fava_home()` is removed entirely — no alias, no backwards compatibility shim (it was just written in Phase 0, no external consumers).
+**Rename `get_fava_home()` to `get_data_repo_root()`** — Returns the monorepo root path (`FAVA_TRAILS_DATA_REPO`). This is the directory containing `.jj/` and `.git/`. `get_fava_home()` is removed entirely — no alias, no backwards compatibility shim (it was just written in Phase 0, no external consumers).
 
 **`get_trails_dir()`** — Still returns `{data_repo_root}/trails/`. No change in semantics.
 
-The existing `FAVA_TRAIL_DATA_REPO` env var already points to the right place. No new env vars needed.
+The existing `FAVA_TRAILS_DATA_REPO` env var already points to the right place. No new env vars needed.
 
 ### models.py Changes
 
@@ -411,12 +411,12 @@ Pull Daemon also simplifies: one background loop for the entire monorepo, not on
 
 ### Fresh Repo (No Migration)
 
-The data in `wise-fava-trail` is all test data (save/promote/supersede exercises during Phase 1 development). None needs preservation. Instead of a complex migration:
+The data in `wise-fava-trails` is all test data (save/promote/supersede exercises during Phase 1 development). None needs preservation. Instead of a complex migration:
 
-1. Create `fava-trail-data` repo on GitHub (`MachineWisdomAI/fava-trail-data`)
-2. Delete `wise-fava-trail` repo from GitHub
-3. `init_monorepo()` handles fresh repo creation: `jj git init --colocate` at `fava-trail-data/` root, add remote `git@github.com:MachineWisdomAI/fava-trail-data.git`
-4. Leave local `wise-fava-trail/` directory intact until owner deletes manually
+1. Create `fava-trails-data` repo on GitHub (`MachineWisdomAI/fava-trails-data`)
+2. Delete `wise-fava-trails` repo from GitHub
+3. `init_monorepo()` handles fresh repo creation: `jj git init --colocate` at `fava-trails-data/` root, add remote `git@github.com:MachineWisdomAI/fava-trails-data.git`
+4. Leave local `wise-fava-trails/` directory intact until owner deletes manually
 
 **Note:** If future users of FAVA Trail need to migrate real data from per-trail repos to a monorepo, the migration path would be: export `jj log --patch` as text, copy thought files, delete inner VCS dirs, init monorepo, restore files, commit. But this is not needed for the current deployment.
 
@@ -425,7 +425,7 @@ The data in `wise-fava-trail` is all test data (save/promote/supersede exercises
 **Creating a trail:**
 ```
 trails/new-project/
-├── .fava-trail.yaml
+├── .fava-trails.yaml
 └── thoughts/
     ├── decisions/.gitkeep
     ├── observations/.gitkeep
@@ -465,7 +465,7 @@ trails/new-project/
 - **Namespace directories** — Unchanged. `thoughts/{namespace}/{id}.md`.
 - **MCP tool interfaces** — Unchanged. All tools still accept `trail_name`, return structured JSON.
 - **Recall, save_thought, get_thought** — File operations are the same. Only the JJ invocation paths change.
-- **Engine vs. Fuel split** — Unchanged. `fava-trail` (OSS engine) is a separate repo. `fava-trail-data` (internal fuel, renamed from `wise-fava-trail`) is the monorepo.
+- **Engine vs. Fuel split** — Unchanged. `fava-trails` (OSS engine) is a separate repo. `fava-trails-data` (internal fuel, renamed from `wise-fava-trails`) is the monorepo.
 - **Two-tier locking** — Per-trail asyncio.Lock still needed. Repo-wide lock added for global ops. See TrailManager Changes for details.
 - **Conflict interception layer** — Unchanged in behavior. More useful now: two agents editing the same thought file in different workspaces can produce real JJ conflicts.
 
@@ -475,32 +475,32 @@ trails/new-project/
 
 | File | Change |
 |------|--------|
-| `src/fava_trail/vcs/base.py` | Add `repo_root` to `VcsBackend`. Add `init_monorepo()`, `push()`, `fetch()`, `add_remote()` abstract methods. Extend `VcsConflict` with `side_a`, `side_b`, `base` fields. |
-| `src/fava_trail/vcs/jj_backend.py` | **Major rewrite.** Constructor takes `repo_root` + `trail_path`. `_run()` uses `repo_root` as cwd. `init_monorepo()` replaces per-trail `init_trail()` repo creation. `log()` and `diff()` get path scoping. `commit_files()` uses monorepo-relative paths. Add `push()`, `fetch()`, `add_remote()`. `gc()` runs at monorepo level. Add `get_conflict_content()`. Mutable content support throughout. |
-| `src/fava_trail/trail.py` | Accept shared VCS backend. `init()` creates dirs (no repo init). Add `update_thought()`, `_find_thought_path()`, `_get_namespace_from_path()`. Add content-freeze guard. Fix `propose_truth()` persist bug. Refactor `supersede` and `get_thought` to use new utilities. |
-| `src/fava_trail/server.py` | Init monorepo once at startup. Create shared `JjBackend` instance. Register new `update_thought` tool. Update `supersede` tool description. Update conflict interception for `update_thought` exception path. |
-| `src/fava_trail/config.py` | Add `get_repo_root()`. No new env vars needed (`FAVA_TRAIL_DATA_REPO` already correct). |
-| `src/fava_trail/models.py` | Add `TOMBSTONED` to `ValidationStatus`. Add `stale_draft_days` to `TrailConfig`. Add `remote_url` to `TrailConfig` and `GlobalConfig`. |
-| `src/fava_trail/tools/thought.py` | Add `handle_update_thought()`. Update `_serialize_thought` for `TOMBSTONED` status. |
-| `src/fava_trail/tools/navigation.py` | `handle_list_trails()` detects trails by `thoughts/` dir (not `.jj/`). Enhance `handle_conflicts()` to return content sides. |
+| `src/fava_trails/vcs/base.py` | Add `repo_root` to `VcsBackend`. Add `init_monorepo()`, `push()`, `fetch()`, `add_remote()` abstract methods. Extend `VcsConflict` with `side_a`, `side_b`, `base` fields. |
+| `src/fava_trails/vcs/jj_backend.py` | **Major rewrite.** Constructor takes `repo_root` + `trail_path`. `_run()` uses `repo_root` as cwd. `init_monorepo()` replaces per-trail `init_trail()` repo creation. `log()` and `diff()` get path scoping. `commit_files()` uses monorepo-relative paths. Add `push()`, `fetch()`, `add_remote()`. `gc()` runs at monorepo level. Add `get_conflict_content()`. Mutable content support throughout. |
+| `src/fava_trails/trail.py` | Accept shared VCS backend. `init()` creates dirs (no repo init). Add `update_thought()`, `_find_thought_path()`, `_get_namespace_from_path()`. Add content-freeze guard. Fix `propose_truth()` persist bug. Refactor `supersede` and `get_thought` to use new utilities. |
+| `src/fava_trails/server.py` | Init monorepo once at startup. Create shared `JjBackend` instance. Register new `update_thought` tool. Update `supersede` tool description. Update conflict interception for `update_thought` exception path. |
+| `src/fava_trails/config.py` | Add `get_repo_root()`. No new env vars needed (`FAVA_TRAILS_DATA_REPO` already correct). |
+| `src/fava_trails/models.py` | Add `TOMBSTONED` to `ValidationStatus`. Add `stale_draft_days` to `TrailConfig`. Add `remote_url` to `TrailConfig` and `GlobalConfig`. |
+| `src/fava_trails/tools/thought.py` | Add `handle_update_thought()`. Update `_serialize_thought` for `TOMBSTONED` status. |
+| `src/fava_trails/tools/navigation.py` | `handle_list_trails()` detects trails by `thoughts/` dir (not `.jj/`). Enhance `handle_conflicts()` to return content sides. |
 | `tests/conftest.py` | Update fixtures: monorepo init instead of per-trail repo init. |
 | `tests/test_tools.py` | Tests for update_thought, content-freeze, conflict resolution flow. |
 | `tests/test_jj_backend.py` | Tests for monorepo init, path-scoped log, path-scoped diff, push/fetch. |
 | `tests/test_models.py` | Tests for `TOMBSTONED` status, new config fields. |
-| `CLAUDE.md` | Update: monorepo architecture description, `update_thought` vs `supersede` guidance, `fava-trail-data` naming. Remove references to per-trail `.jj/` repos. |
+| `CLAUDE.md` | Update: monorepo architecture description, `update_thought` vs `supersede` guidance, `fava-trails-data` naming. Remove references to per-trail `.jj/` repos. |
 
-### Rename Propagation (`wise-fava-trail` -> `fava-trail-data`)
+### Rename Propagation (`wise-fava-trails` -> `fava-trails-data`)
 
 | Location | Old | New |
 |----------|-----|-----|
-| GitHub repo | `MachineWisdomAI/wise-fava-trail` | `MachineWisdomAI/fava-trail-data` |
-| `~/.claude.json` MCP env | `FAVA_TRAIL_DATA_REPO: .../wise-fava-trail` | `FAVA_TRAIL_DATA_REPO: .../fava-trail-data` |
-| `codev/specs/0-repo-separation.md` | References to `wise-fava-trail` | Update to `fava-trail-data` |
-| `codev/plans/0-repo-separation.md` | References to `wise-fava-trail` | Update to `fava-trail-data` |
-| `codev/reviews/0-repo-separation.md` | References to `wise-fava-trail` | Update to `fava-trail-data` |
-| `CLAUDE.md` (fava-trail) | Any `wise-fava-trail` references | Update to `fava-trail-data` |
-| `~/.claude/CLAUDE.md` | MCP config examples | Update to `fava-trail-data` |
-| `CLAUDE.md` (data repo) | Repo self-references | Update to `fava-trail-data` |
+| GitHub repo | `MachineWisdomAI/wise-fava-trails` | `MachineWisdomAI/fava-trails-data` |
+| `~/.claude.json` MCP env | `FAVA_TRAILS_DATA_REPO: .../wise-fava-trails` | `FAVA_TRAILS_DATA_REPO: .../fava-trails-data` |
+| `codev/specs/0-repo-separation.md` | References to `wise-fava-trails` | Update to `fava-trails-data` |
+| `codev/plans/0-repo-separation.md` | References to `wise-fava-trails` | Update to `fava-trails-data` |
+| `codev/reviews/0-repo-separation.md` | References to `wise-fava-trails` | Update to `fava-trails-data` |
+| `CLAUDE.md` (fava-trails) | Any `wise-fava-trails` references | Update to `fava-trails-data` |
+| `~/.claude/CLAUDE.md` | MCP config examples | Update to `fava-trails-data` |
+| `CLAUDE.md` (data repo) | Repo self-references | Update to `fava-trails-data` |
 
 ---
 
@@ -525,7 +525,7 @@ trails/new-project/
 
 ### Monorepo (Part B)
 
-15. `fava-trail-data/` is a single JJ colocated repo (one `.jj/`, one `.git/` at root)
+15. `fava-trails-data/` is a single JJ colocated repo (one `.jj/`, one `.git/` at root)
 16. `trails/{name}/` are plain directories (no `.git/`, no `.jj/` inside)
 17. `jj git remote list` shows the GitHub remote
 18. `jj git push` succeeds — trail data is backed up to GitHub
@@ -537,8 +537,8 @@ trails/new-project/
 
 ### Naming
 
-24. All references to `wise-fava-trail` updated to `fava-trail-data`
-25. `FAVA_TRAIL_DATA_REPO` env var works correctly with renamed repo
+24. All references to `wise-fava-trails` updated to `fava-trails-data`
+25. `FAVA_TRAILS_DATA_REPO` env var works correctly with renamed repo
 
 ### Cross-cutting
 
@@ -576,7 +576,7 @@ trails/new-project/
 - Workspace lifecycle management automation (Phase 2 — when sync/Pull Daemon ships)
 - Cross-trail queries (Phase 3 — when TKG ships)
 - Per-trail access control (not needed for 1-person consultancy)
-- Data migration from `wise-fava-trail` (test data only — fresh repo instead)
+- Data migration from `wise-fava-trails` (test data only — fresh repo instead)
 - Stale draft auto-promotion daemon — Phase 2 implementation
 - Trust Gate integration — Phase 3
 - Semantic search over content diffs — Phase 3

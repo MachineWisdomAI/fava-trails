@@ -87,10 +87,10 @@ Both share `src/fava_trails/` and reuse `config.py` helpers (`get_data_repo_root
 
 ### Scope Configuration Pattern
 Two-file pattern for scope discovery:
-1. `.fava-trail.yaml` — committed project default (`scope: mw/eng/project`)
-2. `.env` — local gitignored override (`FAVA_TRAIL_SCOPE=mw/eng/project`)
+1. `.fava-trails.yaml` — committed project default (`scope: mw/eng/project`)
+2. `.env` — local gitignored override (`FAVA_TRAILS_SCOPE=mw/eng/project`)
 
-`fava-trails init` populates `.env` from `.fava-trail.yaml`, closing the gap where agents skip file reads but reliably auto-load `.env`.
+`fava-trails init` populates `.env` from `.fava-trails.yaml`, closing the gap where agents skip file reads but reliably auto-load `.env`.
 
 ### .env Write Safety
 `_update_env_file()` in `cli.py`:

@@ -31,15 +31,15 @@ history:
       - model: gemini
         verdict: REQUEST_CHANGES
         file: >-
-          /home/younes/git/MachineWisdomAI/fava-trail/.builders/spir-14-cli/codev/projects/14-cli/14-phase_1-iter1-gemini.txt
+          /home/younes/git/MachineWisdomAI/fava-trails/.builders/spir-14-cli/codev/projects/14-cli/14-phase_1-iter1-gemini.txt
       - model: codex
         verdict: REQUEST_CHANGES
         file: >-
-          /home/younes/git/MachineWisdomAI/fava-trail/.builders/spir-14-cli/codev/projects/14-cli/14-phase_1-iter1-codex.txt
+          /home/younes/git/MachineWisdomAI/fava-trails/.builders/spir-14-cli/codev/projects/14-cli/14-phase_1-iter1-codex.txt
       - model: claude
         verdict: REQUEST_CHANGES
         file: >-
-          /home/younes/git/MachineWisdomAI/fava-trail/.builders/spir-14-cli/codev/projects/14-cli/14-phase_1-iter1-claude.txt
+          /home/younes/git/MachineWisdomAI/fava-trails/.builders/spir-14-cli/codev/projects/14-cli/14-phase_1-iter1-claude.txt
   - iteration: 1
     plan_phase: phase_2
     build_output: ''
@@ -47,14 +47,14 @@ history:
       - model: gemini
         verdict: REQUEST_CHANGES
         file: >-
-          /home/younes/git/MachineWisdomAI/fava-trail/.builders/spir-14-cli/codev/projects/14-cli/14-phase_2-iter1-gemini.txt
+          /home/younes/git/MachineWisdomAI/fava-trails/.builders/spir-14-cli/codev/projects/14-cli/14-phase_2-iter1-gemini.txt
       - model: codex
         verdict: REQUEST_CHANGES
         file: >-
-          /home/younes/git/MachineWisdomAI/fava-trail/.builders/spir-14-cli/codev/projects/14-cli/14-phase_2-iter1-codex.txt
+          /home/younes/git/MachineWisdomAI/fava-trails/.builders/spir-14-cli/codev/projects/14-cli/14-phase_2-iter1-codex.txt
       - model: claude
         verdict: REQUEST_CHANGES
         file: >-
-          /home/younes/git/MachineWisdomAI/fava-trail/.builders/spir-14-cli/codev/projects/14-cli/14-phase_2-iter1-claude.txt
+          /home/younes/git/MachineWisdomAI/fava-trails/.builders/spir-14-cli/codev/projects/14-cli/14-phase_2-iter1-claude.txt
 started_at: '2026-02-24T17:42:56.662Z'
 updated_at: '2026-02-24T18:21:10.297Z'

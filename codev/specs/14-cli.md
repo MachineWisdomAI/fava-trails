@@ -10,14 +10,14 @@
 
 ## Clarifying Questions Asked
 
-1. **What's the immediate problem?** — Agents fail to discover project scope because `.fava-trail.yaml` requires proactive file reads that agents skip in practice. The `.env` approach is more reliable (auto-loaded by agent runtimes) but `.env` is gitignored and not auto-populated from `.fava-trail.yaml`. A CLI `init` command bridges this gap.
+1. **What's the immediate problem?** — Agents fail to discover project scope because `.fava-trails.yaml` requires proactive file reads that agents skip in practice. The `.env` approach is more reliable (auto-loaded by agent runtimes) but `.env` is gitignored and not auto-populated from `.fava-trails.yaml`. A CLI `init` command bridges this gap.
 2. **What else would the CLI do?** — Beyond init, a CLI is the natural home for data repo bootstrapping, health checks, scope management, and any future operations that don't belong in the MCP server (which is agent-facing, not human-facing).
 
 ## Problem Statement
 
-FAVA Trails has two human-facing setup scripts (`install-jj.sh`, `bootstrap-data-repo.sh`) and a scope discovery protocol that requires agents to read `.fava-trail.yaml` and populate `.env` — which they frequently fail to do. There is no unified CLI for humans to:
+FAVA Trails has two human-facing setup scripts (`install-jj.sh`, `bootstrap-data-repo.sh`) and a scope discovery protocol that requires agents to read `.fava-trails.yaml` and populate `.env` — which they frequently fail to do. There is no unified CLI for humans to:
 
-1. **Initialize a project directory** for FAVA Trails (create `.fava-trail.yaml`, populate `.env`)
+1. **Initialize a project directory** for FAVA Trails (create `.fava-trails.yaml`, populate `.env`)
 2. **Bootstrap a data repo** (currently a bash script)
 3. **Verify setup** (is JJ installed? is the data repo valid? is scope configured?)
 4. **Manage scopes** (list, switch, create sub-scopes)
@@ -26,13 +26,13 @@ The `bootstrap-data-repo.sh` script works but is not discoverable — users must
 
 ## Current State
 
-- **Scope setup**: Manual — user creates `.fava-trail.yaml` by hand, or copies from docs
+- **Scope setup**: Manual — user creates `.fava-trails.yaml` by hand, or copies from docs
 - **Data repo setup**: `bash scripts/bootstrap-data-repo.sh <path>` — works but undiscoverable
 - **JJ installation**: `bash scripts/install-jj.sh` — separate script
 - **Health check**: None — no way to verify everything is wired correctly
 - **Scope management**: Manual file editing
 
-The scope discovery gap is the acute trigger: agents are told to check `.fava-trail.yaml` but don't, leading to wrong-scope operations (observed in practice during this session).
+The scope discovery gap is the acute trigger: agents are told to check `.fava-trails.yaml` but don't, leading to wrong-scope operations (observed in practice during this session).
 
 ## Desired State
 
@@ -41,8 +41,8 @@ A `fava-trails` CLI (installed alongside the MCP server via the same package) th
 ```bash
 # Initialize a project directory for FAVA Trails
 fava-trails init
-# → Checks for .fava-trail.yaml: if missing, asks for scope and creates it
-# → Writes FAVA_TRAIL_SCOPE=<scope> to .env (creates if needed, appends if exists)
+# → Checks for .fava-trails.yaml: if missing, asks for scope and creates it
+# → Writes FAVA_TRAILS_SCOPE=<scope> to .env (creates if needed, appends if exists)
 # → Validates the data repo is accessible
 # → Prints summary: "Scope: mwai/eng/my-project, Data repo: /path/to/data"
 
@@ -57,15 +57,15 @@ fava-trails init-data <path>
 fava-trails doctor
 # → JJ installed? Version?
 # → Data repo valid? Path?
-# → Scope configured? From .env or .fava-trail.yaml?
+# → Scope configured? From .env or .fava-trails.yaml?
 # → Remote configured? Reachable?
 
 # Scope management
 fava-trails scope
-# → Shows current scope and source (.env, .fava-trail.yaml, or hint)
+# → Shows current scope and source (.env, .fava-trails.yaml, or hint)
 
 fava-trails scope set <scope>
-# → Updates .fava-trail.yaml and .env
+# → Updates .fava-trails.yaml and .env
 
 fava-trails scope list
 # → Lists all scopes in the data repo (delegates to list_scopes)
@@ -78,8 +78,8 @@ fava-trails scope list
 - **Business Owner**: Younes (Machine Wisdom Solutions Inc.)
 
 ## Success Criteria
-- [ ] `fava-trails init` creates `.fava-trail.yaml` and populates `.env` with `FAVA_TRAIL_SCOPE`
-- [ ] `fava-trails init` works in a project that already has `.fava-trail.yaml` (reads scope, writes `.env`)
+- [ ] `fava-trails init` creates `.fava-trails.yaml` and populates `.env` with `FAVA_TRAILS_SCOPE`
+- [ ] `fava-trails init` works in a project that already has `.fava-trails.yaml` (reads scope, writes `.env`)
 - [ ] `fava-trails init` accepts `--scope <value>` for non-interactive/CI use
 - [ ] `fava-trails init` warns if `.env` is not in `.gitignore`
 - [ ] `fava-trails init` prints clear guidance when no data repo is configured
@@ -165,7 +165,7 @@ fava-trails scope list
 N/A — CLI commands are interactive, human-speed.
 
 ## Security Considerations
-- `init` writes to `.env` — must not overwrite existing variables, only append/update `FAVA_TRAIL_SCOPE`
+- `init` writes to `.env` — must not overwrite existing variables, only append/update `FAVA_TRAILS_SCOPE`
 - `init-data` creates directories and runs JJ — standard filesystem permissions apply
 <!-- REVIEW(@architect): You mean bootstrap -->
 - No network access except `doctor` checking remote reachability (optional)
@@ -173,9 +173,9 @@ N/A — CLI commands are interactive, human-speed.
 ## Test Scenarios
 
 ### Functional Tests
-1. `init` in a directory with `.fava-trail.yaml` but no `.env` — creates `.env` with correct scope
-2. `init` in a directory with both `.fava-trail.yaml` and `.env` (no scope) — appends scope to `.env`
-3. `init` in a directory with `.env` already containing `FAVA_TRAIL_SCOPE` — no-op, prints current scope
+1. `init` in a directory with `.fava-trails.yaml` but no `.env` — creates `.env` with correct scope
+2. `init` in a directory with both `.fava-trails.yaml` and `.env` (no scope) — appends scope to `.env`
+3. `init` in a directory with `.env` already containing `FAVA_TRAILS_SCOPE` — no-op, prints current scope
 4. `init` in a directory with neither file — prompts for scope, creates both files
 5. `init-data` creates valid data repo structure (config.yaml, .gitignore, JJ init)
 6. `doctor` reports missing JJ, missing data repo, missing scope
@@ -191,14 +191,14 @@ N/A — CLI commands are interactive, human-speed.
 - **Existing `config.py`**: Reuse `get_data_repo_root()`, `sanitize_scope_path()`, etc.
 
 ## References
-- Scope discovery gap observed in practice (this session — agent used server hint instead of `.fava-trail.yaml`)
+- Scope discovery gap observed in practice (this session — agent used server hint instead of `.fava-trails.yaml`)
 - Existing scripts: `scripts/bootstrap-data-repo.sh`, `scripts/install-jj.sh`
 - Epic 0005a: `codev/epics/0005a-adoption.md`
 
 ## Risks and Mitigation
 | Risk | Probability | Impact | Mitigation Strategy |
 |------|------------|--------|-------------------|
-| `.env` write corrupts existing content | Low | High | Parse existing `.env`, only update/append `FAVA_TRAIL_SCOPE` line |
+| `.env` write corrupts existing content | Low | High | Parse existing `.env`, only update/append `FAVA_TRAILS_SCOPE` line |
 | Users expect `init` to also bootstrap data repo | Medium | Low | Clear messaging: "Data repo not found. Run `fava-trails init-data <path>` to create one." |
 | CLI adds maintenance burden | Low | Low | Small surface area (~5 commands), shares code with server |
 

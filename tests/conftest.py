@@ -17,7 +17,7 @@ if not Path(jj_bin).exists():
 @pytest.fixture
 def tmp_fava_home(tmp_path):
     """Create a temporary FAVA_TRAILS_DATA_REPO with monorepo initialized at root."""
-    home = tmp_path / "fava-trail-data"
+    home = tmp_path / "fava-trails-data"
     home.mkdir()
     (home / "trails").mkdir()
     os.environ["FAVA_TRAILS_DATA_REPO"] = str(home)

@@ -2,7 +2,7 @@
 
 **Status:** integrated
 **Author:** Claude (TICK amendment)
-**Amends:** Spec 1 (`1-wise-fava-trail.md`)
+**Amends:** Spec 1 (`1-wise-fava-trails.md`)
 
 ---
 
@@ -25,7 +25,7 @@ Three-tier documentation architecture:
 ### Tier A: `instructions` field
 
 Condensed version of AGENTS_USAGE core guidance covering:
-- Scope discovery (three-layer: `.env` → `.fava-trail.yaml` → tool description hint)
+- Scope discovery (three-layer: `.env` → `.fava-trails.yaml` → tool description hint)
 - Session start: recall status/decisions/gotchas before working
 - During work: source_type conventions, save_thought defaults to drafts/
 - Task completion: propose_truth is mandatory — unpromoted drafts are invisible; sync after
@@ -46,7 +46,7 @@ Single-sentence warnings added to 3 critical tool descriptions:
 
 ## Success Criteria
 
-1. `Server("fava-trail", instructions=...)` passes non-empty instructions string
+1. `Server("fava-trails", instructions=...)` passes non-empty instructions string
 2. `get_usage_guide` tool returns AGENTS_USAGE_INSTRUCTIONS.md content
 3. Three tool descriptions contain contextual warnings
 4. Documentation updated to reference auto-injection

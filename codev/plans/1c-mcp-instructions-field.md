@@ -13,7 +13,7 @@ Create this plan and the spec. Commit.
 
 ## Phase 2: Server `instructions` Field
 
-**File:** `src/fava_trail/server.py`
+**File:** `src/fava_trails/server.py`
 
 ### 2a: `_build_server_instructions()` function
 
@@ -26,7 +26,7 @@ New MCP tool. Reads `AGENTS_USAGE_INSTRUCTIONS.md` bundled as package data and r
 ### 2c: Wire into Server init
 
 ```python
-server = Server("fava-trail", instructions=_build_server_instructions())
+server = Server("fava-trails", instructions=_build_server_instructions())
 ```
 
 ### 2d: Enhance 3 tool descriptions

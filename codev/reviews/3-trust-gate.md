@@ -34,8 +34,8 @@ Implemented a review gate for `propose_truth` that intercepts thought promotion 
 
 - **Commits**: 8 on the branch (since diverging from main)
 - **Tests**: 112 passing (87 existing + 25 new)
-- **Files created**: `src/fava_trail/trust_gate.py` (321 lines), `tests/test_trust_gate.py` (612 lines)
-- **Files modified**: `src/fava_trail/models.py`, `src/fava_trail/config.py`, `src/fava_trail/server.py`, `src/fava_trail/trail.py`, `src/fava_trail/tools/navigation.py`, `pyproject.toml`, `codev/protocols/aspir/protocol.json`
+- **Files created**: `src/fava_trails/trust_gate.py` (321 lines), `tests/test_trust_gate.py` (612 lines)
+- **Files modified**: `src/fava_trails/models.py`, `src/fava_trails/config.py`, `src/fava_trails/server.py`, `src/fava_trails/trail.py`, `src/fava_trails/tools/navigation.py`, `pyproject.toml`, `codev/protocols/aspir/protocol.json`
 - **Files deleted**: none
 - **Net LOC impact**: +1,296 lines (across 17 files including consultations)
 
@@ -144,9 +144,9 @@ All 12 consultations (4 phases x 3 models) returned APPROVE with no concerns.
 
 No `codev/resources/arch.md` file exists in this project yet. Key architectural additions from this spec that should be documented when `arch.md` is created:
 
-- **Trust Gate module** (`src/fava_trail/trust_gate.py`): review gate intercepting `propose_truth`, with `TrustGatePromptCache` (startup-loaded, anti-tampering), `TrustResult` dataclass, and fail-closed OpenRouter integration
+- **Trust Gate module** (`src/fava_trails/trust_gate.py`): review gate intercepting `propose_truth`, with `TrustGatePromptCache` (startup-loaded, anti-tampering), `TrustResult` dataclass, and fail-closed OpenRouter integration
 - **Prompt hierarchy**: `trust-gate-prompt.md` files resolved most-specific-first, cached at startup, never re-read from disk
-- **Configuration**: `trust_gate` policy in `config.yaml` (global) and `.fava-trail.yaml` (trail-level), `openrouter_api_key_env` and `trust_gate_model` in global config
+- **Configuration**: `trust_gate` policy in `config.yaml` (global) and `.fava-trails.yaml` (trail-level), `openrouter_api_key_env` and `trust_gate_model` in global config
 - **Validation status**: `ValidationStatus` enum extended with `ERROR` for infrastructure failures (distinct from `REJECTED` for reviewer decisions)
 
 ## Lessons Learned Updates
@@ -167,7 +167,7 @@ No `codev/resources/lessons-learned.md` file exists in this project yet. Key les
 ## Follow-up Items
 
 - Create default `trust-gate-prompt.md` in data repo bootstrap script
-- Implement `human` policy with CLI approval tool (`fava-trail approve <thought_id>`)
+- Implement `human` policy with CLI approval tool (`fava-trails approve <thought_id>`)
 - Add prompt checksum verification at startup (anti-tampering hardening)
 - Consider TTL/decay for approved thoughts (stale truth detection)
 - Additive prompt mode (`trust-gate-prompt-extend.md`) to extend rather than replace parent scope prompts

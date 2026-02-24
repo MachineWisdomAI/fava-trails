@@ -1,7 +1,7 @@
 # Plan 1: Core MCP Server + JJ Backend
 
 **Status:** integrated
-**Spec:** `codev/specs/1-wise-fava-trail.md`
+**Spec:** `codev/specs/1-wise-fava-trails.md`
 
 ---
 
@@ -9,10 +9,10 @@
 
 **Files created:**
 ```
-fava-trail/
+fava-trails/
 ├── pyproject.toml          # uv project: mcp, pydantic, pyyaml, python-ulid
 ├── scripts/install-jj.sh   # Download JJ pre-built binary
-└── src/fava_trail/
+└── src/fava_trails/
     ├── __init__.py
     ├── models.py            # ThoughtFrontmatter, ThoughtRecord, SourceType, etc.
     └── config.py            # env vars + config.yaml loading
@@ -27,7 +27,7 @@ fava-trail/
 
 **Files created:**
 ```
-src/fava_trail/vcs/
+src/fava_trails/vcs/
 ├── __init__.py
 ├── base.py                  # VcsBackend ABC
 └── jj_backend.py            # JjBackend(VcsBackend)
@@ -48,7 +48,7 @@ src/fava_trail/vcs/
 
 **Files created:**
 ```
-src/fava_trail/
+src/fava_trails/
 ├── trail.py                 # TrailManager: VCS + models + per-trail mutex
 └── tools/
     ├── __init__.py
@@ -74,7 +74,7 @@ src/fava_trail/
 
 **Files created:**
 ```
-src/fava_trail/server.py     # MCP server (stdio transport)
+src/fava_trails/server.py     # MCP server (stdio transport)
 ```
 
 **Key patterns:**
@@ -82,10 +82,10 @@ src/fava_trail/server.py     # MCP server (stdio transport)
 - Tool routing via handler dict
 - Conflict interception layer: write ops check for conflicts before proceeding
 - Error handling: all exceptions caught and returned as structured JSON
-- Entry point: `fava-trail-server` CLI command in pyproject.toml
+- Entry point: `fava-trails-server` CLI command in pyproject.toml
 
 **Done criteria:**
-- `uv run fava-trail-server` starts and responds to MCP
+- `uv run fava-trails-server` starts and responds to MCP
 - `list_tools` returns 9 Phase 1 tools
 - All tool calls route to correct handlers
 

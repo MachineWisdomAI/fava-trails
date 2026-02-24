@@ -13,7 +13,7 @@ wise-agents-toolkit's flat-file memory (`memory/shared/decisions.md`, `memory/sh
 
 ## Proposed Solution
 
-A migration script (`src/fava_trail/adapters/toolkit.py`) that reads flat-file memory and creates FAVA Trail thoughts with correct namespaces and metadata.
+A migration script (`src/fava_trails/adapters/toolkit.py`) that reads flat-file memory and creates FAVA Trail thoughts with correct namespaces and metadata.
 
 ### Migration Map
 
@@ -32,7 +32,7 @@ Re-running the migration does not create duplicates. The adapter checks for exis
 - Migration reads flat-file memory from specified directory
 - Thoughts created with correct namespace, source_type, and metadata
 - Idempotent — re-running doesn't create duplicates
-- Runnable as CLI command: `uv run fava-trail-migrate --source /path/to/memory`
+- Runnable as CLI command: `uv run fava-trails-migrate --source /path/to/memory`
 
 ## Out of Scope
 

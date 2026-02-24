@@ -93,12 +93,12 @@ def _is_env_gitignored(project_dir: Path) -> bool:
     return False
 
 
-# ─── Project scope helpers (.fava-trail.yaml) ────────────────────────────────
+# ─── Project scope helpers (.fava-trails.yaml) ────────────────────────────────
 
 
 def _read_project_yaml_scope(project_dir: Path) -> str | None:
-    """Read scope from .fava-trail.yaml in project_dir. Returns None if missing or invalid."""
-    yaml_path = project_dir / ".fava-trail.yaml"
+    """Read scope from .fava-trails.yaml in project_dir. Returns None if missing or invalid."""
+    yaml_path = project_dir / ".fava-trails.yaml"
     if not yaml_path.exists():
         return None
     try:
@@ -109,8 +109,8 @@ def _read_project_yaml_scope(project_dir: Path) -> str | None:
 
 
 def _write_project_yaml(project_dir: Path, scope: str) -> None:
-    """Write (or overwrite) .fava-trail.yaml with the given scope."""
-    yaml_path = project_dir / ".fava-trail.yaml"
+    """Write (or overwrite) .fava-trails.yaml with the given scope."""
+    yaml_path = project_dir / ".fava-trails.yaml"
     existing: dict = {}
     if yaml_path.exists():
         try:
@@ -138,16 +138,16 @@ def cmd_init(args: argparse.Namespace) -> int:
         except ValueError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
-        # Write .fava-trail.yaml if missing or scope differs
+        # Write .fava-trails.yaml if missing or scope differs
         existing_yaml_scope = _read_project_yaml_scope(project_dir)
         if existing_yaml_scope != scope:
             _write_project_yaml(project_dir, scope)
             if existing_yaml_scope is None:
-                print(f"Created .fava-trail.yaml with scope: {scope}")
+                print(f"Created .fava-trails.yaml with scope: {scope}")
             else:
-                print(f"Updated .fava-trail.yaml scope: {existing_yaml_scope} -> {scope}")
+                print(f"Updated .fava-trails.yaml scope: {existing_yaml_scope} -> {scope}")
     else:
-        # No --scope flag: check .fava-trail.yaml first
+        # No --scope flag: check .fava-trails.yaml first
         yaml_scope = _read_project_yaml_scope(project_dir)
         if yaml_scope:
             scope = yaml_scope
@@ -167,17 +167,17 @@ def cmd_init(args: argparse.Namespace) -> int:
                 print(f"Error: {e}", file=sys.stderr)
                 return 1
             _write_project_yaml(project_dir, scope)
-            print(f"Created .fava-trail.yaml with scope: {scope}")
+            print(f"Created .fava-trails.yaml with scope: {scope}")
 
     # 2. Update .env
-    existing_env_scope = _read_env_value(env_path, "FAVA_TRAIL_SCOPE")
+    existing_env_scope = _read_env_value(env_path, "FAVA_TRAILS_SCOPE")
     if existing_env_scope:
         print(f"Scope already set in .env: {existing_env_scope}")
         if existing_env_scope != scope:
-            print(f"  (Note: .fava-trail.yaml has scope '{scope}' — run `fava-trails scope set {scope}` to sync)")
+            print(f"  (Note: .fava-trails.yaml has scope '{scope}' — run `fava-trails scope set {scope}` to sync)")
     else:
-        _update_env_file(env_path, "FAVA_TRAIL_SCOPE", scope)
-        print(f"Wrote FAVA_TRAIL_SCOPE={scope} to .env")
+        _update_env_file(env_path, "FAVA_TRAILS_SCOPE", scope)
+        print(f"Wrote FAVA_TRAILS_SCOPE={scope} to .env")
 
     # 3. Warn if .env is not gitignored
     if not _is_env_gitignored(project_dir):
@@ -272,16 +272,16 @@ def cmd_scope(args: argparse.Namespace) -> int:
     project_dir = Path.cwd()
     env_path = project_dir / ".env"
 
-    env_scope = _read_env_value(env_path, "FAVA_TRAIL_SCOPE")
+    env_scope = _read_env_value(env_path, "FAVA_TRAILS_SCOPE")
     if env_scope:
         print(f"Scope:  {env_scope}")
-        print(f"Source: .env (FAVA_TRAIL_SCOPE)")
+        print(f"Source: .env (FAVA_TRAILS_SCOPE)")
         return 0
 
     yaml_scope = _read_project_yaml_scope(project_dir)
     if yaml_scope:
         print(f"Scope:  {yaml_scope}")
-        print(f"Source: .fava-trail.yaml")
+        print(f"Source: .fava-trails.yaml")
         return 0
 
     print("Scope:  (not configured)")
@@ -291,7 +291,7 @@ def cmd_scope(args: argparse.Namespace) -> int:
 
 
 def cmd_scope_set(args: argparse.Namespace) -> int:
-    """Set scope in both .fava-trail.yaml and .env."""
+    """Set scope in both .fava-trails.yaml and .env."""
     project_dir = Path.cwd()
     env_path = project_dir / ".env"
 
@@ -302,10 +302,10 @@ def cmd_scope_set(args: argparse.Namespace) -> int:
         return 1
 
     _write_project_yaml(project_dir, scope)
-    print(f"Updated .fava-trail.yaml scope: {scope}")
+    print(f"Updated .fava-trails.yaml scope: {scope}")
 
-    _update_env_file(env_path, "FAVA_TRAIL_SCOPE", scope)
-    print(f"Updated .env FAVA_TRAIL_SCOPE={scope}")
+    _update_env_file(env_path, "FAVA_TRAILS_SCOPE", scope)
+    print(f"Updated .env FAVA_TRAILS_SCOPE={scope}")
 
     trails_dir = "trails"  # default; could read from config
     print(
@@ -411,11 +411,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
     # Check 3: Scope configured and valid?
     project_dir = Path.cwd()
-    scope_value = _read_env_value(project_dir / ".env", "FAVA_TRAIL_SCOPE")
+    scope_value = _read_env_value(project_dir / ".env", "FAVA_TRAILS_SCOPE")
     scope_source = ".env"
     if not scope_value:
         scope_value = _read_project_yaml_scope(project_dir)
-        scope_source = ".fava-trail.yaml"
+        scope_source = ".fava-trails.yaml"
 
     if scope_value:
         try:

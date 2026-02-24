@@ -33,7 +33,7 @@ Any MCP client ───┘     │            └── toolkit (P2)
                    /          \
              JjBackend    GitBackend
                    \          /
-              FAVA_TRAIL_DATA_REPO env var
+              FAVA_TRAILS_DATA_REPO env var
                         │
                    trails/ dir
 ```
@@ -130,7 +130,7 @@ Both the new thought creation AND the original's `superseded_by` backlink occur 
 ## Success Criteria
 
 1. JJ binary installed, `jj version` succeeds
-2. `uv run fava-trail-server` starts and responds to `list_tools` (9 Phase 1 tools)
+2. `uv run fava-trails-server` starts and responds to `list_tools` (9 Phase 1 tools)
 3. All 9 Phase 1 tools work end-to-end
 4. `save_thought` defaults to `drafts/` namespace
 5. `supersede` is atomic — crash mid-operation leaves no orphans

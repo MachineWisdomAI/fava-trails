@@ -8,8 +8,8 @@
 ## Phase 5.1: Daemon Implementation
 
 **Files created:**
-- `src/fava_trail/daemon/__init__.py`
-- `src/fava_trail/daemon/pull_daemon.py` — async loop with fetch/rebase/rollback
+- `src/fava_trails/daemon/__init__.py`
+- `src/fava_trails/daemon/pull_daemon.py` — async loop with fetch/rebase/rollback
 
 **Key patterns:**
 - `PullDaemon(jj_backend, interval)` — takes shared backend, configurable interval
@@ -25,8 +25,8 @@
 ## Phase 5.2: Server Integration
 
 **Files modified:**
-- `src/fava_trail/server.py` — start daemon after `_init_server()`, stop on shutdown
-- `src/fava_trail/config.py` — load daemon config
+- `src/fava_trails/server.py` — start daemon after `_init_server()`, stop on shutdown
+- `src/fava_trails/config.py` — load daemon config
 
 **Done criteria:**
 - Daemon starts automatically with server (if `enabled: true`)

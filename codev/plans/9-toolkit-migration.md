@@ -8,8 +8,8 @@
 ## Phase 9.1: Migration Script
 
 **Files created:**
-- `src/fava_trail/adapters/__init__.py`
-- `src/fava_trail/adapters/toolkit.py` — flat-file memory → FAVA Trail converter
+- `src/fava_trails/adapters/__init__.py`
+- `src/fava_trails/adapters/toolkit.py` — flat-file memory → FAVA Trail converter
 
 **Key patterns:**
 - Parse `decisions.md` (markdown sections → individual decisions)
@@ -25,8 +25,8 @@
 ## Phase 9.2: CLI Entry Point
 
 **Files modified:**
-- `pyproject.toml` — add `fava-trail-migrate` entry point
+- `pyproject.toml` — add `fava-trails-migrate` entry point
 
 **Done criteria:**
-- `uv run fava-trail-migrate --source /path/to/memory` works
+- `uv run fava-trails-migrate --source /path/to/memory` works
 - Progress output shows migrated thought count

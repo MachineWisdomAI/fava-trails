@@ -13,7 +13,7 @@ Multi-agent sync currently requires manual `sync` calls. Without a background re
 
 ## Proposed Solution
 
-A background async loop (`src/fava_trail/daemon/pull_daemon.py`) that periodically runs `fetch_and_rebase()` on the monorepo. One daemon instance for the entire monorepo (not per-trail).
+A background async loop (`src/fava_trails/daemon/pull_daemon.py`) that periodically runs `fetch_and_rebase()` on the monorepo. One daemon instance for the entire monorepo (not per-trail).
 
 ### Concurrency Model
 

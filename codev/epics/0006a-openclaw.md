@@ -6,7 +6,7 @@ OpenClaw memory plugin — TypeScript npm package that claims the `plugins.slots
 
 **Prerequisites:** Epic 0004a (rebrand), Spec 6 (Recall Enhancements), Spec 7 (Semantic Recall)
 
-**Integration contract:** The plugin communicates with FAVA Trails exclusively via MCP over stdio. No direct access to the data repo or JJ backend. The plugin is a separate npm package (`openclaw-fava-trail`) in its own repo — it depends on the FAVA Trails CLI/server being installed but does not embed or fork it.
+**Integration contract:** The plugin communicates with FAVA Trails exclusively via MCP over stdio. No direct access to the data repo or JJ backend. The plugin is a separate npm package (`openclaw-fava-trails`) in its own repo — it depends on the FAVA Trails CLI/server being installed but does not embed or fork it.
 
 ## Specs
 

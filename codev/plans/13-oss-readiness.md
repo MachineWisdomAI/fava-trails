@@ -121,10 +121,10 @@ Create `CHANGELOG.md` with entries from v0.1.0 through v0.4.0:
 - v0.3.3 — Scope discovery reliability fix, CLI spec
 - v0.4.0 — Rebrand to FAVA Trails, OSS readiness, CLI
 
-Include an "Upgrading from fava-trail to fava-trails" section under v0.4.0:
-- Package renamed: `fava-trail` → `fava-trails`
-- Import renamed: `fava_trail` → `fava_trails`
-- Entry point renamed: `fava-trail-server` → `fava-trails-server`
+Include an "Upgrading from fava-trails to fava-trails" section under v0.4.0:
+- Package renamed: `fava-trails` → `fava-trails`
+- Import renamed: `fava_trails` → `fava_trails`
+- Entry point renamed: `fava-trails-server` → `fava-trails-server`
 - Update MCP config `command` field accordingly
 
 ### 1g: SECURITY.md

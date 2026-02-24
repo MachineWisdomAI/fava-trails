@@ -13,7 +13,7 @@ Claude Desktop on Windows cannot connect to the FAVA Trail MCP server running un
 
 ## Proposed Solution
 
-A `wsl.exe` wrapper script (`scripts/mcp-fava-wrapper.sh`) that Claude Desktop invokes as its MCP command. The script routes stdio MCP traffic from native Windows into the WSL2 `fava-trail-server` process.
+A `wsl.exe` wrapper script (`scripts/mcp-fava-wrapper.sh`) that Claude Desktop invokes as its MCP command. The script routes stdio MCP traffic from native Windows into the WSL2 `fava-trails-server` process.
 
 ### Wrapper Script
 
@@ -21,7 +21,7 @@ A `wsl.exe` wrapper script (`scripts/mcp-fava-wrapper.sh`) that Claude Desktop i
 #!/bin/bash
 # scripts/mcp-fava-wrapper.sh
 # Claude Desktop on Windows invokes this via wsl.exe
-exec uv run --directory /home/younes/git/MachineWisdomAI/fava-trail fava-trail-server
+exec uv run --directory /home/younes/git/MachineWisdomAI/fava-trails fava-trails-server
 ```
 
 ### Claude Desktop Configuration
@@ -29,12 +29,12 @@ exec uv run --directory /home/younes/git/MachineWisdomAI/fava-trail fava-trail-s
 ```json
 {
   "mcpServers": {
-    "fava-trail": {
+    "fava-trails": {
       "type": "stdio",
       "command": "wsl.exe",
-      "args": ["bash", "-lc", "/home/younes/git/MachineWisdomAI/fava-trail/scripts/mcp-fava-wrapper.sh"],
+      "args": ["bash", "-lc", "/home/younes/git/MachineWisdomAI/fava-trails/scripts/mcp-fava-wrapper.sh"],
       "env": {
-        "FAVA_TRAIL_DATA_REPO": "/home/younes/git/MachineWisdomAI/fava-trail-data"
+        "FAVA_TRAILS_DATA_REPO": "/home/younes/git/MachineWisdomAI/fava-trails-data"
       }
     }
   }

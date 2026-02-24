@@ -8,7 +8,7 @@
 ## Phase 11.1: Adapter Implementation
 
 **Files created:**
-- `src/fava_trail/adapters/openclaw.py` — `MemorySearchManager` backed by FAVA Trail
+- `src/fava_trails/adapters/openclaw.py` — `MemorySearchManager` backed by FAVA Trail
 
 **Done criteria:**
 - `search()`, `readFile()`, `sync()` mapped to FAVA Trail tools

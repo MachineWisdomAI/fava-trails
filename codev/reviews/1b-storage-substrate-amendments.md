@@ -10,7 +10,7 @@
 
 ## Summary
 
-Spec 1b delivered two major changes in 5 sequential phases: (A) mutable content architecture with `update_thought` + content-freeze guards, and (B) monorepo storage substrate replacing per-trail JJ repos. Also renamed `wise-fava-trail` to `fava-trail-data`.
+Spec 1b delivered two major changes in 5 sequential phases: (A) mutable content architecture with `update_thought` + content-freeze guards, and (B) monorepo storage substrate replacing per-trail JJ repos. Also renamed `wise-fava-trails` to `fava-trails-data`.
 
 16 files changed, +1062/-228 lines, 64 tests pass (up from 30 at start of spec).
 
@@ -22,7 +22,7 @@ Spec 1b delivered two major changes in 5 sequential phases: (A) mutable content 
 | 1b.2 | Shared backend + TrailManager wiring — server-level init, `_find_thought_path`/`_get_namespace_from_path` utilities, `propose_truth` persist bug fix | `02bbf5f` | 34→49 |
 | 1b.3 | Mutable content — `update_thought` tool + content-freeze guards (APPROVED/REJECTED/TOMBSTONED/superseded), frontmatter tamper-proofing | `8afeefa` | 49→57 |
 | 1b.4 | Conflict resolution UX — `parse_snapshot_conflict` parser, structured `side_a`/`side_b`/`base` in conflicts response, `update_thought` exception path during conflicts | `fd4edb9` | 57→61 |
-| 1b.5 | Push strategy + rename — `try_push` non-throwing wrapper, server-level post-write push hook, `wise-fava-trail` → `fava-trail-data` rename, CLAUDE.md rewrite | `3251d5e` | 61 |
+| 1b.5 | Push strategy + rename — `try_push` non-throwing wrapper, server-level post-write push hook, `wise-fava-trails` → `fava-trails-data` rename, CLAUDE.md rewrite | `3251d5e` | 61 |
 
 ## Spec Compliance
 
@@ -47,7 +47,7 @@ Spec 1b delivered two major changes in 5 sequential phases: (A) mutable content 
 | GC runs at monorepo level, not per-trail | Pass |
 | `list_trails` detects trails by `thoughts/` directory | Pass |
 | Push after write (configurable via `push_strategy`) | Pass |
-| All `wise-fava-trail` references updated to `fava-trail-data` | Pass |
+| All `wise-fava-trails` references updated to `fava-trails-data` | Pass |
 | CLAUDE.md reflects monorepo architecture | Pass |
 
 ## Code Review Findings (GPT-5.1 Codex)

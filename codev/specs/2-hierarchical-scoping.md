@@ -12,16 +12,16 @@
 FAVA Trail's monorepo (Spec 1b) stores trails as directories under `trails/`. Currently all trails are flat siblings:
 
 ```
-fava-trail-data/
+fava-trails-data/
 └── trails/
     ├── default/           <- kitchen sink
     ├── wise-agents-toolkit/
-    └── fava-trail/
+    └── fava-trails/
 ```
 
 There is no hierarchy. A company-wide coding convention and a throwaway debugging note live at the same level. Agents writing to `default` create a kitchen sink. Agents working on a specific epic see company-wide noise with no way to filter by scope distance.
 
-The monorepo already supports nested directories — `trails/mw/eng/fava-trail/` is a valid path. We just aren't using it.
+The monorepo already supports nested directories — `trails/mw/eng/fava-trails/` is a valid path. We just aren't using it.
 
 ---
 
@@ -34,7 +34,7 @@ A `trail_name` is a `/`-separated path under `trails/`. The server creates the d
 ```
 trails/
 ├── mw/                              <- company-wide
-│   ├── .fava-trail.yaml
+│   ├── .fava-trails.yaml
 │   └── thoughts/
 │       ├── decisions/
 │       │   └── 01JX...coding-standards.md
@@ -42,19 +42,19 @@ trails/
 │           └── firm/
 │               └── 01JX...style-guide.md
 ├── mw/eng/                          <- engineering team
-│   ├── .fava-trail.yaml
+│   ├── .fava-trails.yaml
 │   └── thoughts/
 │       └── decisions/
 │           └── 01JX...react-patterns.md
-├── mw/eng/fava-trail/               <- project
-│   ├── .fava-trail.yaml
+├── mw/eng/fava-trails/               <- project
+│   ├── .fava-trails.yaml
 │   └── thoughts/...
-└── mw/eng/fava-trail/auth-epic/     <- task/epic
-    ├── .fava-trail.yaml
+└── mw/eng/fava-trails/auth-epic/     <- task/epic
+    ├── .fava-trails.yaml
     └── thoughts/...
 ```
 
-Each scope has the same internal structure as a current trail: `.fava-trail.yaml` + `thoughts/{namespace}/`.
+Each scope has the same internal structure as a current trail: `.fava-trails.yaml` + `thoughts/{namespace}/`.
 
 ### Naming Convention (Recommended, Not Enforced)
 
@@ -76,7 +76,7 @@ Each scope has the same internal structure as a current trail: `.fava-trail.yaml
 
 `trail_name` is required on every tool call (except `list_scopes`). The server never reads `.env`, never walks directories, never has a default scope. The **agent** is responsible for knowing its scope.
 
-If `trail_name` is missing, the server returns an error: `"trail_name is required. Pass your scope path (e.g. 'mw/eng/fava-trail')."` No default trail fallback.
+If `trail_name` is missing, the server returns an error: `"trail_name is required. Pass your scope path (e.g. 'mw/eng/fava-trails')."` No default trail fallback.
 
 ### Reads: Explicit Multi-Scope with Globs
 
@@ -85,9 +85,9 @@ If `trail_name` is missing, the server returns an error: `"trail_name is require
 ```python
 recall(
     query="gotchas",
-    trail_name="mw/eng/fava-trail/auth-epic",     # primary scope
+    trail_name="mw/eng/fava-trails/auth-epic",     # primary scope
     trail_names=[                                    # additional scopes to search
-        "mw/eng/fava-trail",                         # project decisions
+        "mw/eng/fava-trails",                         # project decisions
         "mw/eng",                                    # team standards
         "mw",                                        # company conventions
     ]
@@ -98,13 +98,13 @@ recall(
 ```python
 recall(
     query="React patterns",
-    trail_name="mw/eng/fava-trail",
+    trail_name="mw/eng/fava-trails",
     trail_names=["mw/eng/*"]           # all projects under eng
 )
 ```
 
 **Glob semantics:**
-- `*` matches one level: `mw/eng/*` matches `mw/eng/fava-trail`, `mw/eng/wise-agents-toolkit`, but NOT `mw/eng/fava-trail/auth-epic`
+- `*` matches one level: `mw/eng/*` matches `mw/eng/fava-trails`, `mw/eng/wise-agents-toolkit`, but NOT `mw/eng/fava-trails/auth-epic`
 - `**` matches any depth: `mw/eng/**` matches everything under `mw/eng/` at any nesting level
 - The server resolves globs by listing directories under `trails/`. Standard `Path.glob()`.
 - Globs that resolve outside `trails/` are silently dropped (path containment check).
@@ -181,14 +181,14 @@ None. The scope is encoded in the `trail_name` — the directory path under `tra
 
 ### All Other Tools
 
-`start_thought`, `get_thought`, `propose_truth`, `forget`, `sync`, `conflicts`, `rollback`, `diff`, `learn_preference`, `update_thought` — **unchanged**. They already accept `trail_name`. A nested trail name like `mw/eng/fava-trail` means the server resolves `trails/mw/eng/fava-trail/`. No logic change needed.
+`start_thought`, `get_thought`, `propose_truth`, `forget`, `sync`, `conflicts`, `rollback`, `diff`, `learn_preference`, `update_thought` — **unchanged**. They already accept `trail_name`. A nested trail name like `mw/eng/fava-trails` means the server resolves `trails/mw/eng/fava-trails/`. No logic change needed.
 
 ---
 
 ## Done Criteria
 
-- [ ] `trail_name="mw/eng/fava-trail"` resolves to `trails/mw/eng/fava-trail/` (nested directories work)
-- [ ] `save_thought(trail_name="mw/eng/fava-trail/auth-epic")` auto-creates scope directory on first write
+- [ ] `trail_name="mw/eng/fava-trails"` resolves to `trails/mw/eng/fava-trails/` (nested directories work)
+- [ ] `save_thought(trail_name="mw/eng/fava-trails/auth-epic")` auto-creates scope directory on first write
 - [ ] `recall(trail_name="X", trail_names=["Y", "Z"])` returns thoughts from all listed scopes
 - [ ] `recall(trail_names=["mw/eng/*"])` resolves glob to one-level children of `mw/eng/`
 - [ ] `recall(trail_names=["mw/eng/**"])` resolves glob to all scopes under `mw/eng/` at any depth

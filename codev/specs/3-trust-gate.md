@@ -31,10 +31,10 @@ There is no `auto` policy. Every thought that enters permanent namespaces must p
 The critic prompt is a markdown file named `trust-gate-prompt.md` that can exist at any level of the trail hierarchy, following the same resolution pattern as CLAUDE.md:
 
 ```
-$FAVA_TRAIL_DATA_REPO/trails/trust-gate-prompt.md                    # Global default
-$FAVA_TRAIL_DATA_REPO/trails/mw/trust-gate-prompt.md                 # Company override
-$FAVA_TRAIL_DATA_REPO/trails/mw/eng/trust-gate-prompt.md             # Team override
-$FAVA_TRAIL_DATA_REPO/trails/mw/eng/fava-trails/trust-gate-prompt.md # Project override
+$FAVA_TRAILS_DATA_REPO/trails/trust-gate-prompt.md                    # Global default
+$FAVA_TRAILS_DATA_REPO/trails/mw/trust-gate-prompt.md                 # Company override
+$FAVA_TRAILS_DATA_REPO/trails/mw/eng/trust-gate-prompt.md             # Team override
+$FAVA_TRAILS_DATA_REPO/trails/mw/eng/fava-trails/trust-gate-prompt.md # Project override
 ```
 
 **Resolution order:** When `propose_truth` is called for a thought in scope `mw/eng/fava-trails`, walk from most specific to least specific — use the **first** `trust-gate-prompt.md` found. If none found at any level, error.
@@ -150,7 +150,7 @@ The default prompt should classify thoughts as HIGH (actionable, evidence-based)
 ### Human Flow (Not Yet Implemented)
 
 The `human` policy is designed for extensibility — future approval channels include:
-- CLI tool (`fava-trail approve <thought_id>`)
+- CLI tool (`fava-trails approve <thought_id>`)
 - GitHub PR-based review (GHA calls `approve_thought`/`reject_thought` on merge/close)
 - Web dashboard with approval queue
 
@@ -158,7 +158,7 @@ For now, **only the `llm-oneshot` policy is implemented**. If `trust_gate` is se
 
 ```python
 # TODO: Implement human approval flow. Likely needs:
-#   1. CLI tool: `fava-trail approve <thought_id>` / `fava-trail reject <thought_id> --reason "..."`
+#   1. CLI tool: `fava-trails approve <thought_id>` / `fava-trails reject <thought_id> --reason "..."`
 #   2. PR-based flow: thought serialized to PR, GHA calls approve/reject on merge/close
 #   3. approve_thought / reject_thought MCP tools for interactive use
 raise NotImplementedError(
@@ -176,7 +176,7 @@ raise NotImplementedError(
 
 ### Configuration
 
-Trail-level config in `.fava-trail.yaml`:
+Trail-level config in `.fava-trails.yaml`:
 ```yaml
 trust_gate: llm-oneshot    # llm-oneshot | human (future)
 ```

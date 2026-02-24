@@ -52,12 +52,12 @@ def _build_server_instructions() -> str:
 
 ### Scope Discovery
 Every tool call requires `trail_name` — a slash-separated scope path (e.g. `mw/eng/my-project`). Resolve it in priority order:
-1. `FAVA_TRAIL_SCOPE` env var (from project `.env` file — per-worktree override)
-2. `.fava-trail.yaml` `scope` field (committed project default)
+1. `FAVA_TRAILS_SCOPE` env var (from project `.env` file — per-worktree override)
+2. `.fava-trails.yaml` `scope` field (committed project default)
 3. Scope hint shown in tool descriptions (from server config)
 4. If none found, ask the user
 
-**IMPORTANT**: If `FAVA_TRAIL_SCOPE` is not set in `.env` but `.fava-trail.yaml` exists, read the `scope` field and write it to `.env` as `FAVA_TRAIL_SCOPE=<scope>`. This ensures all agents in the project use the correct scope automatically. If neither `.env` nor `.fava-trail.yaml` exist, fall back to the scope hint in tool descriptions — and prompt the user to create a `.fava-trail.yaml` with their intended scope.
+**IMPORTANT**: If `FAVA_TRAILS_SCOPE` is not set in `.env` but `.fava-trails.yaml` exists, read the `scope` field and write it to `.env` as `FAVA_TRAILS_SCOPE=<scope>`. This ensures all agents in the project use the correct scope automatically. If neither `.env` nor `.fava-trails.yaml` exist, fall back to the scope hint in tool descriptions — and prompt the user to create a `.fava-trails.yaml` with their intended scope.
 
 ### Session Start Protocol
 Before starting work, recall existing context:
@@ -182,9 +182,9 @@ def _is_root_level(trail_name: str) -> bool:
 # --- Tool Definitions ---
 
 def _build_trail_name_desc() -> str:
-    """Build trail_name description, including FAVA_TRAIL_SCOPE hint if set."""
+    """Build trail_name description, including FAVA_TRAILS_SCOPE hint if set."""
     base = "Scope path (e.g. 'mw/eng/fava-trails'). Required."
-    scope = os.environ.get("FAVA_TRAIL_SCOPE_HINT", "").strip()
+    scope = os.environ.get("FAVA_TRAILS_SCOPE_HINT", "").strip()
     if scope:
         return (
             f"{base} Your configured scope is '{scope}'. "

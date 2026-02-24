@@ -31,62 +31,62 @@ from fava_trails.cli import (
 
 def test_update_env_file_creates_new(tmp_path):
     env = tmp_path / ".env"
-    _update_env_file(env, "FAVA_TRAIL_SCOPE", "mw/eng/test")
-    assert env.read_text() == "FAVA_TRAIL_SCOPE=mw/eng/test\n"
+    _update_env_file(env, "FAVA_TRAILS_SCOPE", "mw/eng/test")
+    assert env.read_text() == "FAVA_TRAILS_SCOPE=mw/eng/test\n"
 
 
 def test_update_env_file_appends_to_existing(tmp_path):
     env = tmp_path / ".env"
     env.write_text("OTHER_VAR=foo\n")
-    _update_env_file(env, "FAVA_TRAIL_SCOPE", "mw/eng/test")
+    _update_env_file(env, "FAVA_TRAILS_SCOPE", "mw/eng/test")
     assert "OTHER_VAR=foo\n" in env.read_text()
-    assert "FAVA_TRAIL_SCOPE=mw/eng/test\n" in env.read_text()
+    assert "FAVA_TRAILS_SCOPE=mw/eng/test\n" in env.read_text()
 
 
 def test_update_env_file_updates_existing_key(tmp_path):
     env = tmp_path / ".env"
-    env.write_text("FAVA_TRAIL_SCOPE=old-scope\n")
-    _update_env_file(env, "FAVA_TRAIL_SCOPE", "new-scope")
+    env.write_text("FAVA_TRAILS_SCOPE=old-scope\n")
+    _update_env_file(env, "FAVA_TRAILS_SCOPE", "new-scope")
     text = env.read_text()
-    assert "FAVA_TRAIL_SCOPE=new-scope\n" in text
+    assert "FAVA_TRAILS_SCOPE=new-scope\n" in text
     assert "old-scope" not in text
 
 
 def test_update_env_file_deduplicates(tmp_path):
     """Duplicate keys are collapsed to a single entry."""
     env = tmp_path / ".env"
-    env.write_text("FAVA_TRAIL_SCOPE=first\nFAVA_TRAIL_SCOPE=second\n")
-    _update_env_file(env, "FAVA_TRAIL_SCOPE", "final")
+    env.write_text("FAVA_TRAILS_SCOPE=first\nFAVA_TRAILS_SCOPE=second\n")
+    _update_env_file(env, "FAVA_TRAILS_SCOPE", "final")
     text = env.read_text()
-    assert text.count("FAVA_TRAIL_SCOPE=") == 1
-    assert "FAVA_TRAIL_SCOPE=final\n" in text
+    assert text.count("FAVA_TRAILS_SCOPE=") == 1
+    assert "FAVA_TRAILS_SCOPE=final\n" in text
 
 
 def test_update_env_file_preserves_comments(tmp_path):
     env = tmp_path / ".env"
     env.write_text("# This is a comment\nOTHER=bar\n")
-    _update_env_file(env, "FAVA_TRAIL_SCOPE", "mw/test")
+    _update_env_file(env, "FAVA_TRAILS_SCOPE", "mw/test")
     text = env.read_text()
     assert "# This is a comment\n" in text
     assert "OTHER=bar\n" in text
-    assert "FAVA_TRAIL_SCOPE=mw/test\n" in text
+    assert "FAVA_TRAILS_SCOPE=mw/test\n" in text
 
 
 def test_read_env_value_present(tmp_path):
     env = tmp_path / ".env"
-    env.write_text("FAVA_TRAIL_SCOPE=mw/eng/test\n")
-    assert _read_env_value(env, "FAVA_TRAIL_SCOPE") == "mw/eng/test"
+    env.write_text("FAVA_TRAILS_SCOPE=mw/eng/test\n")
+    assert _read_env_value(env, "FAVA_TRAILS_SCOPE") == "mw/eng/test"
 
 
 def test_read_env_value_absent(tmp_path):
     env = tmp_path / ".env"
     env.write_text("OTHER=foo\n")
-    assert _read_env_value(env, "FAVA_TRAIL_SCOPE") is None
+    assert _read_env_value(env, "FAVA_TRAILS_SCOPE") is None
 
 
 def test_read_env_value_missing_file(tmp_path):
     env = tmp_path / ".env"
-    assert _read_env_value(env, "FAVA_TRAIL_SCOPE") is None
+    assert _read_env_value(env, "FAVA_TRAILS_SCOPE") is None
 
 
 # ─── _is_env_gitignored ───────────────────────────────────────────────────────
@@ -116,7 +116,7 @@ def _make_args(**kwargs):
 
 
 def test_init_with_existing_yaml_no_env(tmp_path, monkeypatch):
-    """init reads scope from .fava-trail.yaml and writes .env."""
+    """init reads scope from .fava-trails.yaml and writes .env."""
     monkeypatch.chdir(tmp_path)
     _write_project_yaml(tmp_path, "mw/eng/test")
     # Patch get_data_repo_root to avoid real filesystem dependency
@@ -124,11 +124,11 @@ def test_init_with_existing_yaml_no_env(tmp_path, monkeypatch):
         mock_repo.return_value = tmp_path / "data"
         rc = cmd_init(_make_args(scope=None))
     assert rc == 0
-    assert _read_env_value(tmp_path / ".env", "FAVA_TRAIL_SCOPE") == "mw/eng/test"
+    assert _read_env_value(tmp_path / ".env", "FAVA_TRAILS_SCOPE") == "mw/eng/test"
 
 
 def test_init_with_yaml_and_env_no_scope(tmp_path, monkeypatch):
-    """init appends scope to .env when .env exists but lacks FAVA_TRAIL_SCOPE."""
+    """init appends scope to .env when .env exists but lacks FAVA_TRAILS_SCOPE."""
     monkeypatch.chdir(tmp_path)
     _write_project_yaml(tmp_path, "mw/eng/proj")
     (tmp_path / ".env").write_text("OTHER=foo\n")
@@ -138,14 +138,14 @@ def test_init_with_yaml_and_env_no_scope(tmp_path, monkeypatch):
     assert rc == 0
     text = (tmp_path / ".env").read_text()
     assert "OTHER=foo" in text
-    assert "FAVA_TRAIL_SCOPE=mw/eng/proj" in text
+    assert "FAVA_TRAILS_SCOPE=mw/eng/proj" in text
 
 
 def test_init_env_already_has_scope(tmp_path, monkeypatch, capsys):
-    """init is a no-op when .env already has FAVA_TRAIL_SCOPE."""
+    """init is a no-op when .env already has FAVA_TRAILS_SCOPE."""
     monkeypatch.chdir(tmp_path)
     _write_project_yaml(tmp_path, "mw/eng/proj")
-    (tmp_path / ".env").write_text("FAVA_TRAIL_SCOPE=mw/eng/proj\n")
+    (tmp_path / ".env").write_text("FAVA_TRAILS_SCOPE=mw/eng/proj\n")
     with patch("fava_trails.cli.get_data_repo_root") as mock_repo:
         mock_repo.return_value = tmp_path / "data"
         rc = cmd_init(_make_args(scope=None))
@@ -162,11 +162,11 @@ def test_init_noninteractive_scope_flag(tmp_path, monkeypatch):
         rc = cmd_init(_make_args(scope="mw/eng/ci-test"))
     assert rc == 0
     assert _read_project_yaml_scope(tmp_path) == "mw/eng/ci-test"
-    assert _read_env_value(tmp_path / ".env", "FAVA_TRAIL_SCOPE") == "mw/eng/ci-test"
+    assert _read_env_value(tmp_path / ".env", "FAVA_TRAILS_SCOPE") == "mw/eng/ci-test"
 
 
 def test_init_neither_file_interactive(tmp_path, monkeypatch):
-    """init prompts for scope when neither .fava-trail.yaml nor .env exists."""
+    """init prompts for scope when neither .fava-trails.yaml nor .env exists."""
     monkeypatch.chdir(tmp_path)
     with patch("fava_trails.cli.get_data_repo_root") as mock_repo:
         mock_repo.return_value = tmp_path / "data"
@@ -174,7 +174,7 @@ def test_init_neither_file_interactive(tmp_path, monkeypatch):
             rc = cmd_init(_make_args(scope=None))
     assert rc == 0
     assert _read_project_yaml_scope(tmp_path) == "mw/eng/interactive"
-    assert _read_env_value(tmp_path / ".env", "FAVA_TRAIL_SCOPE") == "mw/eng/interactive"
+    assert _read_env_value(tmp_path / ".env", "FAVA_TRAILS_SCOPE") == "mw/eng/interactive"
 
 
 def test_init_gitignore_warning(tmp_path, monkeypatch, capsys):
@@ -293,7 +293,7 @@ def test_bootstrap_fails_if_already_bootstrapped(tmp_path):
 
 def test_scope_shows_env_source(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
-    (tmp_path / ".env").write_text("FAVA_TRAIL_SCOPE=mw/eng/test\n")
+    (tmp_path / ".env").write_text("FAVA_TRAILS_SCOPE=mw/eng/test\n")
     rc = cmd_scope(_make_args())
     assert rc == 0
     out = capsys.readouterr().out
@@ -308,7 +308,7 @@ def test_scope_shows_yaml_source(tmp_path, monkeypatch, capsys):
     assert rc == 0
     out = capsys.readouterr().out
     assert "mw/eng/yaml-scope" in out
-    assert ".fava-trail.yaml" in out
+    assert ".fava-trails.yaml" in out
 
 
 def test_scope_not_configured(tmp_path, monkeypatch, capsys):
@@ -327,7 +327,7 @@ def test_scope_set_updates_both_files(tmp_path, monkeypatch):
     rc = cmd_scope_set(_make_args(scope_value="mw/eng/new-scope"))
     assert rc == 0
     assert _read_project_yaml_scope(tmp_path) == "mw/eng/new-scope"
-    assert _read_env_value(tmp_path / ".env", "FAVA_TRAIL_SCOPE") == "mw/eng/new-scope"
+    assert _read_env_value(tmp_path / ".env", "FAVA_TRAILS_SCOPE") == "mw/eng/new-scope"
 
 
 def test_scope_set_prints_trust_gate_hint(tmp_path, monkeypatch, capsys):
@@ -436,7 +436,7 @@ def test_doctor_all_green(tmp_path, monkeypatch, capsys):
     """doctor exits 0 when JJ, data repo, and scope are all configured."""
     monkeypatch.chdir(tmp_path)
     data_repo = _make_valid_data_repo(tmp_path)
-    (tmp_path / ".env").write_text(f"FAVA_TRAIL_SCOPE=mw/eng/test\n")
+    (tmp_path / ".env").write_text(f"FAVA_TRAILS_SCOPE=mw/eng/test\n")
 
     with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
         with patch("shutil.which", return_value="/usr/bin/jj"):
@@ -455,7 +455,7 @@ def test_doctor_missing_jj(tmp_path, monkeypatch, capsys):
     """doctor exits 1 and suggests install when JJ is missing."""
     monkeypatch.chdir(tmp_path)
     data_repo = _make_valid_data_repo(tmp_path)
-    (tmp_path / ".env").write_text("FAVA_TRAIL_SCOPE=mw/eng/test\n")
+    (tmp_path / ".env").write_text("FAVA_TRAILS_SCOPE=mw/eng/test\n")
 
     fallback = Path.home() / ".local" / "bin" / "jj"
     real_exists = Path.exists
@@ -480,7 +480,7 @@ def test_doctor_missing_data_repo(tmp_path, monkeypatch, capsys):
     """doctor exits 1 and suggests bootstrap when data repo is absent."""
     monkeypatch.chdir(tmp_path)
     missing = tmp_path / "nonexistent"
-    (tmp_path / ".env").write_text("FAVA_TRAIL_SCOPE=mw/eng/test\n")
+    (tmp_path / ".env").write_text("FAVA_TRAILS_SCOPE=mw/eng/test\n")
 
     with patch("fava_trails.cli.get_data_repo_root", return_value=missing):
         with patch("shutil.which", return_value="/usr/bin/jj"):

@@ -8,8 +8,8 @@
 ## Phase 6.1: `applicable_preferences` Injection
 
 **Files modified:**
-- `src/fava_trail/trail.py` — `recall()` scans `preferences/` namespace for scope-matching thoughts
-- `src/fava_trail/tools/recall.py` — include `applicable_preferences` in response
+- `src/fava_trails/trail.py` — `recall()` scans `preferences/` namespace for scope-matching thoughts
+- `src/fava_trails/tools/recall.py` — include `applicable_preferences` in response
 
 **Key patterns:**
 - After main recall query, scan `preferences/client/` and `preferences/firm/`
@@ -24,7 +24,7 @@
 ## Phase 6.2: `include_relationships` Traversal
 
 **Files modified:**
-- `src/fava_trail/trail.py` — `recall()` follows `relationships` list for 1-hop traversal
+- `src/fava_trails/trail.py` — `recall()` follows `relationships` list for 1-hop traversal
 
 **Key patterns:**
 - For each matching thought, read `relationships` from frontmatter

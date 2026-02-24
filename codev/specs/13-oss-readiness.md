@@ -22,7 +22,7 @@ The owner also needs to decide the license and visibility strategy before openin
 
 ## Current State
 
-- **Repo visibility**: Private on GitHub (MachineWisdomAI/fava-trail)
+- **Repo visibility**: Private on GitHub (MachineWisdomAI/fava-trails)
 - **License**: Apache 2.0 file exists, but `pyproject.toml` has no `license` field (`pip show` says "License: UNKNOWN")
 - **Version**: `pyproject.toml` says `0.1.0` but git tags are at `v0.3.2` — inconsistent
 - **README examples**: `save_thought()` / `propose_truth()` / `recall()` examples omit the required `trail_name` parameter — guaranteed "broken on arrival" for new users

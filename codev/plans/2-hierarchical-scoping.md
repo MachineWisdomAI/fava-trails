@@ -10,7 +10,7 @@
 **Goal:** Allow `/`-separated trail names. Validate segments individually. Resolve glob patterns.
 
 **Files modified:**
-- `src/fava_trail/config.py` — `sanitize_trail_name` → `sanitize_scope_path` (alias kept), new `_SCOPE_SEGMENT_RE`, new `resolve_scope_globs()`
+- `src/fava_trails/config.py` — `sanitize_trail_name` → `sanitize_scope_path` (alias kept), new `_SCOPE_SEGMENT_RE`, new `resolve_scope_globs()`
 
 **Key changes:**
 - New regex: `_SCOPE_SEGMENT_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")`
@@ -19,7 +19,7 @@
 - `resolve_scope_globs(trails_dir, patterns)`: resolve `*`/`**` globs to actual scope paths, silently drop paths outside `trails/`
 
 **Done criteria:**
-- `sanitize_scope_path("mw/eng/fava-trail")` → `"mw/eng/fava-trail"`
+- `sanitize_scope_path("mw/eng/fava-trails")` → `"mw/eng/fava-trails"`
 - `sanitize_scope_path("../etc")` → ValueError
 - `sanitize_scope_path("")` → ValueError
 - `sanitize_scope_path("a/b/c/")` → `"a/b/c"` (trailing slash stripped)
@@ -30,12 +30,12 @@
 **Goal:** `trail_name` required (no default fallback), tool definitions updated, root-level warning, `recall` handler supports `trail_names`, new `change_scope` and `list_scopes` tools.
 
 **Files modified:**
-- `src/fava_trail/server.py` — `_get_trail` uses `sanitize_scope_path`, requires `trail_name` (no default), `recall` handler resolves `trail_names`, new tool definitions for `change_scope` and `list_scopes`
-- `src/fava_trail/trail.py` — `__init__` uses `sanitize_scope_path`, new `recall_multi()` module-level function
-- `src/fava_trail/tools/navigation.py` — `handle_list_trails` → `handle_list_scopes` (recursive, prefix filter, stats)
-- `src/fava_trail/tools/recall.py` — `handle_recall` passes `trail_names` to multi-scope recall, adds `source_trail` to results
-- `src/fava_trail/tools/thought.py` — add `handle_change_scope()`, update `handle_supersede()` for optional `target_trail_name`
-- `src/fava_trail/vcs/jj_backend.py` — `commit_files` gains `allowed_prefixes` parameter
+- `src/fava_trails/server.py` — `_get_trail` uses `sanitize_scope_path`, requires `trail_name` (no default), `recall` handler resolves `trail_names`, new tool definitions for `change_scope` and `list_scopes`
+- `src/fava_trails/trail.py` — `__init__` uses `sanitize_scope_path`, new `recall_multi()` module-level function
+- `src/fava_trails/tools/navigation.py` — `handle_list_trails` → `handle_list_scopes` (recursive, prefix filter, stats)
+- `src/fava_trails/tools/recall.py` — `handle_recall` passes `trail_names` to multi-scope recall, adds `source_trail` to results
+- `src/fava_trails/tools/thought.py` — add `handle_change_scope()`, update `handle_supersede()` for optional `target_trail_name`
+- `src/fava_trails/vcs/jj_backend.py` — `commit_files` gains `allowed_prefixes` parameter
 
 **Key changes:**
 
@@ -85,7 +85,7 @@
 **Test scenarios:**
 1. `sanitize_scope_path` valid paths (single segment, multi-segment, with dots/hyphens)
 2. `sanitize_scope_path` invalid paths (`..`, `\`, empty, empty segments)
-3. `save_thought(trail_name="mw/eng/fava-trail")` creates nested directory
+3. `save_thought(trail_name="mw/eng/fava-trails")` creates nested directory
 4. `save_thought(trail_name="scratch")` succeeds with root-level warning
 5. `recall(trail_name="X", trail_names=["Y", "Z"])` returns from all scopes
 6. `recall(trail_names=["mw/eng/*"])` glob one-level

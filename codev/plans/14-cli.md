@@ -32,19 +32,19 @@ parser.add_argument('--version', action='version', version=f'%(prog)s {version("
 
 Initialize a project directory for FAVA Trails. Assumes data repo and MCP server are already set up. Accepts optional `--scope <value>` flag for non-interactive/CI use.
 
-1. If `--scope` provided, use it directly. Otherwise check for `.fava-trail.yaml`:
+1. If `--scope` provided, use it directly. Otherwise check for `.fava-trails.yaml`:
    - If exists: read `scope` field
-   - If missing: prompt user for scope via `input()`, create `.fava-trail.yaml` with `scope: <value>`
-2. Check `.env` for `FAVA_TRAIL_SCOPE`:
+   - If missing: prompt user for scope via `input()`, create `.fava-trails.yaml` with `scope: <value>`
+2. Check `.env` for `FAVA_TRAILS_SCOPE`:
    - If already set: print current scope, no-op
-   - If missing: append `FAVA_TRAIL_SCOPE=<scope>` to `.env` (create if needed)
+   - If missing: append `FAVA_TRAILS_SCOPE=<scope>` to `.env` (create if needed)
 3. Check if `.env` is in `.gitignore` — if not, print: "Warning: .env is not in .gitignore — add it to avoid committing local config."
 4. Validate data repo is accessible (call `get_data_repo_root()` from `config.py`). If not found, print: "Data repo not configured. Run: fava-trails bootstrap <path>"
 5. Print summary: "Scope: mw/eng/my-project, Data repo: /path/to/data"
 
 **Reuse:** `config.py:get_data_repo_root()` for data repo validation.
 
-**`.env` write safety:** Extract as `_update_env_file(path, key, value)` internal helper (also used by `scope set`). Parse existing `.env` line by line. Only append/update the `FAVA_TRAIL_SCOPE` line. Handle comments, blanks, and duplicate keys (deduplicate — keep last). Never clobber other variables.
+**`.env` write safety:** Extract as `_update_env_file(path, key, value)` internal helper (also used by `scope set`). Parse existing `.env` line by line. Only append/update the `FAVA_TRAILS_SCOPE` line. Handle comments, blanks, and duplicate keys (deduplicate — keep last). Never clobber other variables.
 
 ### 1c: `fava-trails bootstrap <path>`
 
@@ -71,12 +71,12 @@ Show current scope and resolution source:
 
 ```
 Scope: mw/eng/fava-trails
-Source: .env (FAVA_TRAIL_SCOPE)
+Source: .env (FAVA_TRAILS_SCOPE)
 ```
 
 Resolution order (same as server):
-1. `.env` → `FAVA_TRAIL_SCOPE`
-2. `.fava-trail.yaml` → `scope`
+1. `.env` → `FAVA_TRAILS_SCOPE`
+2. `.fava-trails.yaml` → `scope`
 3. Not configured
 
 ### 1e: `fava-trails scope set <scope>`
@@ -84,8 +84,8 @@ Resolution order (same as server):
 Update scope in both config files:
 
 1. Validate scope path (reuse `config.py:sanitize_scope_path()`)
-2. Update `.fava-trail.yaml` `scope` field (create if missing)
-3. Update `.env` `FAVA_TRAIL_SCOPE` (create/append if missing)
+2. Update `.fava-trails.yaml` `scope` field (create if missing)
+3. Update `.env` `FAVA_TRAILS_SCOPE` (create/append if missing)
 4. Print hint: "Note: The trail directory will be created when the first thought is saved. Trust gate prompt is inherited from parent scope. To customize, create `<trails_dir>/<scope>/trust-gate-prompt.md`"
 
 ### 1f: `fava-trails scope list`
@@ -101,12 +101,12 @@ List all scopes in the data repo:
 ### 1g: Tests
 
 Create `tests/test_cli.py`:
-- `init` in directory with `.fava-trail.yaml` but no `.env` — creates `.env` with correct scope
+- `init` in directory with `.fava-trails.yaml` but no `.env` — creates `.env` with correct scope
 - `init` in directory with both files (no scope in .env) — appends scope
-- `init` in directory with `.env` already containing `FAVA_TRAIL_SCOPE` — no-op, prints current
+- `init` in directory with `.env` already containing `FAVA_TRAILS_SCOPE` — no-op, prints current
 - `init` in directory with neither file — prompts for scope, creates both
 - `init --scope mw/eng/foo` — non-interactive, skips prompt
-- `init` with `.env` containing duplicate `FAVA_TRAIL_SCOPE` entries — deduplicates to single entry
+- `init` with `.env` containing duplicate `FAVA_TRAILS_SCOPE` entries — deduplicates to single entry
 - `bootstrap` creates valid data repo structure (config.yaml, .gitignore, trails/, JJ init)
 - `scope` shows correct resolution source
 - `scope set` updates both files
@@ -127,14 +127,14 @@ Health check command that validates the full setup. Exits 0 if all checks pass, 
 fava-trails doctor
 
 JJ:           installed (v0.25.0)
-Data repo:    /home/user/.fava-trail (valid)
+Data repo:    /home/user/.fava-trails (valid)
 Scope:        mw/eng/fava-trails (from .env)
 ```
 
 Checks:
 1. JJ installed? What version? (`jj --version`)
 2. Data repo valid? Path exists? Has `config.yaml`? Has `trails/`?
-3. Scope configured? From `.env`, `.fava-trail.yaml`, or not set?
+3. Scope configured? From `.env`, `.fava-trails.yaml`, or not set?
 
 Each check prints pass/fail with actionable fix suggestion:
 - "JJ not found. Install with: bash scripts/install-jj.sh"
@@ -179,8 +179,8 @@ Add CLI usage section to README.md or link to `fava-trails --help` output.
 
 ## Done Criteria
 
-- `fava-trails init` creates `.fava-trail.yaml` and populates `.env` with `FAVA_TRAIL_SCOPE`
-- `fava-trails init` works in a project that already has `.fava-trail.yaml` (reads scope, writes `.env`)
+- `fava-trails init` creates `.fava-trails.yaml` and populates `.env` with `FAVA_TRAILS_SCOPE`
+- `fava-trails init` works in a project that already has `.fava-trails.yaml` (reads scope, writes `.env`)
 - `fava-trails bootstrap <path>` replaces `bootstrap-data-repo.sh` functionality
 - `fava-trails doctor` validates JJ, data repo, and scope configuration
 - `fava-trails scope` shows current scope and resolution source

@@ -17,7 +17,7 @@
 | Phase | Deliverable | Status | Spec | Plan |
 |-------|-------------|--------|------|------|
 | 0 | Repository separation | complete | `0-repo-separation` | `0-repo-separation` |
-| 1 + 1b | Core MCP + storage substrate | complete | `1-wise-fava-trail` + `1b-storage-substrate-amendments` | same |
+| 1 + 1b | Core MCP + storage substrate | complete | `1-wise-fava-trails` + `1b-storage-substrate-amendments` | same |
 | TICK 1b-001 | Recall query fix | complete | (amendment to 1b) | (amendment to 1b) |
 | **2** | **Hierarchical Scoping** | **complete** | `2-hierarchical-scoping` | `2-hierarchical-scoping` |
 | 3 | Trust Gate | not started | `3-trust-gate` | `3-trust-gate` |

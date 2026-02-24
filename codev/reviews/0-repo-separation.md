@@ -14,18 +14,18 @@ Phase 0 successfully separated the FAVA Trail codebase into two repos following 
 
 ## What Was Done
 
-1. **Created `fava-trail/` OSS repo** — Moved all Python source, tests, SPIR docs, scripts. Added Apache-2.0 LICENSE, `.gitignore`, comprehensive `CLAUDE.md`. Git initialized.
+1. **Created `fava-trails/` OSS repo** — Moved all Python source, tests, SPIR docs, scripts. Added Apache-2.0 LICENSE, `.gitignore`, comprehensive `CLAUDE.md`. Git initialized.
 2. **Enhanced `config.py`** — Added 3-level priority for trails directory: `FAVA_TRAILS_DIR` env > absolute config > relative config. Added 6 tests.
-3. **Created `fava-trail-data/` internal repo** — Created `config.yaml`, `Makefile`, `CLAUDE.md`, `.gitignore`, `trails/`. Git initialized.
-4. **Wired together** — Verified all 36 tests pass with `FAVA_TRAIL_DATA_REPO` pointing to `fava-trail-data/`.
+3. **Created `fava-trails-data/` internal repo** — Created `config.yaml`, `Makefile`, `CLAUDE.md`, `.gitignore`, `trails/`. Git initialized.
+4. **Wired together** — Verified all 36 tests pass with `FAVA_TRAILS_DATA_REPO` pointing to `fava-trails-data/`.
 
 ## Spec Compliance
 
 | Criterion | Status |
 |-----------|--------|
-| `fava-trail` has all Python source, tests pass | Pass |
-| `fava-trail-data` has config/data files only | Pass |
-| `FAVA_TRAIL_DATA_REPO` correctly points server to data repo | Pass |
+| `fava-trails` has all Python source, tests pass | Pass |
+| `fava-trails-data` has config/data files only | Pass |
+| `FAVA_TRAILS_DATA_REPO` correctly points server to data repo | Pass |
 | No company-specific data in OSS repo | Pass |
 | `make setup` bootstraps working environment | Pass (prints instructions) |
 | All 30+ tests pass against restructured code | Pass (36/36) |
@@ -40,7 +40,7 @@ Phase 0 successfully separated the FAVA Trail codebase into two repos following 
 
 ### MEDIUM: `ensure_fava_home` ignores custom trails directory (config.py:82-87)
 
-When `FAVA_TRAILS_DIR` points outside `$FAVA_TRAIL_DATA_REPO`, the function still creates `$FAVA_TRAIL_DATA_REPO/trails` but not the actual configured trails directory.
+When `FAVA_TRAILS_DIR` points outside `$FAVA_TRAILS_DATA_REPO`, the function still creates `$FAVA_TRAILS_DATA_REPO/trails` but not the actual configured trails directory.
 
 **Fix applied:** `ensure_fava_home()` now calls `get_trails_dir()` and creates that directory.
 

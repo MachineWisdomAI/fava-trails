@@ -15,7 +15,7 @@
 
 ## Phase 2: Rename package internals
 
-- Rename `src/fava_trail/` → `src/fava_trails/`
+- Rename `src/fava_trails/` → `src/fava_trails/`
 - Update all internal imports
 - Update `pyproject.toml` (package name, entry points)
 - Update all test imports
@@ -26,15 +26,15 @@
 - Update `AGENTS.md`, `README.md`, `CLAUDE.md` stub with new package/CLI names
 - Update MCP registration examples in all files
 - Update codev docs and status files
-- Update `.env-example` (rename `FAVA_TRAIL_DATA_REPO` → `FAVA_TRAILS_DATA_REPO`)
+- Update `.env-example` (rename `FAVA_TRAILS_DATA_REPO` → `FAVA_TRAILS_DATA_REPO`)
 - Rename GitHub repo (coordinate with org)
-- No changes to data repo storage layer — `fava-trail-data` path remains stable
+- No changes to data repo storage layer — `fava-trails-data` path remains stable
 
 ## Done Criteria
 
 - `uv run fava-trails-server` starts the MCP server
 - All tests pass
-- No stale `fava_trail` (singular) imports remain
+- No stale `fava_trails` (singular) imports remain
 - `README.md` is the GitHub landing page (human docs)
 - `AGENTS.md` has agent-facing docs (scope, lifecycle, conventions)
 - `CLAUDE.md` stub points to `AGENTS.md`

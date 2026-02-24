@@ -59,22 +59,22 @@ The npm package depends on external tooling that must be present on the host:
 
 | Dependency | Required | Install |
 |-----------|----------|---------|
-| `fava-trail` CLI | Yes | `uvx install fava-trail` or `pipx install fava-trail` |
+| `fava-trails` CLI | Yes | `uvx install fava-trails` or `pipx install fava-trails` |
 | JJ (Jujutsu) | Yes | Platform binary — `brew install jj`, `cargo install jj-cli`, or pre-built release |
 | Git | Yes | System package manager |
-| Python >= 3.11 | Yes (for fava-trail) | System or managed via `uv` |
+| Python >= 3.11 | Yes (for fava-trails) | System or managed via `uv` |
 
 The npm `postinstall` script verifies all prerequisites and prints actionable error messages:
 
 ```typescript
 // postinstall.ts
 const checks = [
-  { cmd: "fava-trail --version", name: "fava-trail", install: "uvx install fava-trail" },
+  { cmd: "fava-trails --version", name: "fava-trails", install: "uvx install fava-trails" },
   { cmd: "jj --version", name: "jj", install: "https://jj-vcs.github.io/jj/latest/install/" },
   { cmd: "git --version", name: "git", install: "https://git-scm.com/downloads" },
 ];
 // For each: spawn, check exit code, print:
-// "[OK] fava-trail v0.5.0" or "[FAIL] fava-trail not found — install: uvx install fava-trail"
+// "[OK] fava-trails v0.5.0" or "[FAIL] fava-trails not found — install: uvx install fava-trails"
 ```
 
 This is an explicit trade-off: FAVA Trail is not "npm install and go." The Python + JJ dependency chain is the cost of versioned, VCS-backed memory. The `postinstall` check makes the requirement visible immediately rather than failing silently at runtime.
@@ -89,9 +89,9 @@ OpenClaw Gateway
 │   ├── MEMORY.md          ← replaced by FAVA Trail reads
 │   ├── memory/            ← replaced by FAVA Trail writes
 │   └── skills/
-│       └── fava-trail/    ← bundled SKILL.md (teaches agent FAVA capabilities)
+│       └── fava-trails/    ← bundled SKILL.md (teaches agent FAVA capabilities)
 │
-├── Plugin: openclaw-fava-trail (claims plugins.slots.memory)
+├── Plugin: openclaw-fava-trails (claims plugins.slots.memory)
 │   ├── lifecycle hooks
 │   │   ├── before_agent_start → recall scoped thoughts → prependContext (bounded)
 │   │   ├── before_compaction → extract & save facts before context flush
@@ -108,9 +108,9 @@ OpenClaw Gateway
 │   ├── subprocess supervisor
 │   │   └── health check, auto-restart, graceful degradation
 │   └── MCP bridge (stdio subprocess)
-│       └── fava-trail serve --transport stdio
+│       └── fava-trails serve --transport stdio
 │
-└── FAVA Trail Monorepo (~/.fava-trail/trails/)
+└── FAVA Trail Monorepo (~/.fava-trails/trails/)
     ├── agents/openclaw/researcher/     ← agent A scope
     ├── agents/openclaw/coder/          ← agent B scope
     ├── agents/openclaw/                ← shared agent scope
@@ -121,7 +121,7 @@ OpenClaw Gateway
 
 The child process is the single point of failure for all memory operations. The plugin implements robust lifecycle management:
 
-- **Startup:** Spawn `fava-trail serve --transport stdio` via `api.registerService()`. Send a health-check ping (`list_trails`). If no response within 5s, retry up to 3 times with exponential backoff (1s, 2s, 4s).
+- **Startup:** Spawn `fava-trails serve --transport stdio` via `api.registerService()`. Send a health-check ping (`list_trails`). If no response within 5s, retry up to 3 times with exponential backoff (1s, 2s, 4s).
 - **Runtime:** Periodic health-check ping every 60s. If the process dies, auto-restart with the same backoff strategy. Log all restarts.
 - **Graceful degradation:** If the subprocess is unavailable after all retries, memory tools return empty results and log a warning rather than crashing the agent. The agent continues working without memory — degraded but functional.
 - **Shutdown:** On Gateway shutdown, send SIGTERM to the subprocess and wait up to 5s for clean exit before SIGKILL.
@@ -144,10 +144,10 @@ Each OpenClaw agent maps to a FAVA Trail scope via plugin config:
 {
   "plugins": {
     "entries": {
-      "openclaw-fava-trail": {
+      "openclaw-fava-trails": {
         "enabled": true,
         "config": {
-          "trailHome": "~/.fava-trail",
+          "trailHome": "~/.fava-trails",
           "agents": {
             "researcher": {
               "scope": "agents/openclaw/researcher",
@@ -168,7 +168,7 @@ Each OpenClaw agent maps to a FAVA Trail scope via plugin config:
         }
       }
     },
-    "slots": { "memory": "openclaw-fava-trail" }
+    "slots": { "memory": "openclaw-fava-trails" }
   }
 }
 ```
@@ -336,7 +336,7 @@ api.on("agent_end", async (ctx) => {
 
 ## Distribution
 
-### npm Package: `openclaw-fava-trail`
+### npm Package: `openclaw-fava-trails`
 
 The plugin itself. TypeScript module loaded by OpenClaw Gateway via `jiti`.
 
@@ -350,15 +350,15 @@ Contains:
 
 ```json
 {
-  "name": "openclaw-fava-trail",
+  "name": "openclaw-fava-trails",
   "version": "0.1.0",
   "description": "Versioned, hierarchically scoped agent memory backed by FAVA Trail",
   "kind": "memory",
-  "skills": ["skills/fava-trail"]
+  "skills": ["skills/fava-trails"]
 }
 ```
 
-The `skills/fava-trail/SKILL.md` teaches the agent:
+The `skills/fava-trails/SKILL.md` teaches the agent:
 - When to use `memory_history` (investigating how a decision evolved)
 - When to use `memory_scope` (understanding what knowledge exists at each level)
 - When to use `memory_supersede` (correcting a previous memory vs. adding a new one)
@@ -369,15 +369,15 @@ The `skills/fava-trail/SKILL.md` teaches the agent:
 
 ```yaml
 ---
-name: fava-trail-memory
+name: fava-trails-memory
 description: Versioned, hierarchically scoped memory with audit trail
 version: 0.1.0
 metadata:
   openclaw:
     emoji: "🧠"
     requires:
-      bins: ["jj", "fava-trail"]
-      config: ["plugins.entries.openclaw-fava-trail"]
+      bins: ["jj", "fava-trails"]
+      config: ["plugins.entries.openclaw-fava-trails"]
 ---
 ```
 
@@ -403,8 +403,8 @@ The unique positioning: **the only OpenClaw memory backend that gives you `jj lo
 
 ## Done Criteria
 
-- [ ] npm package `openclaw-fava-trail` installable
-- [ ] `postinstall` verifies fava-trail, jj, git — prints clear errors if missing
+- [ ] npm package `openclaw-fava-trails` installable
+- [ ] `postinstall` verifies fava-trails, jj, git — prints clear errors if missing
 - [ ] Plugin claims `plugins.slots.memory` successfully
 - [ ] MCP subprocess spawns with health check and stays alive for Gateway lifetime
 - [ ] Subprocess auto-restarts on crash (max 3 retries, exponential backoff)

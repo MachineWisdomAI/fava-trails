@@ -8,7 +8,7 @@
 
 ## Problem Statement
 
-FAVA Trail currently exists as a single directory (`fava-trail-data/`) containing both:
+FAVA Trail currently exists as a single directory (`fava-trails-data/`) containing both:
 1. The **MCP server Python package** (generic, open-sourceable)
 2. An implied **company data store** (MachineWisdomAI-specific trail data)
 
@@ -21,23 +21,23 @@ This conflation creates three problems:
 
 Split into two repositories following the **Engine vs. Fuel** pattern (3/3 model consensus, avg 8.3/10 confidence):
 
-### Repo 1: `fava-trail` (Engine — Open Source)
+### Repo 1: `fava-trails` (Engine — Open Source)
 
 The FAVA Trail MCP server as a pip-installable Python package.
 
-- **Location:** `MachineWisdomAI/fava-trail` on GitHub (public)
+- **Location:** `MachineWisdomAI/fava-trails` on GitHub (public)
 - **License:** Apache-2.0
-- **Distribution:** PyPI (`pip install fava-trail` / `uv add fava-trail`)
-- **Contents:** All Python source (`src/fava_trail/`), tests, CI/CD, docs, LICENSE
-- **Entry point:** `fava-trail-server` CLI command
+- **Distribution:** PyPI (`pip install fava-trails` / `uv add fava-trails`)
+- **Contents:** All Python source (`src/fava_trails/`), tests, CI/CD, docs, LICENSE
+- **Entry point:** `fava-trails-server` CLI command
 - **SPIR docs:** `codev/` directory lives here (implementation history is part of the tool's story)
 - **PRD + architectural choices:** `codev/resources/` (these inform the product, not the company data)
 
-### Repo 2: `fava-trail-data` (Fuel — Internal)
+### Repo 2: `fava-trails-data` (Fuel — Internal)
 
 MachineWisdomAI's versioned agentic memory — the actual trail data.
 
-- **Location:** `MachineWisdomAI/fava-trail-data` on GitHub (private)
+- **Location:** `MachineWisdomAI/fava-trails-data` on GitHub (private)
 - **Contents:**
   - `config.yaml` — Global FAVA Trail configuration for MachineWisdomAI
   - `Makefile` — Bootstrap and operational commands
@@ -45,14 +45,14 @@ MachineWisdomAI's versioned agentic memory — the actual trail data.
   - `CLAUDE.md` — Agent instructions specific to MachineWisdomAI's workflows
   - `.gitignore` — Ignores inner JJ repo artifacts (`.jj/` directories)
 - **NOT a Python package** — no `src/`, no `pyproject.toml` with build system
-- **Dependency:** Requires `fava-trail` to be installed (via pip/uv)
+- **Dependency:** Requires `fava-trails` to be installed (via pip/uv)
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────┐
-│  fava-trail (OSS, PyPI)                 │
-│  ├── src/fava_trail/                    │
+│  fava-trails (OSS, PyPI)                 │
+│  ├── src/fava_trails/                    │
 │  │   ├── server.py          (MCP)      │
 │  │   ├── config.py          (discovery) │
 │  │   ├── models.py          (Pydantic)  │
@@ -62,10 +62,10 @@ MachineWisdomAI's versioned agentic memory — the actual trail data.
 │  ├── tests/                             │
 │  └── codev/                 (SPIR docs) │
 └──────────────┬──────────────────────────┘
-               │ FAVA_TRAIL_DATA_REPO env var
+               │ FAVA_TRAILS_DATA_REPO env var
                │ points to ↓
 ┌──────────────▼──────────────────────────┐
-│  fava-trail-data (internal)             │
+│  fava-trails-data (internal)             │
 │  ├── config.yaml                        │
 │  ├── Makefile                           │
 │  ├── CLAUDE.md                          │
@@ -79,24 +79,24 @@ MachineWisdomAI's versioned agentic memory — the actual trail data.
 
 ## Config Discovery
 
-The `fava-trail` server discovers trail data via environment variable:
+The `fava-trails` server discovers trail data via environment variable:
 
 ```
-FAVA_TRAIL_DATA_REPO=/path/to/fava-trail-data
+FAVA_TRAILS_DATA_REPO=/path/to/fava-trails-data
 ```
 
-The server reads `$FAVA_TRAIL_DATA_REPO/config.yaml` and manages trails under `$FAVA_TRAIL_DATA_REPO/trails/`. This is already how `config.py` works — the only change needed is ensuring `trails_dir` in config supports absolute paths.
+The server reads `$FAVA_TRAILS_DATA_REPO/config.yaml` and manages trails under `$FAVA_TRAILS_DATA_REPO/trails/`. This is already how `config.py` works — the only change needed is ensuring `trails_dir` in config supports absolute paths.
 
 ### Bootstrap Flow (internal repo)
 
 ```bash
 # 1. Clone internal repo
-git clone git@github.com:MachineWisdomAI/fava-trail-data.git
+git clone git@github.com:MachineWisdomAI/fava-trails-data.git
 
 # 2. Install the MCP server
-uv tool install fava-trail  # or: pip install fava-trail
+uv tool install fava-trails  # or: pip install fava-trails
 
-# 3. Set FAVA_TRAIL_DATA_REPO (bootstrap does this)
+# 3. Set FAVA_TRAILS_DATA_REPO (bootstrap does this)
 make setup  # sets env var, creates initial trail if needed
 ```
 
@@ -105,7 +105,7 @@ make setup  # sets env var, creates initial trail if needed
 The internal repo is a regular Git repo. Each trail inside `trails/` is a JJ colocated repo (`.jj/` + `.git/`). The outer Git repo must `.gitignore` the inner repos' VCS directories to avoid conflicts:
 
 ```gitignore
-# fava-trail-data/.gitignore
+# fava-trails-data/.gitignore
 
 # Inner VCS repos (each trail has its own JJ+Git history)
 trails/*/.jj/
@@ -115,7 +115,7 @@ trails/*/.git/
 trails/*/thoughts/
 
 # Keep trail-specific config (tracked by outer git)
-# trails/*/.fava-trail.yaml is NOT ignored — it's committed
+# trails/*/.fava-trails.yaml is NOT ignored — it's committed
 
 # Python artifacts
 __pycache__/
@@ -123,7 +123,7 @@ __pycache__/
 .venv/
 ```
 
-**Important:** The outer Git repo tracks config and structure. Trail-specific config files (`trails/*/.fava-trail.yaml`) ARE tracked by the outer Git repo. The inner JJ repos track thought content. They are independent version histories.
+**Important:** The outer Git repo tracks config and structure. Trail-specific config files (`trails/*/.fava-trails.yaml`) ARE tracked by the outer Git repo. The inner JJ repos track thought content. They are independent version histories.
 
 ## Design Decisions
 
@@ -131,8 +131,8 @@ __pycache__/
 |----------|--------|-----------|
 | Plugin system | Deferred to Phase 2+ | All 3 models suggested it; GPT-5.1 Codex says defer, Gemini says now, O3 says optional. We defer: YAGNI for MVP, but we'll design config.yaml to be extensible. |
 | Internal repo as Python package | No | Pure data/config repo. No build system, no wheels. Simplest possible structure. |
-| Naming | `fava-trail` (OSS) / `fava-trail-data` (internal) | Clear distinction. `fava-trail` is the generic product. `wise-` prefix is MachineWisdomAI's convention. |
-| SPIR docs location | OSS repo (`fava-trail/codev/`) | Implementation docs are part of the tool's history, not the company data. Eventually FAVA Trail will store its own SPIR docs (self-hosting). |
+| Naming | `fava-trails` (OSS) / `fava-trails-data` (internal) | Clear distinction. `fava-trails` is the generic product. `wise-` prefix is MachineWisdomAI's convention. |
+| SPIR docs location | OSS repo (`fava-trails/codev/`) | Implementation docs are part of the tool's history, not the company data. Eventually FAVA Trail will store its own SPIR docs (self-hosting). |
 | Config changes | Add `FAVA_TRAILS_DIR` override, support absolute `trails_dir` | Gemini and O3 both flagged `config.py` path resolution as too rigid. |
 
 ## Consensus Summary
@@ -147,9 +147,9 @@ __pycache__/
 
 ## Success Criteria
 
-1. `fava-trail` repo has all Python source, tests pass (`pytest`), and is pip-installable
-2. `fava-trail-data` repo has config.yaml + Makefile + CLAUDE.md + trails/ structure
-3. `FAVA_TRAIL_DATA_REPO` env var correctly points server to internal repo
+1. `fava-trails` repo has all Python source, tests pass (`pytest`), and is pip-installable
+2. `fava-trails-data` repo has config.yaml + Makefile + CLAUDE.md + trails/ structure
+3. `FAVA_TRAILS_DATA_REPO` env var correctly points server to internal repo
 4. No company-specific data exists in the OSS repo
 5. `make setup` in internal repo bootstraps a working FAVA Trail environment
 6. All 30 existing tests pass against the restructured code

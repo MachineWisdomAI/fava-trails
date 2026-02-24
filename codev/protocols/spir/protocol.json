@@ -81,7 +81,7 @@
       "checks": {
         "build": {
           "command": "uv run python -c 'import fava_trails; print(\"ok\")'",
-          "description": "Verify fava_trail package imports successfully",
+          "description": "Verify fava_trails package imports successfully",
           "on_fail": "retry",
           "max_retries": 2
         },
@@ -123,7 +123,7 @@
         },
         "build": {
           "command": "uv run python -c 'import fava_trails; print(\"ok\")'",
-          "description": "Verify fava_trail package imports successfully"
+          "description": "Verify fava_trails package imports successfully"
         },
         "tests": {
           "command": "uv run pytest tests/ -v --tb=short",

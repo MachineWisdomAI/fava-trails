@@ -17,7 +17,7 @@ A local SQLite database combining vector embeddings (SQLite-vec), FTS5 full-text
 
 ### SQLite Schema
 
-Database file: `$FAVA_TRAIL_DATA_REPO/.fava-index.db` (gitignored, local to each machine).
+Database file: `$FAVA_TRAILS_DATA_REPO/.fava-index.db` (gitignored, local to each machine).
 
 ```sql
 -- Vector embeddings for semantic similarity
@@ -95,7 +95,7 @@ embedding = await asyncio.to_thread(model.encode, text)
 
 - **Incremental:** `save_thought` / `update_thought` / `supersede` trigger index updates inline (embed + insert/update row)
 - **Full rebuild:** On startup, if `.fava-index.db` is missing or its `schema_version` meta key doesn't match, rebuild from all thought files
-- **Rebuild strategy:** Walk all `thoughts/` directories under `$FAVA_TRAIL_DATA_REPO/trails/`, parse each `.md` file, embed content, insert rows. Skip files that fail to parse (log warning).
+- **Rebuild strategy:** Walk all `thoughts/` directories under `$FAVA_TRAILS_DATA_REPO/trails/`, parse each `.md` file, embed content, insert rows. Skip files that fail to parse (log warning).
 - Index is local (not committed to repo) — each machine rebuilds from thought files
 - Target: <30s rebuild for 500 thoughts (embedding is the bottleneck, ~1ms * 500 = 0.5s; file I/O dominates)
 - **Corruption recovery:** Delete `.fava-index.db` and restart — full rebuild is the recovery path

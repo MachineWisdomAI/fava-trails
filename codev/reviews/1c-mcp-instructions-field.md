@@ -25,7 +25,7 @@
 
 | File | Change |
 |------|--------|
-| `src/fava_trail/server.py` | Added `_build_server_instructions()`, `_load_usage_guide()`, `get_usage_guide` tool, wired `instructions` into Server init, enhanced 3 tool descriptions |
+| `src/fava_trails/server.py` | Added `_build_server_instructions()`, `_load_usage_guide()`, `get_usage_guide` tool, wired `instructions` into Server init, enhanced 3 tool descriptions |
 | `pyproject.toml` | Added `[tool.hatch.build.targets.wheel.force-include]` for AGENTS_USAGE_INSTRUCTIONS.md |
 | `AGENTS_USAGE_INSTRUCTIONS.md` | Added auto-injection note, marked SPIR section as optional |
 | `CLAUDE.md` | Updated Scope Discovery to reference instructions field |

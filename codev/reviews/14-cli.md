@@ -10,8 +10,8 @@
 
 | Success Criterion | Status |
 |---|---|
-| `fava-trails init` creates `.fava-trail.yaml` and populates `.env` | DONE |
-| `fava-trails init` works with existing `.fava-trail.yaml` | DONE |
+| `fava-trails init` creates `.fava-trails.yaml` and populates `.env` | DONE |
+| `fava-trails init` works with existing `.fava-trails.yaml` | DONE |
 | `fava-trails init --scope` for non-interactive use | DONE (added during consultation) |
 | `fava-trails init` warns if `.env` not in `.gitignore` | DONE (added during consultation) |
 | `fava-trails init` guides to `bootstrap` when no data repo | DONE |
@@ -57,7 +57,7 @@ The CLI adds a **human-facing layer** to FAVA Trails alongside the existing MCP 
 
 1. **Shared package, separate entry points** — `fava-trails` (CLI) and `fava-trails-server` (MCP) coexist in the same `fava_trails` package. CLI reuses `config.py` helpers.
 
-2. **Two-file scope configuration** — `.fava-trail.yaml` (committed, project-level default) + `.env` (local, gitignored, agent-loadable). The `init` command bridges these two files reliably.
+2. **Two-file scope configuration** — `.fava-trails.yaml` (committed, project-level default) + `.env` (local, gitignored, agent-loadable). The `init` command bridges these two files reliably.
 
 3. **Argparse over click** — Confirmed correct. Zero new dependencies, adequate for 5 commands.
 

@@ -1,8 +1,8 @@
 # Review 1: Core MCP Server + JJ Backend
 
 **Status:** completed
-**Spec:** `codev/specs/1-wise-fava-trail.md`
-**Plan:** `codev/plans/1-wise-fava-trail.md`
+**Spec:** `codev/specs/1-wise-fava-trails.md`
+**Plan:** `codev/plans/1-wise-fava-trails.md`
 **Reviewer:** GPT-5.1 Codex via `mcp__pal__codereview`
 
 ---

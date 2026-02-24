@@ -4,7 +4,7 @@ echo "DEPRECATED: Use 'fava-trails bootstrap <path>' instead." >&2
 # Bootstrap a FAVA Trail data repo from an empty git clone.
 #
 # Usage:
-#   bash scripts/bootstrap-data-repo.sh /path/to/fava-trail-data
+#   bash scripts/bootstrap-data-repo.sh /path/to/fava-trails-data
 #
 # Prerequisites:
 #   - JJ installed (run scripts/install-jj.sh first)
@@ -15,7 +15,7 @@ echo "DEPRECATED: Use 'fava-trails bootstrap <path>' instead." >&2
 #   2. Creates config.yaml and .gitignore (the only two files needed)
 #   3. Commits and pushes via git (bootstrap only — before JJ takes over)
 #   4. Initializes JJ colocated mode and tracks the remote main bookmark
-#   5. Prints the FAVA_TRAIL_DATA_REPO value for MCP configuration
+#   5. Prints the FAVA_TRAILS_DATA_REPO value for MCP configuration
 #
 # After this, use MCP tools (save_thought, recall, etc.) for all trail operations.
 # NEVER use 'git push origin main' again — JJ manages all commits from this point.
@@ -26,12 +26,12 @@ set -euo pipefail
 
 DATA_REPO="${1:-}"
 if [[ -z "${DATA_REPO}" ]]; then
-    echo "Usage: $(basename "$0") /path/to/fava-trail-data" >&2
+    echo "Usage: $(basename "$0") /path/to/fava-trails-data" >&2
     echo "" >&2
     echo "The path must point to a freshly cloned empty git repo." >&2
     echo "Example:" >&2
-    echo "  git clone https://github.com/YOUR-ORG/fava-trail-data.git" >&2
-    echo "  $(basename "$0") fava-trail-data" >&2
+    echo "  git clone https://github.com/YOUR-ORG/fava-trails-data.git" >&2
+    echo "  $(basename "$0") fava-trails-data" >&2
     exit 1
 fi
 
@@ -52,7 +52,7 @@ fi
 # Must be a git repo
 if [[ ! -d "${DATA_REPO}/.git" ]]; then
     echo "Error: '${DATA_REPO}' is not a git repo (no .git/ directory)." >&2
-    echo "Clone an empty repo first: git clone https://github.com/YOUR-ORG/fava-trail-data.git" >&2
+    echo "Clone an empty repo first: git clone https://github.com/YOUR-ORG/fava-trails-data.git" >&2
     exit 1
 fi
 
@@ -109,7 +109,7 @@ echo "[2/5] Created .gitignore (trails/ is NOT excluded — monorepo design)"
 # ─── Step 3: Git commit + push (bootstrap only) ───
 
 git -C "${DATA_REPO}" add config.yaml .gitignore
-git -C "${DATA_REPO}" commit -q -m "Bootstrap fava-trail-data"
+git -C "${DATA_REPO}" commit -q -m "Bootstrap fava-trails-data"
 git -C "${DATA_REPO}" push -q origin HEAD:main 2>/dev/null || \
     git -C "${DATA_REPO}" push -q origin HEAD:main --set-upstream 2>/dev/null || {
         echo "Warning: git push failed. You may need to push manually." >&2
@@ -151,15 +151,15 @@ echo "Data repo ready: ${DATA_REPO}"
 echo ""
 echo "Set this environment variable in your MCP config:"
 echo ""
-echo "  FAVA_TRAIL_DATA_REPO=${DATA_REPO}"
+echo "  FAVA_TRAILS_DATA_REPO=${DATA_REPO}"
 echo ""
 echo "Example MCP registration (~/.claude.json or claude_desktop_config.json):"
 echo ""
-echo '  "fava-trail": {'
+echo '  "fava-trails": {'
 echo '    "type": "stdio",'
 echo '    "command": "uv",'
-echo '    "args": ["run", "--directory", "/path/to/fava-trail", "fava-trail-server"],'
-echo "    \"env\": { \"FAVA_TRAIL_DATA_REPO\": \"${DATA_REPO}\" }"
+echo '    "args": ["run", "--directory", "/path/to/fava-trails", "fava-trails-server"],'
+echo "    \"env\": { \"FAVA_TRAILS_DATA_REPO\": \"${DATA_REPO}\" }"
 echo '  }'
 echo ""
 echo "From here, use MCP tools for all trail operations."

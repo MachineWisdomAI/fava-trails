@@ -10,7 +10,7 @@ All issues addressed. 39 tests passing, 128 existing tests unaffected.
 `cmd_doctor` now wraps the `subprocess.run` call for `jj --version` in try/except `(OSError, subprocess.TimeoutExpired)` with `timeout=2`. Prevents hangs on broken JJ installs.
 
 ### HIGH: _read_project_yaml_scope YAML error safety (FIXED)
-`_read_project_yaml_scope` now catches `(OSError, yaml.YAMLError)` and returns `None`. Corrupt `.fava-trail.yaml` no longer crashes `doctor`, `init`, or `scope`.
+`_read_project_yaml_scope` now catches `(OSError, yaml.YAMLError)` and returns `None`. Corrupt `.fava-trails.yaml` no longer crashes `doctor`, `init`, or `scope`.
 
 ### MEDIUM: doctor validates scope value (FIXED)
 `cmd_doctor` now calls `sanitize_scope_path(scope_value)` and reports `INVALID` with a fix suggestion if the configured scope is malformed.

@@ -24,7 +24,7 @@ SIGKILL chaos test against the MCP server with precise recovery verification.
 
 **Test harness:** The script spawns the MCP server as a subprocess via `asyncio.create_subprocess_exec()` with stdio transport (stdin/stdout pipes). Communication uses JSON-RPC over stdio — the same protocol Claude Desktop uses. The harness sends `tools/call` JSON-RPC requests to `save_thought`, `recall`, etc.
 
-**Test isolation:** Each test run creates a temporary `$FAVA_TRAIL_DATA_REPO` via `tempfile.mkdtemp()`, bootstraps it with `jj git init --colocate`, and sets `FAVA_TRAIL_DATA_REPO` in the subprocess env. Cleanup removes the temp dir after the test.
+**Test isolation:** Each test run creates a temporary `$FAVA_TRAILS_DATA_REPO` via `tempfile.mkdtemp()`, bootstraps it with `jj git init --colocate`, and sets `FAVA_TRAILS_DATA_REPO` in the subprocess env. Cleanup removes the temp dir after the test.
 
 **Test sequence:**
 1. Start MCP server subprocess with temp data repo
@@ -40,7 +40,7 @@ Sample-based audit against a fixture corpus with known expected results.
 
 **Test harness:** Same subprocess stdio approach as `crash_recovery.py` — spawn MCP server with a temp data repo, load the fixture corpus into it via `save_thought` calls, then run queries via `recall` and compare against expected results.
 
-**Test isolation:** Temp `$FAVA_TRAIL_DATA_REPO` per run. The fixture corpus is loaded fresh each time to ensure deterministic state.
+**Test isolation:** Temp `$FAVA_TRAILS_DATA_REPO` per run. The fixture corpus is loaded fresh each time to ensure deterministic state.
 
 **Corpus design** (`eval/fixtures/corpus/`):
 - 50 thought markdown files across 3 namespaces (decisions, observations, drafts)

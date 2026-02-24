@@ -10,14 +10,14 @@
 **Goal:** Trust Gate intercepts `propose_truth` with llm-oneshot or human policy. Prompt loaded from data repo.
 
 **Files created:**
-- `src/fava_trail/trust_gate.py` — prompt loading, OpenRouter API call, verdict parsing, redaction layer
+- `src/fava_trails/trust_gate.py` — prompt loading, OpenRouter API call, verdict parsing, redaction layer
 
 **Files modified:**
-- `src/fava_trail/models.py` — add `TrustGateConfig` to `GlobalConfig` and `TrailConfig`
-- `src/fava_trail/config.py` — load trust gate config, resolve prompt file path
+- `src/fava_trails/models.py` — add `TrustGateConfig` to `GlobalConfig` and `TrailConfig`
+- `src/fava_trails/config.py` — load trust gate config, resolve prompt file path
 
 **Key patterns:**
-- `TrustGatePromptCache` — on startup, walks all trail directories under `$FAVA_TRAIL_DATA_REPO/trails/`, finds every `trust-gate-prompt.md`, caches `{scope_prefix → prompt_content}` in memory
+- `TrustGatePromptCache` — on startup, walks all trail directories under `$FAVA_TRAILS_DATA_REPO/trails/`, finds every `trust-gate-prompt.md`, caches `{scope_prefix → prompt_content}` in memory
 - `resolve_prompt(scope)` → walks from most-specific to least-specific scope, returns first cached prompt (e.g. for `mw/eng/fava-trails`, checks `mw/eng/fava-trails` → `mw/eng` → `mw` → root `trails/`)
 - `TrustResult` dataclass — standardized return type: `{verdict, reasoning, reviewer, reviewed_at, confidence}`
 - `review_thought(thought, prompt, model)` → async httpx POST to OpenRouter with `temp=0` and `response_format: json_object`, returns `TrustResult`
@@ -43,8 +43,8 @@
 **Goal:** Wire Trust Gate into the promotion flow. LLM-oneshot path works; human path raises NotImplementedError.
 
 **Files modified:**
-- `src/fava_trail/trail.py` — `propose_truth()` calls Trust Gate before namespace move
-- `src/fava_trail/tools/navigation.py` — `handle_propose_truth()` routes through Trust Gate
+- `src/fava_trails/trail.py` — `propose_truth()` calls Trust Gate before namespace move
+- `src/fava_trails/tools/navigation.py` — `handle_propose_truth()` routes through Trust Gate
 
 **Key patterns:**
 - `llm-oneshot` mode: `propose_truth()` → `trust_gate.review_thought()` → approve → move to namespace / reject → stay in drafts
@@ -64,7 +64,7 @@
 **Goal:** `trust_gate: human` (not yet implemented) raises `NotImplementedError` with clear guidance. Extensibility designed but shelved.
 
 **Files modified:**
-- `src/fava_trail/trust_gate.py` — add guard in `review_thought()` that raises for `human` policy with TODO comment listing future channels (CLI, PR/GHA, MCP tools)
+- `src/fava_trails/trust_gate.py` — add guard in `review_thought()` that raises for `human` policy with TODO comment listing future channels (CLI, PR/GHA, MCP tools)
 
 **Done criteria:**
 - `propose_truth` with `trust_gate: human` (not yet implemented) raises `NotImplementedError`
