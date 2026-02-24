@@ -1,0 +1,18 @@
+id: '14'
+title: cli
+protocol: spir
+phase: specify
+plan_phases: []
+current_plan_phase: null
+gates:
+  spec-approval:
+    status: pending
+  plan-approval:
+    status: pending
+  pr:
+    status: pending
+iteration: 1
+build_complete: true
+history: []
+started_at: '2026-02-24T17:42:56.662Z'
+updated_at: '2026-02-24T17:43:40.280Z'

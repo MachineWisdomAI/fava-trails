@@ -79,9 +79,15 @@ fava-trails scope list
 ## Success Criteria
 - [ ] `fava-trails init` creates `.fava-trail.yaml` and populates `.env` with `FAVA_TRAIL_SCOPE`
 - [ ] `fava-trails init` works in a project that already has `.fava-trail.yaml` (reads scope, writes `.env`)
+- [ ] `fava-trails init` accepts `--scope <value>` for non-interactive/CI use
+- [ ] `fava-trails init` warns if `.env` is not in `.gitignore`
+- [ ] `fava-trails init` prints clear guidance when no data repo is configured
 - [ ] `fava-trails init-data <path>` replaces `bootstrap-data-repo.sh` functionality
 - [ ] `fava-trails doctor` validates JJ, data repo, and scope configuration
+- [ ] `fava-trails doctor` exits non-zero if any check fails
+- [ ] `fava-trails doctor --check-remote` optionally checks remote reachability
 - [ ] `fava-trails scope` shows current scope and resolution source
+- [ ] `fava-trails --version` prints the package version
 - [ ] CLI is installed as a console_script alongside `fava-trails-server`
 - [ ] Existing `bootstrap-data-repo.sh` is deprecated in favor of `fava-trails init-data`
 - [ ] All new commands have tests
@@ -141,15 +147,15 @@ fava-trails scope list
 ## Open Questions
 
 ### Critical (Blocks Progress)
-- [ ] Should `init` also run `init-data` if no data repo is configured? Or keep them separate?
+- [x] Should `init` also run `init-data` if no data repo is configured? **Resolved: No — keep separate. `init` prints guidance: "Run: fava-trails init-data <path>"**
 
 ### Important (Affects Design)
-- [ ] Should `doctor` check network connectivity to the git remote?
+- [x] Should `doctor` check network connectivity to the git remote? **Resolved: Optional — `--check-remote` flag only**
 - [ ] Should `scope set` also update the data repo (create the trail directory)?
 
 ### Nice-to-Know (Optimization)
 - [ ] Should we add shell completion generation (`fava-trails --completion`)?
-- [ ] Should `init` offer to add `.env` to `.gitignore` if not already ignored?
+- [x] Should `init` offer to add `.env` to `.gitignore` if not already ignored? **Resolved: Yes — `init` warns if `.env` is not in `.gitignore`**
 
 ## Performance Requirements
 N/A — CLI commands are interactive, human-speed.
