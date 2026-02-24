@@ -136,11 +136,11 @@ async def _init_server() -> None:
     # Validate trails_dir is inside repo_root
     try:
         trails_dir.resolve().relative_to(repo_root.resolve())
-    except ValueError:
+    except ValueError as err:
         raise RuntimeError(
             f"FAVA_TRAILS_DIR ({trails_dir}) must be inside data repo root ({repo_root}). "
             "Check your FAVA_TRAILS_DATA_REPO and FAVA_TRAILS_DIR environment variables."
-        )
+        ) from err
 
     _shared_backend = JjBackend(repo_root=repo_root, trail_path=trails_dir)
     await _shared_backend.init_monorepo()
@@ -473,6 +473,15 @@ async def handle_list_tools() -> list[Tool]:
 @server.call_tool()
 async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     """Route tool calls to handlers. Responses are structured JSON (except get_usage_guide which returns markdown)."""
+    from .tools.navigation import (
+        handle_conflicts,
+        handle_diff,
+        handle_list_scopes,
+        handle_propose_truth,
+        handle_rollback,
+        handle_sync,
+    )
+    from .tools.recall import handle_recall
     from .tools.thought import (
         handle_change_scope,
         handle_forget,
@@ -482,15 +491,6 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
         handle_start_thought,
         handle_supersede,
         handle_update_thought,
-    )
-    from .tools.recall import handle_recall
-    from .tools.navigation import (
-        handle_conflicts,
-        handle_diff,
-        handle_list_scopes,
-        handle_propose_truth,
-        handle_rollback,
-        handle_sync,
     )
 
     try:

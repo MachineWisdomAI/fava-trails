@@ -6,9 +6,14 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Optional
 
-from .config import get_trails_dir, load_trail_config, sanitize_namespace, sanitize_scope_path, sanitize_trail_name, save_trail_config
+from .config import (
+    get_trails_dir,
+    load_trail_config,
+    sanitize_namespace,
+    sanitize_scope_path,
+    save_trail_config,
+)
 from .models import (
     DEFAULT_NAMESPACE,
     NAMESPACE_ROUTES,
@@ -19,7 +24,7 @@ from .models import (
     ValidationStatus,
 )
 from .trust_gate import TrustResult
-from .vcs.base import VcsBackend, VcsChange, VcsConflict, VcsDiff, VcsOpLogEntry, RebaseResult
+from .vcs.base import RebaseResult, VcsBackend, VcsChange, VcsConflict, VcsDiff, VcsOpLogEntry
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +47,7 @@ class TrailManager:
         self.trail_path = get_trails_dir() / self.trail_name
         self.vcs = vcs
         self._lock = asyncio.Lock()
-        self._config: Optional[TrailConfig] = None
+        self._config: TrailConfig | None = None
         self._snapshot_count = 0
         self._last_gc_time = time.time()
 
@@ -58,7 +63,7 @@ class TrailManager:
     def _thought_path(self, thought_id: str, namespace: str = DEFAULT_NAMESPACE) -> Path:
         return self._thoughts_dir(namespace) / f"{thought_id}.md"
 
-    def _find_thought_path(self, thought_id: str) -> Optional[Path]:
+    def _find_thought_path(self, thought_id: str) -> Path | None:
         """Find a thought file by ULID across all namespaces. Returns None if not found."""
         for p in self.trail_path.glob("thoughts/**/*.md"):
             if p.stem == thought_id:
@@ -106,11 +111,11 @@ class TrailManager:
         agent_id: str = "unknown",
         source_type: SourceType = SourceType.OBSERVATION,
         confidence: float = 0.5,
-        namespace: Optional[str] = None,
-        parent_id: Optional[str] = None,
-        intent_ref: Optional[str] = None,
-        relationships: Optional[list[dict]] = None,
-        metadata: Optional[dict] = None,
+        namespace: str | None = None,
+        parent_id: str | None = None,
+        intent_ref: str | None = None,
+        relationships: list[dict] | None = None,
+        metadata: dict | None = None,
     ) -> ThoughtRecord:
         """Save a new thought. Defaults to drafts/ namespace."""
         ns = namespace or DEFAULT_NAMESPACE
@@ -156,7 +161,7 @@ class TrailManager:
 
         return record
 
-    async def get_thought(self, thought_id: str) -> Optional[ThoughtRecord]:
+    async def get_thought(self, thought_id: str) -> ThoughtRecord | None:
         """Retrieve a thought by ULID. Searches all namespaces."""
         path = self._find_thought_path(thought_id)
         if path:
@@ -216,7 +221,7 @@ class TrailManager:
         new_content: str,
         reason: str = "",
         agent_id: str = "unknown",
-        target_trail: "TrailManager | None" = None,
+        target_trail: TrailManager | None = None,
         **kwargs,
     ) -> ThoughtRecord:
         """Atomically supersede a thought: create new + backlink original in single JJ change.
@@ -294,8 +299,8 @@ class TrailManager:
     async def recall(
         self,
         query: str = "",
-        namespace: Optional[str] = None,
-        scope: Optional[dict] = None,
+        namespace: str | None = None,
+        scope: dict | None = None,
         include_superseded: bool = False,
         include_relationships: bool = False,
         limit: int = 20,
@@ -470,7 +475,7 @@ class TrailManager:
             result = await self.vcs.fetch_and_rebase()
             if result.has_conflicts:
                 # Pull Daemon safety: abort on conflict
-                logger.warning(f"Conflict after sync, restoring pre-sync state")
+                logger.warning("Conflict after sync, restoring pre-sync state")
                 await self.vcs.op_restore(result.pre_rebase_op_id)
             return result
 
@@ -501,7 +506,7 @@ class TrailManager:
         content: str,
         preference_type: str = "firm",
         agent_id: str = "unknown",
-        metadata: Optional[dict] = None,
+        metadata: dict | None = None,
     ) -> ThoughtRecord:
         """Capture user correction. Bypasses Trust Gate (user input is auto-approved)."""
         ns = f"preferences/{preference_type}"
@@ -537,8 +542,8 @@ class TrailManager:
 async def recall_multi(
     trail_managers: list[TrailManager],
     query: str = "",
-    namespace: Optional[str] = None,
-    scope: Optional[dict] = None,
+    namespace: str | None = None,
+    scope: dict | None = None,
     include_superseded: bool = False,
     include_relationships: bool = False,
     limit: int = 20,

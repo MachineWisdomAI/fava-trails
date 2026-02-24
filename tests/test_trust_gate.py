@@ -18,8 +18,7 @@ Covers:
 """
 
 import json
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -34,7 +33,6 @@ from fava_trails.trust_gate import (
     _redact_metadata,
     review_thought,
 )
-
 
 # --- Fixtures ---
 
