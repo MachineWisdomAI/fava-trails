@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -258,8 +259,16 @@ def test_bootstrap_fails_if_jj_missing(tmp_path):
     target = tmp_path / "data-repo"
     args = _make_args(path=str(target), remote=None)
 
+    fallback = Path.home() / ".local" / "bin" / "jj"
+    real_exists = Path.exists
+
+    def exists_side_effect(self):
+        if self == fallback:
+            return False
+        return real_exists(self)
+
     with patch("shutil.which", return_value=None):
-        with patch.object(Path, "exists", return_value=False):
+        with patch.object(Path, "exists", exists_side_effect):
             rc = cmd_bootstrap(args)
 
     assert rc == 1
@@ -388,7 +397,7 @@ def test_env_write_idempotent(tmp_path, monkeypatch):
 def test_cli_version():
     """fava-trails --version prints a version string."""
     result = subprocess.run(
-        ["python", "-m", "fava_trails.cli", "--version"],
+        [sys.executable, "-m", "fava_trails.cli", "--version"],
         capture_output=True,
         text=True,
     )
@@ -400,7 +409,7 @@ def test_cli_version():
 def test_cli_help():
     """fava-trails --help exits 0."""
     result = subprocess.run(
-        ["python", "-m", "fava_trails.cli", "--help"],
+        [sys.executable, "-m", "fava_trails.cli", "--help"],
         capture_output=True,
         text=True,
     )
@@ -408,3 +417,16 @@ def test_cli_help():
     assert "init" in result.stdout
     assert "bootstrap" in result.stdout
     assert "scope" in result.stdout
+
+
+def test_bootstrap_refuses_existing_config(tmp_path):
+    """bootstrap refuses to overwrite an existing config.yaml."""
+    target = tmp_path / "data-repo"
+    target.mkdir()
+    (target / "config.yaml").write_text("trails_dir: trails\n")
+    args = _make_args(path=str(target), remote=None)
+
+    with patch("shutil.which", return_value="/usr/bin/jj"):
+        rc = cmd_bootstrap(args)
+
+    assert rc == 1
