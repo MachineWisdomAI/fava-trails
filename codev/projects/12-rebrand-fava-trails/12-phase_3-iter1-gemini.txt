@@ -11,19 +11,19 @@ External reference rename is complete after iteration.
 **[MEDIUM] README, AGENTS, AGENTS_SETUP_INSTRUCTIONS, AGENTS_USAGE_INSTRUCTIONS, CLAUDE.md — headings and body text still said "FAVA Trail" (singular)**
 → Fixed: All headings and product name references in body text updated to "FAVA Trails".
 
-**[MEDIUM] AGENTS.md scope examples — `mw/eng/fava-trail` in two body text locations**
+**[MEDIUM] AGENTS.md scope examples — `mw/eng/fava-trails` in two body text locations**
 → Fixed: Updated to `mw/eng/fava-trails`.
 
-**[MEDIUM] AGENTS.md dev commands — `pytest --cov=fava_trail` (functionally broken after rename)**
+**[MEDIUM] AGENTS.md dev commands — `pytest --cov=fava_trails` (functionally broken after rename)**
 → Fixed: Updated to `--cov=fava_trails`.
 
-**[LOW] README.md Engine label — `fava-trail` in Architecture section**
+**[LOW] README.md Engine label — `fava-trails` in Architecture section**
 → Fixed: Updated to `fava-trails`.
 
 ### Correctly Preserved (Intentional)
-- `fava-trail-data` — data repo name stays unchanged (per architect directive)
-- `~/.fava-trail` — default home dir, intentionally unchanged
-- `.fava-trail.yaml` — config filename, intentionally singular
+- `fava-trails-data` — data repo name stays unchanged (per architect directive)
+- `~/.fava-trails` — default home dir, intentionally unchanged
+- `.fava-trails.yaml` — config filename, intentionally singular
 - `FAVA_TRAIL_SCOPE`, `FAVA_TRAIL_SCOPE_HINT` — intentionally singular per spec
 
 ### Positive Aspects

@@ -4,7 +4,7 @@
 
 ### HIGH
 - jj --version has no timeout and no OSError handling — subprocess can hang or crash doctor
-- _read_project_yaml_scope doesn't catch yaml.YAMLError — corrupted .fava-trail.yaml crashes doctor/init/scope
+- _read_project_yaml_scope doesn't catch yaml.YAMLError — corrupted .fava-trails.yaml crashes doctor/init/scope
 
 ### MEDIUM
 - doctor scope check doesn't validate the scope value with sanitize_scope_path

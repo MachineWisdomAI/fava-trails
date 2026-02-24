@@ -13,5 +13,5 @@ correctly scoped to Phase 3.
 
 ## Phase 2 Complete
 - 127 tests pass (128 after new compat test)
-- No stale fava_trail imports in src/ or tests/
+- No stale fava_trails imports in src/ or tests/
 - Backwards compatibility maintained for existing FAVA_TRAIL_DATA_REPO users

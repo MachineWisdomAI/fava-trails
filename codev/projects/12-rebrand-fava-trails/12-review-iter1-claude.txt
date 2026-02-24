@@ -14,6 +14,6 @@ All fixes applied during review phase:
 
 ## Final State
 
-128 tests pass. No remaining unintentional "FAVA Trail" singular references in any user-facing doc. Intentionally preserved: fava-trail-data (data repo), ~/.fava-trail (default home), .fava-trail.yaml (config filename), FAVA_TRAIL_SCOPE (env var).
+128 tests pass. No remaining unintentional "FAVA Trail" singular references in any user-facing doc. Intentionally preserved: fava-trails-data (data repo), ~/.fava-trails (default home), .fava-trails.yaml (config filename), FAVA_TRAIL_SCOPE (env var).
 
 PR #2 ready for architect review and merge.

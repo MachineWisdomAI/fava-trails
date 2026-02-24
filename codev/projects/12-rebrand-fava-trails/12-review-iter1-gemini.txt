@@ -14,7 +14,7 @@ All three phases are complete. Package rename, env var rename, doc split, and ex
 
 **[LOW] server.py** — usage guide return string, tool description, docstring, startup log still said "FAVA Trail". Fixed to "FAVA Trails".
 
-**[LOW] config.py docstring example** — `mw/eng/fava-trail` → `mw/eng/fava-trails`. Fixed.
+**[LOW] config.py docstring example** — `mw/eng/fava-trails` → `mw/eng/fava-trails`. Fixed.
 
 ### Positive Aspects
 - Backwards-compat shim for FAVA_TRAIL_DATA_REPO is thoughtfully implemented with warnings and tests

@@ -13,4 +13,4 @@ Strong user-value OSS polish that is largely complete, with a few high-priority 
 - Validate JJ hermeticity by scripting a CI smoke test (or providing a repo-level JJ config stub) so the GitHub Actions workflow cannot rely on developer-local state.
 - Elevate the PyPI publishing "fast-follow" into the same pass or, at minimum, define concrete follow-up tasks and deadlines; early-adopter friction is otherwise unresolved.
 - Consider lightweight SECURITY.md (and possibly CODE_OF_CONDUCT) to match OSS norms even if community size is small—this reduces future compliance churn.
-- Link upgrade notes prominently in README, CHANGELOG, and release notes so users migrating from `fava-trail` immediately see the rename guidance.
+- Link upgrade notes prominently in README, CHANGELOG, and release notes so users migrating from `fava-trails` immediately see the rename guidance.

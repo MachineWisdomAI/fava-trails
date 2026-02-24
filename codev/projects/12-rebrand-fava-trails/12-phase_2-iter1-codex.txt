@@ -10,7 +10,7 @@ Package rename is thorough. pyproject.toml, entry points, imports, and tests all
 **[HIGH] FAVA_TRAIL_DATA_REPO backwards compatibility shim**: Added to config.py with deprecation warning. Test coverage added.
 
 ### Deferred to Phase 3
-- README MCP registration examples: fava-trail-server → fava-trails-server (Phase 3 scope)
-- README architecture diagram: fava_trail → fava_trails (Phase 3 scope)
+- README MCP registration examples: fava-trails-server → fava-trails-server (Phase 3 scope)
+- README architecture diagram: fava_trails → fava_trails (Phase 3 scope)
 
 APPROVED.

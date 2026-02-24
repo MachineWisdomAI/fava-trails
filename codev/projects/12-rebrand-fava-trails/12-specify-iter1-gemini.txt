@@ -15,7 +15,7 @@ The spec proposes renaming the package to `fava_trails` (plural) but leaves the 
 **Risk:** This creates a mixed configuration interface. Env vars should be standardized or the intentional non-goal should be documented.
 
 ### 3. Data Migration & Defaults
-The spec explicitly lists the default data directory as `~/.fava-trail`. If the package is rebranding, the default data location should arguably move to `~/.fava-trails` to match the new convention, or the spec should explicitly address migration support.
+The spec explicitly lists the default data directory as `~/.fava-trails`. If the package is rebranding, the default data location should arguably move to `~/.fava-trails` to match the new convention, or the spec should explicitly address migration support.
 
 ### 4. Documentation Strategy
 The separation of Human (`README.md`) vs. Agent (`AGENTS.md`) documentation is an industry best practice for AI-native projects. It prevents context window pollution for agents while serving human onboarding needs effectively.
@@ -25,6 +25,6 @@ The separation of Human (`README.md`) vs. Agent (`AGENTS.md`) documentation is a
 
 ## Key Takeaways
 - **Standardize Env Vars:** Update the spec to rename `FAVA_TRAIL_DATA_REPO` and `FAVA_TRAIL_SCOPE` to `FAVA_TRAILS_...` for consistency, or explicitly document why they remain singular.
-- **Define Default Directory:** Clarify if the default data storage directory will remain `~/.fava-trail` or migrate to `~/.fava-trails`.
+- **Define Default Directory:** Clarify if the default data storage directory will remain `~/.fava-trails` or migrate to `~/.fava-trails`.
 - **Repo Rename Dependencies:** Note that "Rename repo" is an administrative platform action (GitHub/GitLab), not just a code change.
 - **Entry Point Check:** Ensure `pyproject.toml` entry point definitions are updated to map the new CLI command to the new package structure.

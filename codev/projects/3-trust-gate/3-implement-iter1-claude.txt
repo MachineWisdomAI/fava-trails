@@ -11,12 +11,12 @@ Implementation review complete. Two issues found by external models and fixed du
 All issues resolved. 112 tests passing. No regressions.
 
 ## Files Changed
-- `src/fava_trail/trust_gate.py` — Core trust gate module (new)
-- `src/fava_trail/models.py` — ValidationStatus.ERROR, config fields
-- `src/fava_trail/config.py` — get_trust_gate_policy()
-- `src/fava_trail/trail.py` — propose_truth() with trust_result routing
-- `src/fava_trail/tools/navigation.py` — handle_propose_truth() with fail-closed guard
-- `src/fava_trail/server.py` — TrustGatePromptCache startup initialization
+- `src/fava_trails/trust_gate.py` — Core trust gate module (new)
+- `src/fava_trails/models.py` — ValidationStatus.ERROR, config fields
+- `src/fava_trails/config.py` — get_trust_gate_policy()
+- `src/fava_trails/trail.py` — propose_truth() with trust_result routing
+- `src/fava_trails/tools/navigation.py` — handle_propose_truth() with fail-closed guard
+- `src/fava_trails/server.py` — TrustGatePromptCache startup initialization
 - `tests/test_trust_gate.py` — 25 tests covering all spec scenarios
 
 ---

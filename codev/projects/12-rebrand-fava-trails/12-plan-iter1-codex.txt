@@ -7,7 +7,7 @@ APPROVED
 The plan provides sufficient structure for a clean rename implementation.
 
 ### Technical Correctness
-- Renaming src/fava_trail/ → src/fava_trails/ is the correct approach (not aliasing)
+- Renaming src/fava_trails/ → src/fava_trails/ is the correct approach (not aliasing)
 - pyproject.toml changes needed: [project] name, [project.scripts] entry point, [tool.hatch.build.targets.wheel] packages, [tool.hatch.build.targets.wheel.force-include] paths
 - Test imports are covered explicitly
 
