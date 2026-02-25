@@ -30,6 +30,7 @@ from fava_trails.trust_gate import (
     TrustGatePromptCache,
     TrustResult,
     _build_review_payload,
+    _extract_json_from_llm_response,
     _redact_metadata,
     review_thought,
 )
@@ -608,3 +609,91 @@ async def test_propose_truth_backward_compat(trail_manager, tmp_fava_home):
     # Should be in decisions/
     decisions_path = trail_manager.trail_path / "thoughts" / "decisions" / f"{record.thought_id}.md"
     assert decisions_path.exists()
+
+
+# --- TICK-001: JSON Response Sanitization tests ---
+
+
+def test_extract_json_fenced_with_lang_tag():
+    """JSON wrapped in ```json ... ``` fences is correctly extracted."""
+    raw = '```json\n{"verdict": "approve", "reasoning": "ok", "confidence": 0.9}\n```'
+    result = _extract_json_from_llm_response(raw)
+    data = json.loads(result)
+    assert data["verdict"] == "approve"
+
+
+def test_extract_json_fenced_no_lang_tag():
+    """JSON wrapped in ``` ... ``` fences (no language tag) is correctly extracted."""
+    raw = '```\n{"verdict": "reject", "reasoning": "bad", "confidence": 0.8}\n```'
+    result = _extract_json_from_llm_response(raw)
+    data = json.loads(result)
+    assert data["verdict"] == "reject"
+
+
+def test_extract_json_leading_trailing_whitespace():
+    """JSON with leading/trailing whitespace is handled correctly."""
+    raw = '   \n  {"verdict": "approve", "reasoning": "good", "confidence": 1.0}  \n  '
+    result = _extract_json_from_llm_response(raw)
+    data = json.loads(result)
+    assert data["verdict"] == "approve"
+
+
+def test_extract_json_with_preamble_text():
+    """JSON with leading preamble text ('Here is my response:') is extracted."""
+    raw = 'Here is my verdict:\n{"verdict": "approve", "reasoning": "solid", "confidence": 0.95}'
+    result = _extract_json_from_llm_response(raw)
+    data = json.loads(result)
+    assert data["verdict"] == "approve"
+
+
+def test_extract_json_clean_no_fences():
+    """Clean JSON with no fences passes through unchanged."""
+    payload = {"verdict": "approve", "reasoning": "clean input", "confidence": 0.9}
+    raw = json.dumps(payload)
+    result = _extract_json_from_llm_response(raw)
+    assert result == raw  # No sanitization needed — identical output
+
+
+def test_extract_json_genuinely_invalid():
+    """Genuinely invalid content (no JSON object) returns original stripped string."""
+    raw = "This is not JSON at all."
+    result = _extract_json_from_llm_response(raw)
+    # Should preserve the string so json.loads() can raise a proper JSONDecodeError
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(result)
+
+
+def test_extract_json_nested_braces():
+    """Nested braces in JSON values are handled correctly (first { to last })."""
+    inner = {"key": "value with {braces} inside"}
+    payload = {"verdict": "approve", "reasoning": json.dumps(inner), "confidence": 0.7}
+    raw = "Some preamble.\n" + json.dumps(payload)
+    result = _extract_json_from_llm_response(raw)
+    data = json.loads(result)
+    assert data["verdict"] == "approve"
+
+
+@pytest.mark.asyncio
+async def test_review_thought_fenced_json_response(sample_thought):
+    """review_thought correctly parses LLM responses wrapped in markdown fences."""
+    fenced_content = (
+        '```json\n'
+        '{"verdict": "reject", "reasoning": "Contains CRITICAL language.", "confidence": 0.88}\n'
+        '```'
+    )
+    fenced_response = {"choices": [{"message": {"content": fenced_content}}]}
+
+    with patch("fava_trails.trust_gate._call_openrouter", new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = fenced_response
+
+        result = await review_thought(
+            record=sample_thought,
+            prompt="You are a reviewer.",
+            model="google/gemini-2.5-flash",
+            api_key="test-key",
+        )
+
+    # Should parse correctly — not fall back to error
+    assert result.verdict == "reject"
+    assert "CRITICAL" in result.reasoning
+    assert result.confidence == 0.88
