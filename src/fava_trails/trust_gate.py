@@ -207,6 +207,55 @@ async def _call_openrouter(
         return response.json()
 
 
+def _extract_json_from_llm_response(raw: str) -> str:
+    """Extract JSON content from an LLM response, stripping markdown code fences.
+
+    Handles common LLM output artifacts:
+    - Markdown code fences (```json ... ``` or ``` ... ```)
+    - Leading/trailing whitespace
+    - Preamble text before the JSON object
+
+    Returns the extracted JSON string, or the original string (as-is) if no JSON
+    object is found — letting json.loads() produce a proper error for genuinely
+    invalid content.
+    """
+    # Step 1: Strip leading/trailing whitespace
+    result = raw.strip()
+
+    # Step 2: Strip markdown code fences (```json or ```)
+    if result.startswith("```"):
+        first_newline = result.find("\n")
+        if first_newline != -1:
+            # Remove the opening fence line (e.g. ```json or ```)
+            result = result[first_newline + 1:]
+        # Remove the closing fence
+        if result.endswith("```"):
+            result = result[:-3]
+
+    # Step 3: Strip whitespace again after fence removal
+    result = result.strip()
+
+    # Step 4: If it still doesn't start with '{', find first '{' and last '}'
+    if not result.startswith("{"):
+        first_brace = result.find("{")
+        if first_brace != -1:
+            last_brace = result.rfind("}")
+            if last_brace != -1 and last_brace > first_brace:
+                result = result[first_brace : last_brace + 1]
+
+    # Step 5: Log a warning if sanitization changed anything
+    if result != raw.strip():
+        logger.warning(
+            "Trust gate: LLM response required sanitization before JSON parsing "
+            "(fence stripping or JSON extraction applied). "
+            "Raw length: %d, sanitized length: %d",
+            len(raw),
+            len(result),
+        )
+
+    return result
+
+
 def _parse_verdict(response_data: dict) -> tuple[str, str, float | None]:
     """Parse structured JSON verdict from OpenRouter response.
 
@@ -220,7 +269,7 @@ def _parse_verdict(response_data: dict) -> tuple[str, str, float | None]:
     message = choices[0].get("message", {})
     content = message.get("content", "")
 
-    verdict_data = json.loads(content)
+    verdict_data = json.loads(_extract_json_from_llm_response(content))
 
     verdict = verdict_data.get("verdict")
     if verdict not in ("approve", "reject"):
