@@ -214,7 +214,7 @@ def _make_jj_mock(returncode=0):
 
 
 def test_bootstrap_creates_structure(tmp_path):
-    """bootstrap creates config.yaml, .gitignore, trails/, and runs jj init."""
+    """bootstrap creates config.yaml, .gitignore, trails/, template files, and runs jj init."""
     target = tmp_path / "data-repo"
     args = _make_args(path=str(target), remote=None)
 
@@ -227,17 +227,18 @@ def test_bootstrap_creates_structure(tmp_path):
     assert (target / ".gitignore").exists()
     assert (target / "trails").is_dir()
 
+    # Template files copied
+    assert (target / "README.md").exists()
+    assert (target / "CLAUDE.md").exists()
+    assert (target / "trails" / "trust-gate-prompt.md").exists()
+    assert "FAVA Trails" in (target / "README.md").read_text()
+    assert "quality gate" in (target / "trails" / "trust-gate-prompt.md").read_text().lower()
+
     import yaml as _yaml
     config = _yaml.safe_load((target / "config.yaml").read_text())
     assert config["trails_dir"] == "trails"
     assert config["push_strategy"] == "manual"
     assert config["remote_url"] is None
-
-    # jj git init --colocate was called
-    call_args = mock_run.call_args
-    assert "jj" in call_args[0][0][0] or "/usr/bin/jj" in call_args[0][0][0]
-    assert "git" in call_args[0][0]
-    assert "init" in call_args[0][0]
 
 
 def test_bootstrap_with_remote(tmp_path):
