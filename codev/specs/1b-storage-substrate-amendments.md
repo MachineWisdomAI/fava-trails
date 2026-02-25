@@ -601,3 +601,23 @@ trails/new-project/
 - 4 new tests: `test_recall_multi_word_query`, `test_recall_by_scope_tags`, `test_recall_by_scope_branch`, `test_recall_query_finds_tags_in_searchable`
 
 **Tests:** 69 → 73
+
+### TICK 1b-002: Fix Phantom Empty Commits Blocking JJ Push (2026-02-25)
+
+**Status:** completed
+**Scope:** ~10 LOC code fix + 4 new tests
+
+**Trigger:** `jj git push` permanently blocked on `fava-trail-data` monorepo because commit `vvnwrtqs f7808a0d` had no description. JJ refuses to push ancestry chains containing undescribed commits. Remote fell 18 commits behind local. `try_push()` silently swallowed every push failure, so the problem was invisible until manual investigation.
+
+**Root cause — two code paths create undescribed JJ commits:**
+
+1. **`commit_files()` line 230** — `if message:` guard skips `jj describe` when message is empty/falsy, but line 243 still runs `jj new`, freezing the undescribed working copy as a real commit in the DAG.
+
+2. **`new_change()` line 191** — `if description:` guard means `jj new` runs without `-m` when description is empty, creating a change with no description. If `push()` then sets `main = @-`, it points to this undescribed commit.
+
+**Secondary issue:** `try_push()` returns `{"status": "warning"}` on failure but this warning is never surfaced prominently enough. The push failure becomes permanent once an undescribed commit enters the ancestry chain — every subsequent push attempt fails silently.
+
+**Fix:**
+- `jj_backend.py:commit_files()`: Always call `jj describe`. Use `"(auto-commit)"` as fallback when message is empty.
+- `jj_backend.py:new_change()`: Always pass `-m` to `jj new`. Use `"(new change)"` as fallback when description is empty.
+- 4 new tests: `test_commit_files_empty_message_still_describes`, `test_new_change_empty_description_still_describes`, `test_commit_files_always_creates_described_change`, `test_whitespace_only_message_treated_as_empty`

@@ -243,3 +243,13 @@ Each phase ends with a git commit. Phases are sequential — each builds on the 
 - `2afb276` — `[TICK 1b-001] Test: multi-word query, scope-by-tags, scope-by-branch, tag-only search`
 
 **Implementation:** Single-line change to `trail.py:333`. Split query into words, require all present via `all(word in searchable for word in query_words)`. Added 4 test functions covering the bug and scope filter gaps.
+
+### TICK 1b-002: Fix Phantom Empty Commits Blocking JJ Push (2026-02-25)
+
+**Files modified:**
+- `src/fava_trails/vcs/jj_backend.py` — `commit_files()`: remove `if message:` guard, always describe with fallback `"(auto-commit)"`. `new_change()`: always pass `-m` with fallback `"(new change)"`.
+- `tests/test_jj_backend.py` — 4 new tests verifying empty-message and whitespace-only paths always produce described commits.
+
+**Implementation:** 2 code changes in `jj_backend.py` (with `.strip()` normalization for whitespace-only inputs), 4 new test functions. Both changes ensure JJ never creates a commit without a description, preventing push blockage.
+
+**Code review (GPT-5.1 Codex via Pal MCP):** Identified fallback return consistency and whitespace-only edge case — both addressed before commit.
