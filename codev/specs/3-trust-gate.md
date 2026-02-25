@@ -234,3 +234,25 @@ These risks are known and accepted for Spec 3. Each has a mitigation path but is
 - Desktop bridge (Phase 4)
 - Pull Daemon (Phase 5)
 - Recall enhancements (Phase 6)
+
+---
+
+## Amendments
+
+### TICK-001: Fix JSON parsing of markdown-fenced LLM responses (2026-02-25)
+
+**Summary**: Add response sanitization before `json.loads()` in `_parse_verdict()` to handle markdown code fences and other common LLM output artifacts.
+
+**Problem Addressed**:
+Gemini 2.5 Flash occasionally wraps its structured JSON response in markdown code fences (`` ```json ... ``` ``). The `_parse_verdict()` function at `trust_gate.py:223` calls `json.loads(content)` directly with no sanitization, causing a `JSONDecodeError` at char 1. After the retry (which re-calls the API and gets the same fenced output), the thought ends up with `validation_status: "error"` — an infrastructure failure state — when it should have been cleanly rejected or approved.
+
+**Spec Changes**:
+- Structured JSON Output: Added response sanitization requirement before `json.loads()`. The parser must strip markdown code fences, leading/trailing whitespace, and extract the first JSON object (`{` to matching `}`) from the response content.
+- Done Criteria: Added criterion — "LLM responses wrapped in markdown fences are successfully parsed."
+- Done Criteria: Added criterion — "A reusable `_extract_json_from_llm_response()` utility function handles fence stripping, whitespace trimming, and first-JSON-object extraction."
+
+**Plan Changes**:
+- Added Phase 3.5: JSON Response Sanitization (between existing Phase 3.3 and 3.4)
+
+**Review**: See `reviews/3-trust-gate-tick-001.md`
+**Issue**: #5

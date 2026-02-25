@@ -119,7 +119,64 @@ Each phase ends with a git commit. Phases are sequential.
     {"id": "phase_3_1", "title": "Trust Gate Core + LLM-Oneshot Prompt Loading"},
     {"id": "phase_3_2", "title": "propose_truth Integration"},
     {"id": "phase_3_3", "title": "Human Policy Guard + Extensibility Stub"},
-    {"id": "phase_3_4", "title": "Tests"}
+    {"id": "phase_3_4", "title": "Tests"},
+    {"id": "phase_3_5", "title": "TICK-001: JSON Response Sanitization"}
   ]
 }
 ```
+
+---
+
+## Amendment History
+
+### TICK-001: Fix JSON parsing of markdown-fenced LLM responses (2026-02-25)
+
+**Changes**:
+- Added Phase 3.5: JSON Response Sanitization
+
+**Phase 3.5: JSON Response Sanitization (TICK-001)**
+
+**Goal:** Fix `_parse_verdict()` to handle markdown-fenced and otherwise wrapped JSON from LLM reviewers.
+
+**Files modified:**
+- `src/fava_trails/trust_gate.py` — Add `_extract_json_from_llm_response()` utility, call it from `_parse_verdict()` before `json.loads()`
+
+**Files modified (tests):**
+- `tests/test_trust_gate.py` or `tests/test_tools.py` — Add test cases for fence stripping
+
+**Implementation steps:**
+
+### Step 1: Add `_extract_json_from_llm_response()` utility
+**File**: `src/fava_trails/trust_gate.py`
+**Changes**:
+- Add a new function `_extract_json_from_llm_response(raw: str) -> str` before `_parse_verdict()`
+- Logic (in order):
+  1. Strip leading/trailing whitespace
+  2. Strip markdown code fences: remove `` ```json\n `` prefix and `` \n``` `` suffix (also handle `` ``` `` without language tag)
+  3. Strip leading/trailing whitespace again (fences may have introduced newlines)
+  4. If string doesn't start with `{`, find first `{` and last `}` — extract that substring
+  5. If no `{` found, return the original string as-is (let `json.loads()` produce a proper error)
+- Log a warning when sanitization is needed (fence stripping or JSON extraction) for monitoring
+
+### Step 2: Wire into `_parse_verdict()`
+**File**: `src/fava_trails/trust_gate.py`
+**Changes**:
+- In `_parse_verdict()`, replace `json.loads(content)` with `json.loads(_extract_json_from_llm_response(content))`
+
+### Step 3: Add tests
+**Changes**:
+- Test: JSON wrapped in `` ```json ... ``` `` fences → parses correctly
+- Test: JSON wrapped in `` ``` ... ``` `` fences (no lang tag) → parses correctly
+- Test: JSON with leading/trailing whitespace → parses correctly
+- Test: JSON with leading preamble text ("Here is my response:") → extracts and parses
+- Test: Clean JSON (no fences) → unchanged behavior
+- Test: Genuinely invalid content (no JSON at all) → `json.loads()` error preserved
+- Test: Nested braces in JSON values → correct extraction (first `{` to last `}`)
+
+**Done criteria:**
+- `_extract_json_from_llm_response()` strips fences and extracts JSON
+- `_parse_verdict()` uses the sanitizer
+- All existing trust gate tests still pass
+- New tests cover fence stripping, whitespace, preamble text, clean JSON, and invalid content
+
+**Review**: See `reviews/3-trust-gate-tick-001.md`
