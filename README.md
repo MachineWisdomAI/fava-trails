@@ -1,4 +1,4 @@
-# FAVA Trails
+# 🫛👣 FAVA Trails
 
 **Federated Agents Versioned Audit Trail** — VCS-backed memory for AI agents via MCP.
 
