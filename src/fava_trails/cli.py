@@ -10,6 +10,8 @@ from pathlib import Path
 
 import yaml
 
+from importlib import resources as importlib_resources
+
 from .config import get_data_repo_root, get_trails_dir, sanitize_scope_path
 
 
@@ -236,16 +238,27 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     }
     config_path = target / "config.yaml"
     config_path.write_text(yaml.dump(config_data, default_flow_style=False, sort_keys=False))
-    print(f"[1/4] Created config.yaml")
+    print("[1/6] Created config.yaml")
 
     # Create .gitignore
     gitignore_content = ".jj/\n__pycache__/\n*.pyc\n.venv/\n"
     (target / ".gitignore").write_text(gitignore_content)
-    print(f"[2/4] Created .gitignore")
+    print("[2/6] Created .gitignore")
 
     # Create trails/ directory
     (target / "trails").mkdir(exist_ok=True)
-    print(f"[3/4] Created trails/")
+    print("[3/6] Created trails/")
+
+    # Copy template files (README.md, CLAUDE.md, trust-gate-prompt.md)
+    template_pkg = importlib_resources.files("fava_trails") / "data_repo_template"
+    for name, dest in [
+        ("README.md", target / "README.md"),
+        ("CLAUDE.md", target / "CLAUDE.md"),
+        ("trust-gate-prompt.md", target / "trails" / "trust-gate-prompt.md"),
+    ]:
+        src = template_pkg / name
+        dest.write_text(src.read_text())
+    print("[4/6] Created README.md, CLAUDE.md, trails/trust-gate-prompt.md")
 
     # Initialize JJ colocated repo
     result = subprocess.run(
@@ -259,11 +272,29 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
         print(f"Error: jj git init --colocate failed:\n{result.stderr}", file=sys.stderr)
         print(f"  Partial init may have occurred. Clean up manually: rm -rf {target}/.jj", file=sys.stderr)
         return 1
-    print(f"[4/4] Initialized JJ colocated repo")
+    print("[5/6] Initialized JJ colocated repo")
+
+    # Initial commit: describe and create new change
+    subprocess.run(
+        [jj_bin, "describe", "-m", "Bootstrap FAVA Trails data repository"],
+        cwd=str(target), check=False, capture_output=True, text=True,
+    )
+    subprocess.run(
+        [jj_bin, "new", "-m", "(new change)"],
+        cwd=str(target), check=False, capture_output=True, text=True,
+    )
+    subprocess.run(
+        [jj_bin, "bookmark", "set", "main", "-r", "@-"],
+        cwd=str(target), check=False, capture_output=True, text=True,
+    )
+    print("[6/6] Created initial commit")
 
     print(f"\nData repo ready: {target}")
     print(f"\nSet this in your MCP server config:")
     print(f"  FAVA_TRAILS_DATA_REPO={target}")
+    if remote_url:
+        print(f"\nPush to remote:")
+        print(f"  cd {target} && jj git push -b main")
     return 0
 
 
