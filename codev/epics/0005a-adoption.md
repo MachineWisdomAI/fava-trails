@@ -9,5 +9,6 @@ External adoption — OSS readiness, CLI tooling, legacy migration, and codev bu
 - [ ] Spec 12: Rebrand to FAVA Trails (prerequisite for all below)
 - [ ] Spec 13: OSS Readiness for Early Adopters
 - [ ] Spec 14: FAVA Trails CLI
+- [ ] Spec 15: Data Repo Management CLI
 - [ ] Spec 9: Toolkit Migration Adapter
 - [ ] Spec 10: codev Integration
