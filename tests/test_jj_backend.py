@@ -383,3 +383,60 @@ async def test_push_uses_bookmark_flag_not_all(jj_backend):
         f"Expected bookmark '{JjBackend.DEFAULT_BOOKMARK}' in push args: {push_args}"
     )
     assert "--all" not in push_args, f"--all should not be used: {push_args}"
+
+
+# --- TICK 1b-002: Phantom empty commit prevention ---
+
+
+@pytest.mark.asyncio
+async def test_commit_files_empty_message_still_describes(jj_backend):
+    """commit_files with empty message must still describe the commit (prevents push blockage)."""
+    test_file = jj_backend.trail_path / "empty-msg.md"
+    test_file.write_text("# Empty message test")
+    change = await jj_backend.commit_files("", [str(test_file)])
+    assert change.description == "(auto-commit)"
+
+    # Verify the committed change has a description in jj log
+    changes = await jj_backend.log(limit=5)
+    descriptions = [c.description for c in changes]
+    assert any("(auto-commit)" in d for d in descriptions)
+
+
+@pytest.mark.asyncio
+async def test_new_change_empty_description_still_describes(jj_backend):
+    """new_change with empty description must still pass -m to jj new."""
+    change = await jj_backend.new_change("")
+    assert change is not None
+    # The current working change should have a description
+    current = await jj_backend.current_change()
+    assert current is not None
+    assert current.description == "(new change)"
+
+
+@pytest.mark.asyncio
+async def test_commit_files_always_creates_described_change(jj_backend):
+    """After commit_files, the new working copy change (@) should have a description."""
+    test_file = jj_backend.trail_path / "described.md"
+    test_file.write_text("# Described change test")
+    await jj_backend.commit_files("explicit message", [str(test_file)])
+
+    # The new working copy (@) should have a description from jj new -m
+    current = await jj_backend.current_change()
+    assert current is not None
+    assert current.description == "(new change)"
+
+
+@pytest.mark.asyncio
+async def test_whitespace_only_message_treated_as_empty(jj_backend):
+    """Whitespace-only messages/descriptions are normalized to fallback strings."""
+    # commit_files with whitespace-only message
+    test_file = jj_backend.trail_path / "ws-test.md"
+    test_file.write_text("# Whitespace test")
+    change = await jj_backend.commit_files("   ", [str(test_file)])
+    assert change.description == "(auto-commit)"
+
+    # new_change with whitespace-only description
+    new = await jj_backend.new_change("   ")
+    current = await jj_backend.current_change()
+    assert current is not None
+    assert current.description == "(new change)"

@@ -187,14 +187,13 @@ class JjBackend(VcsBackend):
         return f"Trail directory created at {self.trail_path}"
 
     async def new_change(self, description: str = "") -> VcsChange:
-        args = ["new"]
-        if description:
-            args.extend(["-m", description])
+        effective = description.strip() or "(new change)"
+        args = ["new", "-m", effective]
         stdout, _ = await self._run(*args)
         change = await self.current_change()
         if change:
             return change
-        return VcsChange(change_id="(new)", description=description)
+        return VcsChange(change_id="(new)", description=effective)
 
     async def describe(self, description: str) -> str:
         await self._run("describe", "-m", description)
@@ -226,21 +225,22 @@ class JjBackend(VcsBackend):
                         "Aborting commit to prevent data corruption."
                     )
 
-        # Proceed with commit
-        if message:
-            await self._run("describe", "-m", message)
+        # Proceed with commit — always describe to prevent phantom empty commits
+        # that block jj git push (JJ refuses to push undescribed commits)
+        effective_msg = message.strip() or "(auto-commit)"
+        await self._run("describe", "-m", effective_msg)
 
         # Snapshot to ensure files are tracked
         await self._run("status")  # triggers snapshot
 
         change = await self.current_change()
         if change:
-            change.description = message
+            change.description = effective_msg
         else:
-            change = VcsChange(change_id="(committed)", description=message)
+            change = VcsChange(change_id="(committed)", description=effective_msg)
 
-        # Create new empty change on top
-        await self._run("new")
+        # Create new empty change on top — always with description
+        await self._run("new", "-m", "(new change)")
         return change
 
     async def log(self, revset: str = "", limit: int = 20) -> list[VcsChange]:
