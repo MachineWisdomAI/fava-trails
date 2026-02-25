@@ -64,8 +64,7 @@
       ],
       "checks": {
         "build": {
-          "command": "npm run build",
-          "cwd": "packages/codev",
+          "command": "uv run pytest tests/test_trust_gate.py -q",
           "on_fail": "retry",
           "max_retries": 2
         }
@@ -86,8 +85,7 @@
       ],
       "checks": {
         "tests": {
-          "command": "npm test",
-          "cwd": "packages/codev",
+          "command": "uv run pytest -q",
           "on_fail": "implement",
           "max_retries": 1
         }
@@ -146,8 +144,8 @@
       "parallel": true
     },
     "checks": {
-      "build": { "command": "npm run build", "cwd": "packages/codev" },
-      "test": { "command": "npm test", "cwd": "packages/codev" }
+      "build": { "command": "uv run pytest tests/test_trust_gate.py -q" },
+      "test": { "command": "uv run pytest -q" }
     }
   }
 }
