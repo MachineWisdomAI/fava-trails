@@ -504,17 +504,19 @@ class JjBackend(VcsBackend):
         return "Pushed to git remote"
 
     async def _repair_undescribed_commits(self) -> int:
-        """Find and describe any commits with empty descriptions in main's ancestry.
+        """Find and describe any mutable commits with empty descriptions in main's ancestry.
 
         Legacy undescribed commits or those created by external JJ usage block
-        jj git push. This method repairs them before pushing.
+        jj git push. This method repairs them before pushing. Immutable commits
+        (already pushed to remote) are excluded from the revset and skipped
+        per-commit if describe fails.
 
-        Returns the count of repaired commits.
+        Returns the count of successfully repaired commits.
         """
         try:
             stdout, _ = await self._run(
                 "log", "--no-graph", "-r",
-                f'description(exact:"") & ancestors({self.DEFAULT_BOOKMARK}) & ~root()',
+                f'description(exact:"") & ancestors({self.DEFAULT_BOOKMARK}) & ~root() & mutable()',
                 "-T", 'change_id.short(12) ++ "\\n"',
             )
         except JjError as e:
@@ -524,14 +526,19 @@ class JjBackend(VcsBackend):
             return 0
 
         change_ids = [line.strip() for line in stdout.splitlines() if line.strip()]
+        repaired = 0
         for cid in change_ids:
-            await self._run(
-                "describe", "-r", cid,
-                "-m", "(auto-described: legacy empty commit)",
-            )
-        if change_ids:
-            logger.info(f"Repaired {len(change_ids)} undescribed commit(s)")
-        return len(change_ids)
+            try:
+                await self._run(
+                    "describe", "-r", cid,
+                    "-m", "(auto-described: legacy empty commit)",
+                )
+                repaired += 1
+            except JjError as e:
+                logger.warning(f"Could not auto-describe {cid}: {e}")
+        if repaired:
+            logger.info(f"Repaired {repaired} undescribed commit(s)")
+        return repaired
 
     async def push(self) -> str:
         """Push main bookmark to remote.
