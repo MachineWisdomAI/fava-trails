@@ -440,3 +440,127 @@ async def test_whitespace_only_message_treated_as_empty(jj_backend):
     current = await jj_backend.current_change()
     assert current is not None
     assert current.description == "(new change)"
+
+
+# --- TICK 1b-003: Defense-in-depth against JJ push failures ---
+
+
+@pytest.mark.asyncio
+async def test_git_push_includes_allow_empty_description(jj_backend):
+    """_git_push() must include --allow-empty-description in args."""
+    calls = []
+    original_run = jj_backend._run
+
+    async def tracking_run(*args, **kwargs):
+        calls.append(args)
+        return await original_run(*args, **kwargs)
+
+    with patch.object(jj_backend, "_run", side_effect=tracking_run):
+        try:
+            await jj_backend._git_push(bookmark="main")
+        except Exception:
+            pass  # Expected: no remote in test
+
+    push_calls = [c for c in calls if c[0] == "git" and "push" in c]
+    assert len(push_calls) == 1
+    assert "--allow-empty-description" in push_calls[0]
+
+
+@pytest.mark.asyncio
+async def test_repair_undescribed_commits_finds_and_fixes(jj_backend):
+    """_repair_undescribed_commits should find and describe empty-description commits."""
+    # Create a commit with empty description by using raw jj commands
+    subprocess.run(
+        ["jj", "describe", "-m", ""],
+        cwd=str(jj_backend.repo_root), capture_output=True,
+    )
+    subprocess.run(
+        ["jj", "new", "-m", "after empty"],
+        cwd=str(jj_backend.repo_root), capture_output=True,
+    )
+    # Set main bookmark to include the empty commit
+    subprocess.run(
+        ["jj", "bookmark", "set", "main", "-r", "@-"],
+        cwd=str(jj_backend.repo_root), capture_output=True,
+    )
+
+    count = await jj_backend._repair_undescribed_commits()
+    assert count >= 1
+
+    # Verify the commit now has a description (exclude root which is always undescribed)
+    stdout_out, _ = await jj_backend._run(
+        "log", "--no-graph", "-r",
+        'description(exact:"") & ancestors(main) & ~root()',
+        "-T", 'change_id.short(12) ++ "\\n"',
+        check=False,
+    )
+    remaining = [line.strip() for line in stdout_out.splitlines() if line.strip()]
+    assert len(remaining) == 0, f"Expected 0 undescribed commits, found {len(remaining)}"
+
+
+@pytest.mark.asyncio
+async def test_repair_undescribed_commits_noop_when_clean(jj_backend):
+    """_repair_undescribed_commits returns 0 on a repo with no empty-description commits."""
+    # Ensure there's a described commit
+    test_file = jj_backend.trail_path / "repair-noop.md"
+    test_file.write_text("# Noop repair test")
+    await jj_backend.commit_files("described commit", [str(test_file)])
+    # Set main bookmark
+    subprocess.run(
+        ["jj", "bookmark", "set", "main", "-r", "@-"],
+        cwd=str(jj_backend.repo_root), capture_output=True,
+    )
+
+    count = await jj_backend._repair_undescribed_commits()
+    assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_push_calls_repair_before_push(jj_backend):
+    """push() must call _repair_undescribed_commits before _git_push."""
+    calls = []
+    original_run = jj_backend._run
+
+    async def tracking_run(*args, **kwargs):
+        calls.append(args)
+        return await original_run(*args, **kwargs)
+
+    with patch.object(jj_backend, "_run", side_effect=tracking_run):
+        try:
+            await jj_backend.push()
+        except Exception:
+            pass  # Expected: no remote in test
+
+    # Find the repair log query and git push calls
+    repair_idx = None
+    push_idx = None
+    for i, c in enumerate(calls):
+        # The repair method uses a jj log with description(exact:"") revset
+        if c[0] == "log" and any('description(exact:"")' in str(a) for a in c):
+            repair_idx = i
+        if c[0] == "git" and "push" in c:
+            push_idx = i
+
+    assert repair_idx is not None, "push() did not call _repair_undescribed_commits"
+    assert push_idx is not None, "push() did not call _git_push"
+    assert repair_idx < push_idx, (
+        f"repair (call {repair_idx}) must come before git push (call {push_idx})"
+    )
+
+
+@pytest.mark.asyncio
+async def test_init_monorepo_sets_default_description(tmp_path):
+    """init_monorepo configures ui.default-description to prevent undescribed commits."""
+    from fava_trails.vcs.jj_backend import JjBackend
+
+    repo = tmp_path / "default-desc-repo"
+    trail = repo / "trails" / "test"
+    backend = JjBackend(repo_root=repo, trail_path=trail)
+    await backend.init_monorepo()
+
+    # Verify the config was set
+    proc = subprocess.run(
+        ["jj", "config", "get", "ui.default-description"],
+        cwd=str(repo), capture_output=True, text=True,
+    )
+    assert proc.stdout.strip() == "(auto-described)"

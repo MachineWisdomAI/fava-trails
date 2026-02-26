@@ -176,6 +176,8 @@ class JjBackend(VcsBackend):
         # Snapshot-style conflict markers — directly extractable content,
         # unlike diff-style (%%%%%%%) which requires diff application
         await self._run("config", "set", "--repo", "ui.conflict-marker-style", "snapshot")
+        # Default description prevents undescribed commits from external JJ usage
+        await self._run("config", "set", "--repo", "ui.default-description", "(auto-described)")
 
         return f"Monorepo initialized at {self.repo_root}"
 
@@ -492,8 +494,8 @@ class JjBackend(VcsBackend):
         return RebaseResult(success=True, pre_rebase_op_id=pre_op, summary="Sync complete")
 
     async def _git_push(self, bookmark: str = "") -> str:
-        """Low-level git push. Use push() instead — it advances bookmarks first."""
-        args = ["git", "push"]
+        """Low-level git push. Use push() instead — it advances bookmarks and repairs first."""
+        args = ["git", "push", "--allow-empty-description"]
         if bookmark:
             args.extend(["-b", bookmark])
         else:
@@ -501,12 +503,41 @@ class JjBackend(VcsBackend):
         stdout, _ = await self._run(*args)
         return "Pushed to git remote"
 
+    async def _repair_undescribed_commits(self) -> int:
+        """Find and describe any commits with empty descriptions in main's ancestry.
+
+        Legacy undescribed commits or those created by external JJ usage block
+        jj git push. This method repairs them before pushing.
+
+        Returns the count of repaired commits.
+        """
+        try:
+            stdout, _ = await self._run(
+                "log", "--no-graph", "-r",
+                f'description(exact:"") & ancestors({self.DEFAULT_BOOKMARK}) & ~root()',
+                "-T", 'change_id.short(12) ++ "\\n"',
+            )
+        except JjError as e:
+            logger.warning(f"Repair scan failed; proceeding without repair: {e}")
+            return 0
+        if not stdout.strip():
+            return 0
+
+        change_ids = [line.strip() for line in stdout.splitlines() if line.strip()]
+        for cid in change_ids:
+            await self._run(
+                "describe", "-r", cid,
+                "-m", "(auto-described: legacy empty commit)",
+            )
+        if change_ids:
+            logger.info(f"Repaired {len(change_ids)} undescribed commit(s)")
+        return len(change_ids)
+
     async def push(self) -> str:
         """Push main bookmark to remote.
 
-        Advances the 'main' bookmark to the latest committed change (@-)
-        before pushing — necessary because JJ colocated mode keeps HEAD
-        detached, so commits don't automatically advance any bookmark.
+        Advances the 'main' bookmark to the latest committed change (@-),
+        repairs any undescribed commits in the ancestry, then pushes.
         """
         async with self.repo_lock:
             # Advance main bookmark to latest committed change
@@ -514,6 +545,8 @@ class JjBackend(VcsBackend):
                 await self._run("bookmark", "set", self.DEFAULT_BOOKMARK, "-r", "@-")
             except JjError as e:
                 logger.warning(f"Could not advance main bookmark: {e}")
+            # Repair any undescribed commits before pushing
+            await self._repair_undescribed_commits()
             return await self._git_push(bookmark=self.DEFAULT_BOOKMARK)
 
     async def try_push(self) -> dict:

@@ -129,6 +129,9 @@ INIT_OUT=$(cd "${DATA_REPO}" && jj git init --colocate 2>&1) || {
 }
 echo "${INIT_OUT}" | grep -v "^Hint:" || true
 
+# Set default description to prevent undescribed commits from external JJ usage
+(cd "${DATA_REPO}" && jj config set --repo ui.default-description "(auto-described)")
+
 echo "[4/5] Initialized JJ colocated mode (.jj/ created)"
 
 # ─── Step 5: Track remote main bookmark ───

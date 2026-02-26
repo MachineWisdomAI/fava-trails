@@ -274,6 +274,14 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
         return 1
     print("[5/6] Initialized JJ colocated repo")
 
+    # Set default description to prevent undescribed commits from external JJ usage
+    result = subprocess.run(
+        [jj_bin, "config", "set", "--repo", "ui.default-description", "(auto-described)"],
+        cwd=str(target), check=False, capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        print(f"Warning: failed to set ui.default-description: {result.stderr}", file=sys.stderr)
+
     # Initial commit: describe and create new change
     subprocess.run(
         [jj_bin, "describe", "-m", "Bootstrap FAVA Trails data repository"],
