@@ -2,6 +2,40 @@
 
 All notable changes to FAVA Trails are documented here.
 
+## [0.4.4] — 2026-02-27
+
+### Fixed
+- **JJ push defense-in-depth** (TICK 1b-003): Repair skips immutable commits via `mutable()` revset; per-commit error isolation prevents one failure from blocking the entire push
+
+---
+
+## [0.4.3] — 2026-02-27
+
+### Added
+- **Defense-in-depth against JJ push failures** (TICK 1b-003): Three-layer defense — prevention (`ui.default-description` config), repair (`_repair_undescribed_commits()` before every push), fallback (`--allow-empty-description` flag)
+
+---
+
+## [0.4.2] — 2026-02-26
+
+### Fixed
+- **Trust Gate JSON parsing** (TICK 3-001): LLM responses wrapped in markdown code fences are now correctly parsed
+- **Data repo bootstrap**: Template files (`.gitignore`, config) included in `fava-trails bootstrap`
+
+### Added
+- Spec 15 draft: Data Repo Management CLI
+
+---
+
+## [0.4.1] — 2026-02-25
+
+### Fixed
+- **Phantom empty JJ commits** (TICK 1b-002): `commit_files()` and `new_change()` always pass `-m` to prevent undescribed commits that block `jj git push`
+- Docs filenames updated to plural FAVA Trails
+- Removed stale compat shims and upgrade guide
+
+---
+
 ## [0.4.0] — 2026-02-24
 
 ### Added
