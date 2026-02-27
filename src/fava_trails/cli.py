@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -508,7 +510,7 @@ def cmd_install_jj(args: argparse.Namespace) -> int:
                 timeout=5,
             )
             installed_output = result.stdout.strip()
-            if f"jj {version}" in installed_output:
+            if re.search(rf"jj {re.escape(version)}(\s|$)", installed_output):
                 print(f"JJ already installed: {installed_output}")
                 return 0
         except (OSError, subprocess.TimeoutExpired):
@@ -586,9 +588,10 @@ def cmd_install_jj(args: argparse.Namespace) -> int:
 
     # PATH check
     if not shutil.which("jj"):
+        shell_rc = ".zshrc" if "zsh" in os.environ.get("SHELL", "") or sys.platform == "darwin" else ".bashrc"
         print(f"\nWarning: {_JJ_INSTALL_DIR} is not in your PATH.")
         print("Add it with:")
-        print(f'  echo \'export PATH="$HOME/.local/bin:$PATH"\' >> ~/.bashrc && source ~/.bashrc')
+        print(f'  echo \'export PATH="$HOME/.local/bin:$PATH"\' >> ~/{shell_rc} && source ~/{shell_rc}')
 
     return 0
 
