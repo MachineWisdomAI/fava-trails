@@ -436,7 +436,7 @@ async def test_whitespace_only_message_treated_as_empty(jj_backend):
     assert change.description == "(auto-commit)"
 
     # new_change with whitespace-only description
-    new = await jj_backend.new_change("   ")
+    await jj_backend.new_change("   ")
     current = await jj_backend.current_change()
     assert current is not None
     assert current.description == "(new change)"

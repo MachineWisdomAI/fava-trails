@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from fava_trails.cli import (
     _is_env_gitignored,
@@ -16,7 +13,6 @@ from fava_trails.cli import (
     _read_project_yaml_scope,
     _update_env_file,
     _write_project_yaml,
-    build_parser,
     cmd_bootstrap,
     cmd_doctor,
     cmd_init,
@@ -25,7 +21,6 @@ from fava_trails.cli import (
     cmd_scope_list,
     cmd_scope_set,
 )
-
 
 # ─── _update_env_file ─────────────────────────────────────────────────────────
 
@@ -220,7 +215,7 @@ def test_bootstrap_creates_structure(tmp_path):
     args = _make_args(path=str(target), remote=None)
 
     with patch("shutil.which", return_value="/usr/bin/jj"):
-        with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
+        with patch("subprocess.run", return_value=_make_jj_mock(0)):
             rc = cmd_bootstrap(args)
 
     assert rc == 0
@@ -438,7 +433,7 @@ def test_doctor_all_green(tmp_path, monkeypatch, capsys):
     """doctor exits 0 when JJ, data repo, and scope are all configured."""
     monkeypatch.chdir(tmp_path)
     data_repo = _make_valid_data_repo(tmp_path)
-    (tmp_path / ".env").write_text(f"FAVA_TRAILS_SCOPE=mw/eng/test\n")
+    (tmp_path / ".env").write_text("FAVA_TRAILS_SCOPE=mw/eng/test\n")
 
     with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
         with patch("shutil.which", return_value="/usr/bin/jj"):

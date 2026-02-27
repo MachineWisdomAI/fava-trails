@@ -13,14 +13,12 @@ import tarfile
 import tempfile
 import urllib.error
 import urllib.request
+from importlib import resources as importlib_resources
 from pathlib import Path
 
 import yaml
 
-from importlib import resources as importlib_resources
-
 from .config import get_data_repo_root, get_trails_dir, sanitize_scope_path
-
 
 # ─── .env helpers ────────────────────────────────────────────────────────────
 
@@ -197,7 +195,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         data_repo = get_data_repo_root()
         if not data_repo.exists() or not (data_repo / "config.yaml").exists():
             print(f"Data repo not configured or not found at {data_repo}.")
-            print(f"  Run: fava-trails bootstrap <path>")
+            print("  Run: fava-trails bootstrap <path>")
         else:
             print(f"Data repo:    {data_repo}")
     except (OSError, ValueError) as e:
@@ -305,10 +303,10 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     print("[6/6] Created initial commit")
 
     print(f"\nData repo ready: {target}")
-    print(f"\nSet this in your MCP server config:")
+    print("\nSet this in your MCP server config:")
     print(f"  FAVA_TRAILS_DATA_REPO={target}")
     if remote_url:
-        print(f"\nPush to remote:")
+        print("\nPush to remote:")
         print(f"  cd {target} && jj git push -b main")
     return 0
 
@@ -321,13 +319,13 @@ def cmd_scope(args: argparse.Namespace) -> int:
     env_scope = _read_env_value(env_path, "FAVA_TRAILS_SCOPE")
     if env_scope:
         print(f"Scope:  {env_scope}")
-        print(f"Source: .env (FAVA_TRAILS_SCOPE)")
+        print("Source: .env (FAVA_TRAILS_SCOPE)")
         return 0
 
     yaml_scope = _read_project_yaml_scope(project_dir)
     if yaml_scope:
         print(f"Scope:  {yaml_scope}")
-        print(f"Source: .fava-trails.yaml")
+        print("Source: .fava-trails.yaml")
         return 0
 
     print("Scope:  (not configured)")
@@ -439,11 +437,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         data_repo = get_data_repo_root()
         if not data_repo.exists():
             print(f"Data repo:    NOT FOUND (expected: {data_repo})")
-            print(f"  Fix: fava-trails bootstrap <path>")
+            print("  Fix: fava-trails bootstrap <path>")
             any_failed = True
         elif not (data_repo / "config.yaml").exists():
             print(f"Data repo:    INVALID — missing config.yaml at {data_repo}")
-            print(f"  Fix: fava-trails bootstrap <path>")
+            print("  Fix: fava-trails bootstrap <path>")
             any_failed = True
         elif not (data_repo / "trails").exists():
             print(f"Data repo:    INVALID — missing trails/ at {data_repo}")
