@@ -25,8 +25,10 @@ Every thought, decision, and observation is stored as a markdown file with YAML 
 Install [Jujutsu (JJ)](https://jj-vcs.github.io/jj/) — FAVA Trails uses JJ as its VCS engine:
 
 ```bash
-bash scripts/install-jj.sh
+fava-trails install-jj
 ```
+
+Or install manually from [jj-vcs.github.io/jj](https://jj-vcs.github.io/jj/).
 
 ### From PyPI (recommended)
 
@@ -130,11 +132,11 @@ FAVA Trails uses git remotes for cross-machine sync. The `fava-trails bootstrap`
 ### Setting up a second machine
 
 ```bash
-# 1. Install JJ
-bash scripts/install-jj.sh
-
-# 2. Install FAVA Trails
+# 1. Install FAVA Trails
 pip install fava-trails
+
+# 2. Install JJ
+fava-trails install-jj
 
 # 3. Clone the SAME data repo
 git clone https://github.com/YOUR-ORG/fava-trails-data.git
@@ -171,8 +173,7 @@ fava-trails (this repo)        fava-trails-data (your repo)
 │   ├── trust_gate.py                      ├── drafts/
 │   └── vcs/                               ├── decisions/
 │       └── jj_backend.py                  ├── observations/
-└── scripts/                               └── preferences/
-    └── install-jj.sh
+└── tests/                                 └── preferences/
 ```
 
 - **Engine** (`fava-trails`) — stateless MCP server, Apache-2.0. Install via `pip install fava-trails`.

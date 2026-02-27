@@ -11,10 +11,10 @@ Thank you for your interest in contributing! This guide covers everything you ne
 ### Install JJ
 
 ```bash
-bash scripts/install-jj.sh
+fava-trails install-jj
 ```
 
-This downloads a pre-built binary for your platform (Linux x86_64 or aarch64) to `~/.local/bin/jj`. Make sure `~/.local/bin` is in your `PATH`.
+This downloads a pre-built binary for your platform to `~/.local/bin/jj`. Supports Linux (x86_64, aarch64) and macOS (x86_64, arm64). Make sure `~/.local/bin` is in your `PATH`. Alternatively, install manually from [jj-vcs.github.io/jj](https://jj-vcs.github.io/jj/).
 
 ## Setup
 

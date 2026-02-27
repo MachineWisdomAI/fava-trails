@@ -12,11 +12,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install JJ
-        run: |
-          bash scripts/install-jj.sh
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
@@ -24,6 +19,11 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --frozen
+
+      - name: Install JJ
+        run: |
+          uv run fava-trails install-jj
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Lint
         run: uv run ruff check src/ tests/

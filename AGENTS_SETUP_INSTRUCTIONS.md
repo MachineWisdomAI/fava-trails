@@ -7,7 +7,7 @@ Instructions for creating and configuring a FAVA Trails data repo. For day-to-da
 Install [Jujutsu (JJ)](https://jj-vcs.github.io/jj/):
 
 ```bash
-bash scripts/install-jj.sh
+fava-trails install-jj
 ```
 
 Install FAVA Trails:
