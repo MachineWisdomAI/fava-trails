@@ -667,8 +667,15 @@ def main(argv: list[str] | None = None) -> None:
 
     if not hasattr(args, "func"):
         parser.print_help()
+        hints = []
         if not shutil.which("jj"):
-            print("\nQuick start: run 'fava-trails install-jj' to install the required JJ binary.")
+            hints.append("  1. Install JJ:         fava-trails install-jj")
+        data_repo = get_data_repo_root()
+        if not data_repo.exists() or not (data_repo / "config.yaml").exists():
+            hints.append(f"  {'1' if not hints else '2'}. Set up data repo:   fava-trails bootstrap <path>")
+        if hints:
+            print("\nQuick start:")
+            print("\n".join(hints))
         sys.exit(0)
 
     sys.exit(args.func(args))
