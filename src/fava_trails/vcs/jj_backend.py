@@ -62,7 +62,7 @@ class JjBackend(VcsBackend):
         if local_jj.exists():
             return str(local_jj)
         raise FileNotFoundError(
-            "jj binary not found. Run scripts/install-jj.sh or install from https://jj-vcs.github.io/jj/"
+            "jj binary not found. Install from https://jj-vcs.github.io/jj/ or run scripts/install-jj.sh (from source repo)"
         )
 
     async def _run(self, *args: str, check: bool = True) -> tuple[str, str]:
