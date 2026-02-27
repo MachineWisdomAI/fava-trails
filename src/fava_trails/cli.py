@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -501,7 +502,7 @@ def cmd_install_jj(args: argparse.Namespace) -> int:
     if Path(existing).exists():
         try:
             result = subprocess.run(
-                [existing, "version"],
+                [existing, "--version"],
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -542,29 +543,43 @@ def cmd_install_jj(args: argparse.Namespace) -> int:
     with tempfile.TemporaryDirectory() as tmpdir:
         tarball = Path(tmpdir) / "jj.tar.gz"
         try:
-            urllib.request.urlretrieve(url, tarball)
-        except Exception as e:
+            with urllib.request.urlopen(url, timeout=30) as r, open(tarball, "wb") as f:
+                shutil.copyfileobj(r, f)
+        except (urllib.error.URLError, OSError) as e:
             print(f"Error: download failed: {e}", file=sys.stderr)
             return 1
 
         with tarfile.open(tarball, "r:gz") as tf:
-            # Extract just the jj binary
-            members = [m for m in tf.getmembers() if m.name in ("jj", "./jj")]
+            # Find the jj binary member
+            members = [m for m in tf.getmembers() if Path(m.name).name == "jj"]
             if not members:
                 print("Error: jj binary not found in tarball", file=sys.stderr)
                 return 1
-            tf.extract(members[0], path=tmpdir)
+            member = members[0]
+            if not member.isfile():
+                print("Error: jj entry in tarball is not a regular file", file=sys.stderr)
+                return 1
+            # Safe extraction: read via extractfile(), write manually (avoids path traversal)
+            src_f = tf.extractfile(member)
+            if src_f is None:
+                print("Error: failed to read jj from tarball", file=sys.stderr)
+                return 1
+            extracted = Path(tmpdir) / "jj"
+            with src_f, open(extracted, "wb") as dst_f:
+                shutil.copyfileobj(src_f, dst_f)
 
-        extracted = Path(tmpdir) / "jj"
-
-        _JJ_INSTALL_DIR.mkdir(parents=True, exist_ok=True)
-        dest = _JJ_INSTALL_DIR / "jj"
-        shutil.copy2(extracted, dest)
-        dest.chmod(0o755)
+        try:
+            _JJ_INSTALL_DIR.mkdir(parents=True, exist_ok=True)
+            dest = _JJ_INSTALL_DIR / "jj"
+            shutil.copy2(extracted, dest)
+            dest.chmod(0o755)
+        except OSError as e:
+            print(f"Error: failed to install JJ to {dest}: {e}", file=sys.stderr)
+            return 1
 
     # Verify
     try:
-        result = subprocess.run([str(dest), "version"], capture_output=True, text=True, timeout=5)
+        result = subprocess.run([str(dest), "--version"], capture_output=True, text=True, timeout=5)
         print(f"Installed: {result.stdout.strip()}")
     except Exception as e:
         print(f"Warning: install completed but verification failed: {e}", file=sys.stderr)
