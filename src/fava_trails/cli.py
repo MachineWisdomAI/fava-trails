@@ -667,6 +667,8 @@ def main(argv: list[str] | None = None) -> None:
 
     if not hasattr(args, "func"):
         parser.print_help()
+        if not shutil.which("jj"):
+            print("\nQuick start: run 'fava-trails install-jj' to install the required JJ binary.")
         sys.exit(0)
 
     sys.exit(args.func(args))
