@@ -2,6 +2,13 @@
 
 All notable changes to FAVA Trails are documented here.
 
+## [0.4.7] — 2026-02-27
+
+### Fixed
+- **Install-jj discoverability**: CLI help now shows "Quick start: run 'fava-trails install-jj'" when JJ is not installed
+
+---
+
 ## [0.4.6] — 2026-02-27
 
 ### Added
