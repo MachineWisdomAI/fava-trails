@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import platform
 import shutil
 import subprocess
 import sys
+import tarfile
+import tempfile
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import yaml
@@ -209,7 +214,7 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     if not jj_bin:
         jj_bin = str(Path.home() / ".local" / "bin" / "jj")
         if not Path(jj_bin).exists():
-            print("Error: jj not found. Install with: bash scripts/install-jj.sh", file=sys.stderr)
+            print("Error: jj not found. Install with: fava-trails install-jj\n  Or manually: https://jj-vcs.github.io/jj/", file=sys.stderr)
             return 1
 
     # Create directory
@@ -424,7 +429,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                 any_failed = True
     else:
         print("JJ:           NOT FOUND")
-        print("  Fix: bash scripts/install-jj.sh")
+        print("  Fix: fava-trails install-jj")
         any_failed = True
 
     # Check 2: Data repo valid?
@@ -470,6 +475,122 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         any_failed = True
 
     return 1 if any_failed else 0
+
+
+# ─── install-jj ───────────────────────────────────────────────────────────────
+
+JJ_DEFAULT_VERSION = "0.28.0"
+_JJ_INSTALL_DIR = Path.home() / ".local" / "bin"
+
+
+def cmd_install_jj(args: argparse.Namespace) -> int:
+    """Download and install the Jujutsu (JJ) binary."""
+    version = getattr(args, "jj_version", None) or JJ_DEFAULT_VERSION
+
+    # Platform detection first — Windows requires a different installer
+    os_name = sys.platform  # "linux", "darwin", "win32"
+    machine = platform.machine().lower()
+
+    if os_name == "win32":
+        print("Windows detected. Install JJ with:")
+        print("  winget install Jujutsu.Jujutsu")
+        print("Or manually from: https://jj-vcs.github.io/jj/")
+        return 1
+
+    # Check if JJ is already installed at the target version
+    existing = shutil.which("jj") or str(_JJ_INSTALL_DIR / "jj")
+    if Path(existing).exists():
+        try:
+            result = subprocess.run(
+                [existing, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            installed_output = result.stdout.strip()
+            if f"jj {version}" in installed_output:
+                print(f"JJ already installed: {installed_output}")
+                return 0
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+    if os_name == "linux":
+        if machine in ("x86_64", "amd64"):
+            suffix = "x86_64-unknown-linux-musl"
+        elif machine in ("aarch64", "arm64"):
+            suffix = "aarch64-unknown-linux-musl"
+        else:
+            print(f"Unsupported Linux architecture: {machine}", file=sys.stderr)
+            print("Install manually from: https://jj-vcs.github.io/jj/", file=sys.stderr)
+            return 1
+    elif os_name == "darwin":
+        if machine in ("x86_64", "amd64"):
+            suffix = "x86_64-apple-darwin"
+        elif machine in ("arm64", "aarch64"):
+            suffix = "aarch64-apple-darwin"
+        else:
+            print(f"Unsupported macOS architecture: {machine}", file=sys.stderr)
+            print("Install manually from: https://jj-vcs.github.io/jj/", file=sys.stderr)
+            return 1
+    else:
+        print(f"Unsupported OS: {os_name}", file=sys.stderr)
+        print("Install manually from: https://jj-vcs.github.io/jj/", file=sys.stderr)
+        return 1
+
+    url = f"https://github.com/jj-vcs/jj/releases/download/v{version}/jj-v{version}-{suffix}.tar.gz"
+    print(f"Downloading JJ v{version} for {suffix}...")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tarball = Path(tmpdir) / "jj.tar.gz"
+        try:
+            with urllib.request.urlopen(url, timeout=30) as r, open(tarball, "wb") as f:
+                shutil.copyfileobj(r, f)
+        except (urllib.error.URLError, OSError) as e:
+            print(f"Error: download failed: {e}", file=sys.stderr)
+            return 1
+
+        with tarfile.open(tarball, "r:gz") as tf:
+            # Find the jj binary member
+            members = [m for m in tf.getmembers() if Path(m.name).name == "jj"]
+            if not members:
+                print("Error: jj binary not found in tarball", file=sys.stderr)
+                return 1
+            member = members[0]
+            if not member.isfile():
+                print("Error: jj entry in tarball is not a regular file", file=sys.stderr)
+                return 1
+            # Safe extraction: read via extractfile(), write manually (avoids path traversal)
+            src_f = tf.extractfile(member)
+            if src_f is None:
+                print("Error: failed to read jj from tarball", file=sys.stderr)
+                return 1
+            extracted = Path(tmpdir) / "jj"
+            with src_f, open(extracted, "wb") as dst_f:
+                shutil.copyfileobj(src_f, dst_f)
+
+        try:
+            _JJ_INSTALL_DIR.mkdir(parents=True, exist_ok=True)
+            dest = _JJ_INSTALL_DIR / "jj"
+            shutil.copy2(extracted, dest)
+            dest.chmod(0o755)
+        except OSError as e:
+            print(f"Error: failed to install JJ to {dest}: {e}", file=sys.stderr)
+            return 1
+
+    # Verify
+    try:
+        result = subprocess.run([str(dest), "--version"], capture_output=True, text=True, timeout=5)
+        print(f"Installed: {result.stdout.strip()}")
+    except Exception as e:
+        print(f"Warning: install completed but verification failed: {e}", file=sys.stderr)
+
+    # PATH check
+    if not shutil.which("jj"):
+        print(f"\nWarning: {_JJ_INSTALL_DIR} is not in your PATH.")
+        print("Add it with:")
+        print(f'  echo \'export PATH="$HOME/.local/bin:$PATH"\' >> ~/.bashrc && source ~/.bashrc')
+
+    return 0
 
 
 # ─── Argument parser ──────────────────────────────────────────────────────────
@@ -522,6 +643,17 @@ def build_parser() -> argparse.ArgumentParser:
     # doctor
     p_doctor = subparsers.add_parser("doctor", help="Check JJ, data repo, and scope configuration")
     p_doctor.set_defaults(func=cmd_doctor)
+
+    # install-jj
+    p_install_jj = subparsers.add_parser("install-jj", help="Download and install the Jujutsu (JJ) binary")
+    p_install_jj.add_argument(
+        "--version",
+        dest="jj_version",
+        default=None,
+        metavar="VERSION",
+        help=f"JJ version to install (default: {JJ_DEFAULT_VERSION})",
+    )
+    p_install_jj.set_defaults(func=cmd_install_jj)
 
     return parser
 

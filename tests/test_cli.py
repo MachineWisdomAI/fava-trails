@@ -20,6 +20,7 @@ from fava_trails.cli import (
     cmd_bootstrap,
     cmd_doctor,
     cmd_init,
+    cmd_install_jj,
     cmd_scope,
     cmd_scope_list,
     cmd_scope_set,
@@ -474,7 +475,7 @@ def test_doctor_missing_jj(tmp_path, monkeypatch, capsys):
     assert rc == 1
     out = capsys.readouterr().out
     assert "NOT FOUND" in out
-    assert "install-jj.sh" in out
+    assert "install-jj" in out
 
 
 def test_doctor_missing_data_repo(tmp_path, monkeypatch, capsys):
@@ -536,3 +537,139 @@ def test_bootstrap_refuses_existing_config(tmp_path):
         rc = cmd_bootstrap(args)
 
     assert rc == 1
+
+# ─── install-jj tests ─────────────────────────────────────────────────────────
+
+
+def _make_install_jj_args(version=None):
+    args = MagicMock()
+    args.jj_version = version
+    return args
+
+
+def test_install_jj_skips_if_version_matches(tmp_path, capsys):
+    """install-jj exits 0 without downloading when the installed version matches."""
+    jj_bin = str(tmp_path / "jj")
+    Path(jj_bin).touch()
+
+    mock_result = MagicMock()
+    mock_result.stdout = "jj 0.28.0\n"
+    mock_result.returncode = 0
+
+    with patch("shutil.which", return_value=jj_bin):
+        with patch("subprocess.run", return_value=mock_result):
+            rc = cmd_install_jj(_make_install_jj_args())
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "already installed" in out
+
+
+def test_install_jj_unsupported_platform(capsys):
+    """install-jj exits 1 on Windows and prints winget instructions."""
+    with patch("sys.platform", "win32"):
+        with patch("shutil.which", return_value=None):
+            rc = cmd_install_jj(_make_install_jj_args())
+
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "winget" in out
+
+
+def test_install_jj_unsupported_arch(capsys):
+    """install-jj exits 1 on unsupported Linux architecture."""
+    with patch("sys.platform", "linux"):
+        with patch("platform.machine", return_value="mips"):
+            with patch("shutil.which", return_value=None):
+                with patch("subprocess.run", side_effect=OSError("no jj")):
+                    rc = cmd_install_jj(_make_install_jj_args())
+
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "Unsupported" in err
+
+
+def _make_fake_tarball(jj_data: bytes = b"#!/bin/sh\necho jj") -> bytes:
+    """Create an in-memory .tar.gz containing a 'jj' binary."""
+    import io
+    import tarfile as _tarfile
+
+    buf = io.BytesIO()
+    with _tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        info = _tarfile.TarInfo(name="jj")
+        info.size = len(jj_data)
+        tf.addfile(info, io.BytesIO(jj_data))
+    return buf.getvalue()
+
+
+def _fake_urlopen(fake_bytes: bytes):
+    """Return a context-manager mock for urllib.request.urlopen."""
+    import io
+
+    class FakeResponse:
+        def read(self, n=-1):
+            return self._buf.read(n)
+
+        def __enter__(self):
+            self._buf = io.BytesIO(fake_bytes)
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+    return FakeResponse()
+
+
+def test_install_jj_downloads_and_installs(tmp_path, capsys):
+    """install-jj downloads tarball, extracts binary, and verifies installation."""
+    fake_bytes = _make_fake_tarball(b"#!/bin/sh\necho jj 0.28.0")
+    install_dir = tmp_path / ".local" / "bin"
+    install_dir.mkdir(parents=True)
+
+    mock_run_result = MagicMock()
+    mock_run_result.stdout = "jj 0.28.0\n"
+    mock_run_result.returncode = 0
+
+    with patch("shutil.which", return_value=None):
+        with patch("fava_trails.cli._JJ_INSTALL_DIR", install_dir):
+            with patch("urllib.request.urlopen", return_value=_fake_urlopen(fake_bytes)):
+                with patch("subprocess.run", return_value=mock_run_result):
+                    rc = cmd_install_jj(_make_install_jj_args())
+
+    assert rc == 0
+    assert (install_dir / "jj").exists()
+
+
+def test_install_jj_custom_version(tmp_path, capsys):
+    """install-jj uses --version argument in the download URL."""
+    captured_urls = []
+    fake_bytes = _make_fake_tarball()
+    install_dir = tmp_path / ".local" / "bin"
+    install_dir.mkdir(parents=True)
+
+    def fake_urlopen(url, timeout=None):
+        captured_urls.append(url)
+        return _fake_urlopen(fake_bytes)
+
+    mock_run_result = MagicMock()
+    mock_run_result.stdout = "jj 0.29.0\n"
+
+    with patch("shutil.which", return_value=None):
+        with patch("fava_trails.cli._JJ_INSTALL_DIR", install_dir):
+            with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+                with patch("subprocess.run", return_value=mock_run_result):
+                    rc = cmd_install_jj(_make_install_jj_args(version="0.29.0"))
+
+    assert rc == 0
+    assert len(captured_urls) == 1
+    assert "0.29.0" in captured_urls[0]
+
+
+def test_install_jj_in_help(capsys):
+    """install-jj subcommand appears in fava-trails --help output."""
+    result = subprocess.run(
+        [sys.executable, "-m", "fava_trails.cli", "--help"],
+        capture_output=True,
+        text=True,
+    )
+    assert "install-jj" in result.stdout

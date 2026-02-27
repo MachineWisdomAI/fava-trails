@@ -11,7 +11,7 @@ import pytest_asyncio
 # Skip all tests if jj is not installed
 jj_bin = shutil.which("jj") or str(Path.home() / ".local" / "bin" / "jj")
 if not Path(jj_bin).exists():
-    pytest.skip("jj binary not found — install via scripts/install-jj.sh", allow_module_level=True)
+    pytest.skip("jj binary not found — install via: fava-trails install-jj", allow_module_level=True)
 
 
 @pytest.fixture
