@@ -2,6 +2,15 @@
 
 All notable changes to FAVA Trails are documented here.
 
+## [0.4.5] — 2026-02-27
+
+### Changed
+- **README refresh for public launch**: PyPI badges, dual install paths (PyPI primary), `fava-trails bootstrap` CLI, updated MCP configs, refreshed architecture diagram
+- **Docs cleanup**: Removed stale internal references from AGENTS.md, AGENTS_USAGE_INSTRUCTIONS.md, CONTRIBUTING.md, FAQ, and onepager; updated all bootstrap instructions to CLI command
+- **Removed orphaned `.architect-role.md`**
+
+---
+
 ## [0.4.4] — 2026-02-27
 
 ### Fixed
