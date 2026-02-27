@@ -22,9 +22,6 @@ All notable changes to FAVA Trails are documented here.
 - **Trust Gate JSON parsing** (TICK 3-001): LLM responses wrapped in markdown code fences are now correctly parsed
 - **Data repo bootstrap**: Template files (`.gitignore`, config) included in `fava-trails bootstrap`
 
-### Added
-- Spec 15 draft: Data Repo Management CLI
-
 ---
 
 ## [0.4.1] — 2026-02-25

@@ -233,14 +233,6 @@ Drafts are **working memory**. Promoted thoughts are **institutional memory**.
 - **Exception:** `learn_preference` bypasses drafts entirely (user input is auto-approved truth)
 - In-progress work stays in `drafts/` — that's fine, drafts are meant for working state
 
-### SPIR Meta-Layer Pattern
-
-When using the SPIR protocol (codev/), FAVA Trails thoughts **link to** `codev/` artifacts — they don't duplicate content.
-
-- Use `source_type: observation` with tags like `["spir", "status", "phase-N"]`
-- Content is a broadcast: "Phase 0 Complete — see `codev/reviews/0-repo-separation.md`"
-- This gives cross-agent visibility: agents can see project status via `recall` without reading git
-
 ## Key Rules
 
 ### Content Mutability
@@ -303,6 +295,3 @@ uv run pytest tests/test_tools.py -v
 uv run pytest --cov=fava_trails
 ```
 
-## SPIR Protocol
-
-This project follows the SPIR protocol (Specify, Plan, Implement, Review) from codev v2.0.13. SPIR artifacts live in `codev/`.

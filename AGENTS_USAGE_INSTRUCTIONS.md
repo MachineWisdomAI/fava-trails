@@ -49,7 +49,6 @@ scope: mwai/eng/fava-trails
 4. **If FAVA Trails is empty** — fall back to legacy files:
    - `memory/shared/decisions.md`, `memory/shared/gotchas.md`
    - `memory/branches/<current-branch>/status.md`
-   - `codev/branches/<current-branch>/status.md` (if `codev/` exists)
 5. Detect current branch: `git branch --show-current`
 
 ## During Work
@@ -130,11 +129,3 @@ If your work contradicts a persisted thought, use `supersede` to create a clear 
 
 **Don't supersede on a hunch.** Save a new thought with your hypothesis and let it coexist until evidence settles it.
 
-## SPIR Meta-Layer (Optional — codev methodology)
-
-When working under the SPIR protocol, FAVA Trails thoughts **link to** `codev/` artifacts — they don't duplicate content:
-
-- Use `source_type: observation` with `tags: ["spir", "status", "phase-N"]`
-- Content broadcasts state changes: "Phase 1 Complete — see `codev/reviews/1-name.md`"
-- Thoughts are scoped to the epic: `trail_name="mwai/eng/project/0001a-epic-name"`
-- This gives cross-agent visibility without requiring git access

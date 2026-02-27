@@ -35,7 +35,7 @@ class JjError(Exception):
 class JjBackend(VcsBackend):
     """JJ colocated mode backend. Single monorepo, trail-path scoped operations."""
 
-    # Default bookmark name — must match what bootstrap-data-repo.sh creates.
+    # Default bookmark name — must match what `fava-trails bootstrap` creates.
     DEFAULT_BOOKMARK = "main"
 
     # Shared repo locks: all instances with the same repo_root share one lock.

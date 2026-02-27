@@ -1,4 +1,9 @@
-# 🫛👣 FAVA Trails
+[![PyPI](https://img.shields.io/pypi/v/fava-trails)](https://pypi.org/project/fava-trails/)
+[![License](https://img.shields.io/github/license/MachineWisdomAI/fava-trails)](LICENSE)
+[![Tests](https://img.shields.io/github/actions/workflow/status/MachineWisdomAI/fava-trails/test.yml?label=tests)](https://github.com/MachineWisdomAI/fava-trails/actions)
+[![Python](https://img.shields.io/pypi/pyversions/fava-trails)](https://pypi.org/project/fava-trails/)
+
+# FAVA Trails
 
 **Federated Agents Versioned Audit Trail** — VCS-backed memory for AI agents via MCP.
 
@@ -8,17 +13,32 @@ Every thought, decision, and observation is stored as a markdown file with YAML 
 
 - **Supersession tracking** — when an agent corrects a belief, the old version is hidden from default recall. No contradictory memories.
 - **Draft isolation** — working thoughts stay in `drafts/`. Other agents only see promoted thoughts.
+- **Trust Gate** — an LLM-based reviewer validates thoughts before they enter shared truth. Hallucinations stay contained in draft.
 - **Full lineage** — every thought carries who wrote it, when, and why it changed.
 - **Crash-proof** — JJ auto-snapshots. No unsaved work.
 - **Engine/Fuel split** — this repo is the engine (stateless MCP server). Your data lives in a separate repo you control.
 
 ## Install
 
-```bash
-# 1. Install JJ (required, one-time)
-bash scripts/install-jj.sh
+### Prerequisites
 
-# 2. Install dependencies
+Install [Jujutsu (JJ)](https://jj-vcs.github.io/jj/) — FAVA Trails uses JJ as its VCS engine:
+
+```bash
+bash scripts/install-jj.sh
+```
+
+### From PyPI (recommended)
+
+```bash
+pip install fava-trails
+```
+
+### From source (for development)
+
+```bash
+git clone https://github.com/MachineWisdomAI/fava-trails.git
+cd fava-trails
 uv sync
 ```
 
@@ -31,12 +51,29 @@ uv sync
 git clone https://github.com/YOUR-ORG/fava-trails-data.git
 
 # Bootstrap it (creates config, .gitignore, initializes JJ)
-bash scripts/bootstrap-data-repo.sh fava-trails-data
+fava-trails bootstrap fava-trails-data
 ```
 
 ### Register the MCP server
 
 Add to `~/.claude.json` (Claude Code) or `claude_desktop_config.json` (Claude Desktop):
+
+**If installed from PyPI:**
+
+```json
+{
+  "mcpServers": {
+    "fava-trails": {
+      "command": "fava-trails-server",
+      "env": {
+        "FAVA_TRAILS_DATA_REPO": "/path/to/fava-trails-data"
+      }
+    }
+  }
+}
+```
+
+**If installed from source:**
 
 ```json
 {
@@ -62,7 +99,7 @@ For Claude Desktop on Windows (accessing WSL):
       "command": "wsl.exe",
       "args": [
         "-e", "bash", "-lc",
-        "FAVA_TRAILS_DATA_REPO=/path/to/fava-trails-data uv run --directory /path/to/fava-trails fava-trails-server"
+        "FAVA_TRAILS_DATA_REPO=/path/to/fava-trails-data fava-trails-server"
       ]
     }
   }
@@ -84,36 +121,33 @@ recall(trail_name="myorg/eng/my-project", query="X")
   → finds the promoted thought
 ```
 
+Agents interact through MCP tools — they never see VCS commands. JJ expertise is not required.
+
 ## Cross-Machine Sync
 
-FAVA Trails uses git remotes for cross-machine sync. The bootstrap script sets `push_strategy: immediate` which auto-pushes after every write.
+FAVA Trails uses git remotes for cross-machine sync. The `fava-trails bootstrap` command sets `push_strategy: immediate` which auto-pushes after every write.
 
 ### Setting up a second machine
-
-On the second machine:
 
 ```bash
 # 1. Install JJ
 bash scripts/install-jj.sh
 
-# 2. Clone the SAME data repo
+# 2. Install FAVA Trails
+pip install fava-trails
+
+# 3. Clone the SAME data repo
 git clone https://github.com/YOUR-ORG/fava-trails-data.git
 
-# 3. Initialize JJ colocated mode + track remote
+# 4. Initialize JJ colocated mode + track remote
 cd fava-trails-data
 jj git init --colocate
 jj bookmark track main@origin
 
-# 4. Clone the engine
-git clone https://github.com/YOUR-ORG/fava-trails.git
-
-# 5. Install engine dependencies
-cd fava-trails && uv sync
-
-# 6. Register MCP (same config as above, with local paths)
+# 5. Register MCP (same config as above, with local paths)
 ```
 
-That's it. Both machines push/pull through the same git remote. Use the `sync` MCP tool to pull latest thoughts from other machines.
+Both machines push/pull through the same git remote. Use the `sync` MCP tool to pull latest thoughts from other machines.
 
 ### Manual push (if auto-push is off)
 
@@ -131,17 +165,18 @@ jj git push --bookmark main
 fava-trails (this repo)        fava-trails-data (your repo)
 ├── src/fava_trails/           ├── config.yaml
 │   ├── server.py  ←── MCP ──→├── .gitignore
-│   ├── trail.py               └── trails/
-│   ├── config.py                  └── default/
-│   └── vcs/                           └── thoughts/
-│       └── jj_backend.py                 ├── drafts/
-└── scripts/                              ├── decisions/
-    ├── install-jj.sh                     ├── observations/
-    └── bootstrap-data-repo.sh            └── preferences/
+│   ├── cli.py                 └── trails/
+│   ├── trail.py                   └── myorg/eng/project/
+│   ├── config.py                      └── thoughts/
+│   ├── trust_gate.py                      ├── drafts/
+│   └── vcs/                               ├── decisions/
+│       └── jj_backend.py                  ├── observations/
+└── scripts/                               └── preferences/
+    └── install-jj.sh
 ```
 
-- **Engine** (`fava-trails`) — stateless MCP server, Apache-2.0
-- **Fuel** (`fava-trails-data`) — your organization's trail data, private
+- **Engine** (`fava-trails`) — stateless MCP server, Apache-2.0. Install via `pip install fava-trails`.
+- **Fuel** (`fava-trails-data`) — your organization's trail data, private.
 
 ## Configuration
 

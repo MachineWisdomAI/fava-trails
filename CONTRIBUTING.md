@@ -57,10 +57,6 @@ All PRs must pass ruff with zero errors.
 - Descriptive commit messages (what changed and why)
 - One logical change per PR — keep PRs focused
 
-## About the `codev/` Directory
-
-The `codev/` directory contains the internal development methodology (specs, plans, reviews) used by the Machine Wisdom team. External contributors are **not expected** to use or understand these files — they're here for transparency. Your PR does not need a spec or plan document.
-
 ## Reporting Issues
 
 Use the [bug report template](https://github.com/MachineWisdomAI/fava-trails/issues/new?template=bug_report.yml). Include your JJ version (`jj --version`), OS, Python version, and steps to reproduce.

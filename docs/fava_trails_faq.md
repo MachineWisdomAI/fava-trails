@@ -62,9 +62,9 @@ The key design properties:
 
 ### What is the Pull Daemon?
 
-The Pull Daemon is a sidecar process that continuously synchronizes each agent's working context with shared truth. It runs a periodic sync loop (default: every 30 seconds) that rebases the agent's draft branch on top of the latest accepted shared truth.
+The Pull Daemon is a planned sidecar process (design goal, not yet deployed) that will continuously synchronize each agent's working context with shared truth. It will run a periodic sync loop (default: every 30 seconds) that rebases the agent's draft branch on top of the latest accepted shared truth.
 
-This means agents automatically see each other's accepted work without manual intervention. If Agent A updates the project budget from "Low" to "High" and that update passes the Trust Gate, Agent B's Pull Daemon picks up the change and rebases B's draft on top of the new truth. Agent B's reasoning now operates against the updated budget.
+In the current release, agents call the `sync` MCP tool manually to pull latest shared truth. The Pull Daemon will automate this — when Agent A updates the project budget from "Low" to "High" and that update passes the Trust Gate, Agent B's Pull Daemon will pick up the change and rebase B's draft on top of the new truth. Agent B's reasoning then operates against the updated budget.
 
 If the rebase creates a conflict (B was working with assumptions about the old budget), the conflict is surfaced to B as structured data rather than silently swallowed.
 
@@ -103,9 +103,9 @@ Core MCP tools:
 
 Agents interact with memories as semantic objects (Markdown with structured frontmatter). They never see VCS commands, file paths, or storage internals.
 
-### What does integration look like for a system like Disarray?
+### What does integration look like for large-scale autonomous agent systems?
 
-For ML engineering agents running long-horizon tasks (12+ hour Kaggle competitions, multi-day model development), FAVA Trails addresses three specific failure modes:
+For ML engineering agents running long-horizon tasks (12+ hour Kaggle competitions, multi-day model development) on infrastructure like serverless GPU clusters, FAVA Trails addresses three specific failure modes:
 
 1. **Session persistence across context window resets.** When the context window fills and the agent needs to continue, FAVA Trails provides the full history of what was tried, what worked, what didn't, and why — reconstructable from versioned memory rather than lost when the window rolls over.
 
@@ -115,9 +115,9 @@ For ML engineering agents running long-horizon tasks (12+ hour Kaggle competitio
 
 ### Can I use FAVA Trails as a drop-in replacement for my current memory backend?
 
-FAVA Trails provides adapter patterns for common memory interfaces. The implementation plan includes a mapping layer where `search()` maps to `recall_semantic` + `recall`, `readFile()` maps to `get_thought`, and `sync()` maps to `sync`.
+FAVA Trails is designed to support adapter patterns for common memory interfaces. A planned mapping layer will map `search()` to `recall_semantic` + `recall`, `readFile()` to `get_thought`, and `sync()` to `sync`.
 
-For frameworks with custom memory abstractions, the MCP interface is the universal integration point.
+For frameworks with custom memory abstractions, the MCP interface is the universal integration point today.
 
 ### What about performance? My agent loop runs at millisecond timescales.
 
@@ -152,7 +152,7 @@ FAVA Trails's contribution:
 Each agent gets its own isolated draft workspace. Agents never step on each other's work because drafts are invisible across workspaces. Coordination happens through shared truth:
 
 1. Agent A discovers that Feature X improves accuracy by 3%. It promotes this finding through the Trust Gate.
-2. The Pull Daemon propagates the accepted finding to all other agents within 30 seconds.
+2. The `sync` tool (or the planned Pull Daemon) propagates the accepted finding to all other agents.
 3. Agent B, which was about to explore Feature X independently, sees the finding in its synced context and redirects its effort elsewhere.
 4. Agent C, which had already started a conflicting hypothesis, sees the conflict surfaced as structured data and can decide how to resolve it.
 

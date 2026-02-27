@@ -10,10 +10,14 @@ Install [Jujutsu (JJ)](https://jj-vcs.github.io/jj/):
 bash scripts/install-jj.sh
 ```
 
-Install engine dependencies:
+Install FAVA Trails:
 
 ```bash
-uv sync
+# From PyPI (recommended)
+pip install fava-trails
+
+# Or from source (for development)
+git clone https://github.com/MachineWisdomAI/fava-trails.git && cd fava-trails && uv sync
 ```
 
 ## Creating the Data Repo
@@ -26,11 +30,11 @@ The data repo is a plain git repository that the MCP server JJ-colocates on firs
 # 1. Create an empty repo on GitHub, then clone it
 git clone https://github.com/YOUR-ORG/fava-trails-data.git
 
-# 2. Run the bootstrap script
-bash scripts/bootstrap-data-repo.sh fava-trails-data
+# 2. Bootstrap it
+fava-trails bootstrap fava-trails-data
 ```
 
-The script validates the repo is empty, creates `config.yaml` + `.gitignore`, commits via git (once), initializes JJ colocated mode, and tracks the remote bookmark.
+The bootstrap command validates the repo, creates `config.yaml` + `.gitignore`, commits via git (once), initializes JJ colocated mode, and tracks the remote bookmark.
 
 ### Manual
 
@@ -75,7 +79,7 @@ jj bookmark track main@origin
 
 ### After setup
 
-Register the MCP server (see [CLAUDE.md](CLAUDE.md#mcp-registration)), then use MCP tools (`save_thought`, `recall`, etc.) for all trail operations. Do not use `git` commands to manage thought files.
+Register the MCP server (see [README.md](README.md#register-the-mcp-server)), then use MCP tools (`save_thought`, `recall`, etc.) for all trail operations. Do not use `git` commands to manage thought files.
 
 ## Setting Up a Second Machine
 
