@@ -2,6 +2,13 @@
 
 All notable changes to FAVA Trails are documented here.
 
+## [0.4.8] — 2026-02-27
+
+### Fixed
+- **Quick-start guidance**: CLI help now shows numbered setup steps for all missing prerequisites (JJ binary + data repo), silent when fully configured
+
+---
+
 ## [0.4.7] — 2026-02-27
 
 ### Fixed
