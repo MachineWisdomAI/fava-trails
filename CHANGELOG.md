@@ -2,6 +2,15 @@
 
 All notable changes to FAVA Trails are documented here.
 
+## [0.4.6] — 2026-02-27
+
+### Added
+- **`fava-trails install-jj` subcommand** (TICK 14-001): Downloads JJ binary from GitHub releases — eliminates the adoption cliff between `pip install fava-trails` and a working system. Supports Linux (x86_64, aarch64), macOS (x86_64, arm64), Windows (winget guidance). Version-aware skip, regex version match, zsh-aware PATH hint.
+- All "jj not found" error messages now reference `fava-trails install-jj` instead of `scripts/install-jj.sh`
+- CI dogfoods the `install-jj` CLI command
+
+---
+
 ## [0.4.5] — 2026-02-27
 
 ### Changed
