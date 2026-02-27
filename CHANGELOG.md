@@ -2,6 +2,13 @@
 
 All notable changes to FAVA Trails are documented here.
 
+## [0.4.9] — 2026-02-27
+
+### Fixed
+- **CI lint passing**: Added `ruff` to dev dependencies (was configured but not installed in CI). Fixed all lint warnings (import ordering, unused f-strings, unused variables).
+
+---
+
 ## [0.4.8] — 2026-02-27
 
 ### Fixed
