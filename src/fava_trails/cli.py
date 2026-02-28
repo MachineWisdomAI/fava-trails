@@ -18,7 +18,7 @@ from pathlib import Path
 
 import yaml
 
-from .config import get_data_repo_root, get_trails_dir, sanitize_scope_path
+from .config import get_data_repo_root, get_trails_dir, load_global_config, sanitize_scope_path
 
 # ─── .env helpers ────────────────────────────────────────────────────────────
 
@@ -398,7 +398,7 @@ def cmd_scope_list(args: argparse.Namespace) -> int:
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
-    """Health check: JJ, data repo, scope. Exits 0 if all pass, 1 if any fail."""
+    """Health check: JJ, data repo, OpenRouter key, scope. Exits 0 if all pass, 1 if any fail."""
     any_failed = False
 
     # Check 1: JJ installed?
@@ -453,7 +453,22 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print(f"Data repo:    ERROR ({e})")
         any_failed = True
 
-    # Check 3: Scope configured and valid?
+    # Check 3: OpenRouter API key?
+    api_key_env = "OPENROUTER_API_KEY"
+    try:
+        global_config = load_global_config()
+        api_key_env = global_config.openrouter_api_key_env
+    except (OSError, ValueError):
+        pass  # Use default env var name if config can't be loaded
+    if os.environ.get(api_key_env):
+        print(f"OpenRouter:   {api_key_env} is set")
+    else:
+        print(f"OpenRouter:   NOT SET ({api_key_env})")
+        print(f"  Fix: export {api_key_env}=sk-or-v1-...")
+        print("  Get a key: https://openrouter.ai/keys")
+        any_failed = True
+
+    # Check 4: Scope configured and valid?
     project_dir = Path.cwd()
     scope_value = _read_env_value(project_dir / ".env", "FAVA_TRAILS_SCOPE")
     scope_source = ".env"
@@ -642,7 +657,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_scope.set_defaults(func=cmd_scope)
 
     # doctor
-    p_doctor = subparsers.add_parser("doctor", help="Check JJ, data repo, and scope configuration")
+    p_doctor = subparsers.add_parser("doctor", help="Check JJ, data repo, OpenRouter key, and scope configuration")
     p_doctor.set_defaults(func=cmd_doctor)
 
     # install-jj
@@ -668,9 +683,22 @@ def main(argv: list[str] | None = None) -> None:
         hints = []
         if not shutil.which("jj"):
             hints.append("  1. Install JJ:         fava-trails install-jj")
-        data_repo = get_data_repo_root()
-        if not data_repo.exists() or not (data_repo / "config.yaml").exists():
-            hints.append(f"  {'1' if not hints else '2'}. Set up data repo:   fava-trails bootstrap <path>")
+        try:
+            data_repo = get_data_repo_root()
+            data_repo_ok = data_repo.exists() and (data_repo / "config.yaml").exists()
+        except (OSError, ValueError):
+            data_repo_ok = False
+        if not data_repo_ok:
+            n = len(hints) + 1
+            hints.append(f"  {n}. Set up data repo:   fava-trails bootstrap <path>")
+        api_key_env = "OPENROUTER_API_KEY"
+        try:
+            api_key_env = load_global_config().openrouter_api_key_env
+        except (OSError, ValueError):
+            pass
+        if not os.environ.get(api_key_env):
+            n = len(hints) + 1
+            hints.append(f"  {n}. Set OpenRouter key:  export {api_key_env}=sk-or-v1-...")
         if hints:
             print("\nQuick start:")
             print("\n".join(hints))

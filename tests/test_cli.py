@@ -430,27 +430,33 @@ def _make_valid_data_repo(tmp_path: Path) -> Path:
 
 
 def test_doctor_all_green(tmp_path, monkeypatch, capsys):
-    """doctor exits 0 when JJ, data repo, and scope are all configured."""
+    """doctor exits 0 when JJ, data repo, OpenRouter key, and scope are all configured."""
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     data_repo = _make_valid_data_repo(tmp_path)
     (tmp_path / ".env").write_text("FAVA_TRAILS_SCOPE=mw/eng/test\n")
 
     with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
-        with patch("shutil.which", return_value="/usr/bin/jj"):
-            with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
-                mock_run.return_value.stdout = "jj 0.25.0\n"
-                rc = cmd_doctor(_make_args())
+        with patch("fava_trails.cli.load_global_config") as mock_config:
+            mock_config.return_value.openrouter_api_key_env = "OPENROUTER_API_KEY"
+            with patch("shutil.which", return_value="/usr/bin/jj"):
+                with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
+                    mock_run.return_value.stdout = "jj 0.25.0\n"
+                    rc = cmd_doctor(_make_args())
 
     assert rc == 0
     out = capsys.readouterr().out
     assert "JJ:" in out
     assert "Data repo:" in out
+    assert "OpenRouter:" in out
+    assert "is set" in out
     assert "Scope:" in out
 
 
 def test_doctor_missing_jj(tmp_path, monkeypatch, capsys):
     """doctor exits 1 and suggests install when JJ is missing."""
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     data_repo = _make_valid_data_repo(tmp_path)
     (tmp_path / ".env").write_text("FAVA_TRAILS_SCOPE=mw/eng/test\n")
 
@@ -463,9 +469,11 @@ def test_doctor_missing_jj(tmp_path, monkeypatch, capsys):
         return real_exists(self)
 
     with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
-        with patch("shutil.which", return_value=None):
-            with patch.object(Path, "exists", exists_side_effect):
-                rc = cmd_doctor(_make_args())
+        with patch("fava_trails.cli.load_global_config") as mock_config:
+            mock_config.return_value.openrouter_api_key_env = "OPENROUTER_API_KEY"
+            with patch("shutil.which", return_value=None):
+                with patch.object(Path, "exists", exists_side_effect):
+                    rc = cmd_doctor(_make_args())
 
     assert rc == 1
     out = capsys.readouterr().out
@@ -476,14 +484,17 @@ def test_doctor_missing_jj(tmp_path, monkeypatch, capsys):
 def test_doctor_missing_data_repo(tmp_path, monkeypatch, capsys):
     """doctor exits 1 and suggests bootstrap when data repo is absent."""
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     missing = tmp_path / "nonexistent"
     (tmp_path / ".env").write_text("FAVA_TRAILS_SCOPE=mw/eng/test\n")
 
     with patch("fava_trails.cli.get_data_repo_root", return_value=missing):
-        with patch("shutil.which", return_value="/usr/bin/jj"):
-            with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
-                mock_run.return_value.stdout = "jj 0.25.0\n"
-                rc = cmd_doctor(_make_args())
+        with patch("fava_trails.cli.load_global_config") as mock_config:
+            mock_config.return_value.openrouter_api_key_env = "OPENROUTER_API_KEY"
+            with patch("shutil.which", return_value="/usr/bin/jj"):
+                with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
+                    mock_run.return_value.stdout = "jj 0.25.0\n"
+                    rc = cmd_doctor(_make_args())
 
     assert rc == 1
     out = capsys.readouterr().out
@@ -494,18 +505,42 @@ def test_doctor_missing_data_repo(tmp_path, monkeypatch, capsys):
 def test_doctor_missing_scope(tmp_path, monkeypatch, capsys):
     """doctor exits 1 and suggests init when scope is not configured."""
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     data_repo = _make_valid_data_repo(tmp_path)
 
     with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
-        with patch("shutil.which", return_value="/usr/bin/jj"):
-            with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
-                mock_run.return_value.stdout = "jj 0.25.0\n"
-                rc = cmd_doctor(_make_args())
+        with patch("fava_trails.cli.load_global_config") as mock_config:
+            mock_config.return_value.openrouter_api_key_env = "OPENROUTER_API_KEY"
+            with patch("shutil.which", return_value="/usr/bin/jj"):
+                with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
+                    mock_run.return_value.stdout = "jj 0.25.0\n"
+                    rc = cmd_doctor(_make_args())
 
     assert rc == 1
     out = capsys.readouterr().out
     assert "NOT CONFIGURED" in out
     assert "fava-trails init" in out
+
+
+def test_doctor_missing_openrouter_key(tmp_path, monkeypatch, capsys):
+    """doctor exits 1 and shows fix instructions when OpenRouter key is missing."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    data_repo = _make_valid_data_repo(tmp_path)
+    (tmp_path / ".env").write_text("FAVA_TRAILS_SCOPE=mw/eng/test\n")
+
+    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
+        with patch("fava_trails.cli.load_global_config") as mock_config:
+            mock_config.return_value.openrouter_api_key_env = "OPENROUTER_API_KEY"
+            with patch("shutil.which", return_value="/usr/bin/jj"):
+                with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
+                    mock_run.return_value.stdout = "jj 0.25.0\n"
+                    rc = cmd_doctor(_make_args())
+
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "OpenRouter:   NOT SET" in out
+    assert "openrouter.ai/keys" in out
 
 
 def test_doctor_in_help(capsys):

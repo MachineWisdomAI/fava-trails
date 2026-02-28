@@ -68,7 +68,8 @@ Add to `~/.claude.json` (Claude Code) or `claude_desktop_config.json` (Claude De
     "fava-trails": {
       "command": "fava-trails-server",
       "env": {
-        "FAVA_TRAILS_DATA_REPO": "/path/to/fava-trails-data"
+        "FAVA_TRAILS_DATA_REPO": "/path/to/fava-trails-data",
+        "OPENROUTER_API_KEY": "sk-or-v1-..."
       }
     }
   }
@@ -85,7 +86,8 @@ Add to `~/.claude.json` (Claude Code) or `claude_desktop_config.json` (Claude De
       "command": "uv",
       "args": ["run", "--directory", "/path/to/fava-trails", "fava-trails-server"],
       "env": {
-        "FAVA_TRAILS_DATA_REPO": "/path/to/fava-trails-data"
+        "FAVA_TRAILS_DATA_REPO": "/path/to/fava-trails-data",
+        "OPENROUTER_API_KEY": "sk-or-v1-..."
       }
     }
   }
@@ -101,12 +103,14 @@ For Claude Desktop on Windows (accessing WSL):
       "command": "wsl.exe",
       "args": [
         "-e", "bash", "-lc",
-        "FAVA_TRAILS_DATA_REPO=/path/to/fava-trails-data fava-trails-server"
+        "FAVA_TRAILS_DATA_REPO=/path/to/fava-trails-data OPENROUTER_API_KEY=sk-or-v1-... fava-trails-server"
       ]
     }
   }
 }
 ```
+
+> The Trust Gate uses [OpenRouter](https://openrouter.ai/) to review thoughts before promotion. Get a free API key at [openrouter.ai/keys](https://openrouter.ai/keys). The default model (`google/gemini-2.5-flash`) costs ~$0.001 per review.
 
 ### Use it
 
@@ -189,6 +193,7 @@ Environment variables:
 | `FAVA_TRAILS_DIR` | Server | Override trails directory location (absolute path) | `$FAVA_TRAILS_DATA_REPO/trails` |
 | `FAVA_TRAILS_SCOPE_HINT` | Server | Broad scope hint baked into tool descriptions | *(none)* |
 | `FAVA_TRAILS_SCOPE` | Agent | Project-specific scope from `.env` file | *(none)* |
+| `OPENROUTER_API_KEY` | Server | API key for Trust Gate LLM reviews ([get one](https://openrouter.ai/keys)) | *(none — required for `propose_truth`)* |
 
 The server reads `$FAVA_TRAILS_DATA_REPO/config.yaml` for global settings. Minimal `config.yaml`:
 

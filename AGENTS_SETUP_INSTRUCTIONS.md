@@ -20,6 +20,17 @@ pip install fava-trails
 git clone https://github.com/MachineWisdomAI/fava-trails.git && cd fava-trails && uv sync
 ```
 
+### OpenRouter API Key (for Trust Gate)
+
+The Trust Gate reviews thoughts before promotion using an LLM via [OpenRouter](https://openrouter.ai/).
+
+1. Create a free account at https://openrouter.ai/
+2. Generate an API key at https://openrouter.ai/keys
+3. Pass it to the MCP server via the `OPENROUTER_API_KEY` environment variable
+   (in your MCP client config `env` block, or in your shell profile)
+
+The default model (`google/gemini-2.5-flash`) costs ~$0.001 per review.
+
 ## Creating the Data Repo
 
 The data repo is a plain git repository that the MCP server JJ-colocates on first use. It holds your organization's trail data — separate from the engine.
