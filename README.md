@@ -48,6 +48,8 @@ uv sync
 
 ### Set up your data repo
 
+**New data repo (from scratch):**
+
 ```bash
 # Create an empty repo on GitHub (or any git remote), then clone it
 git clone https://github.com/YOUR-ORG/fava-trails-data.git
@@ -56,9 +58,17 @@ git clone https://github.com/YOUR-ORG/fava-trails-data.git
 fava-trails bootstrap fava-trails-data
 ```
 
+**Existing data repo (clone from remote):**
+
+```bash
+fava-trails clone https://github.com/YOUR-ORG/fava-trails-data.git fava-trails-data
+```
+
 ### Register the MCP server
 
-Add to `~/.claude.json` (Claude Code) or `claude_desktop_config.json` (Claude Desktop):
+Add to your MCP client config:
+- **Claude Code CLI**: `~/.claude.json` (top-level `mcpServers` key)
+- **Claude Desktop**: `claude_desktop_config.json`
 
 **If installed from PyPI:**
 
@@ -142,15 +152,10 @@ pip install fava-trails
 # 2. Install JJ
 fava-trails install-jj
 
-# 3. Clone the SAME data repo
-git clone https://github.com/YOUR-ORG/fava-trails-data.git
+# 3. Clone the SAME data repo (handles colocated mode + bookmark tracking)
+fava-trails clone https://github.com/YOUR-ORG/fava-trails-data.git fava-trails-data
 
-# 4. Initialize JJ colocated mode + track remote
-cd fava-trails-data
-jj git init --colocate
-jj bookmark track main@origin
-
-# 5. Register MCP (same config as above, with local paths)
+# 4. Register MCP (same config as above, with local paths)
 ```
 
 Both machines push/pull through the same git remote. Use the `sync` MCP tool to pull latest thoughts from other machines.

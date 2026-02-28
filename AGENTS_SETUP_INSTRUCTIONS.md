@@ -35,17 +35,27 @@ The default model (`google/gemini-2.5-flash`) costs ~$0.001 per review.
 
 The data repo is a plain git repository that the MCP server JJ-colocates on first use. It holds your organization's trail data — separate from the engine.
 
-### Automated (recommended)
+### Cloning an existing data repo
+
+If someone on your team already bootstrapped a data repo and pushed it to a remote:
+
+```bash
+fava-trails clone https://github.com/YOUR-ORG/fava-trails-data.git fava-trails-data
+```
+
+This clones in JJ colocated mode and tracks the remote bookmark automatically. Skip to [After setup](#after-setup).
+
+### Creating a new data repo (bootstrap)
 
 ```bash
 # 1. Create an empty repo on GitHub, then clone it
 git clone https://github.com/YOUR-ORG/fava-trails-data.git
 
-# 2. Bootstrap it
+# 2. Bootstrap it (creates config, .gitignore, initializes JJ)
 fava-trails bootstrap fava-trails-data
 ```
 
-The bootstrap command validates the repo, creates `config.yaml` + `.gitignore`, commits via git (once), initializes JJ colocated mode, and tracks the remote bookmark.
+The bootstrap command creates a **new** data repo from scratch — it does not connect to existing remote data. Use `fava-trails clone` instead if the remote already has data.
 
 ### Manual
 
@@ -95,15 +105,10 @@ Register the MCP server (see [README.md](README.md#register-the-mcp-server)), th
 ## Setting Up a Second Machine
 
 ```bash
-# 1. Clone the SAME data repo
-git clone https://github.com/YOUR-ORG/fava-trails-data.git
+# 1. Clone the existing data repo
+fava-trails clone https://github.com/YOUR-ORG/fava-trails-data.git fava-trails-data
 
-# 2. Initialize JJ colocated mode + track remote
-cd fava-trails-data
-jj git init --colocate
-jj bookmark track main@origin
-
-# 3. Register the MCP server (same config, with local paths)
+# 2. Register the MCP server (same config, with local paths)
 ```
 
 Both machines push/pull through the same git remote. Use the `sync` MCP tool to pull latest thoughts.

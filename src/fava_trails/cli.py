@@ -311,6 +311,62 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_clone(args: argparse.Namespace) -> int:
+    """Clone an existing FAVA Trails data repository from a remote."""
+    url = args.url
+    target = Path(args.path).expanduser().resolve()
+
+    # Validate JJ is available
+    jj_bin = shutil.which("jj")
+    if not jj_bin:
+        jj_bin = str(Path.home() / ".local" / "bin" / "jj")
+        if not Path(jj_bin).exists():
+            print("Error: jj not found. Install with: fava-trails install-jj\n  Or manually: https://jj-vcs.github.io/jj/", file=sys.stderr)
+            return 1
+
+    # Check target doesn't already exist
+    if target.exists() and any(target.iterdir()):
+        print(f"Error: {target} already exists and is not empty.", file=sys.stderr)
+        return 1
+
+    # Clone with --colocate
+    print(f"Cloning {url} into {target}...")
+    result = subprocess.run(
+        [jj_bin, "git", "clone", "--colocate", url, str(target)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print(f"Error: jj git clone failed:\n{result.stderr}", file=sys.stderr)
+        return 1
+    print("[1/2] Cloned repository (colocated mode)")
+
+    # Track main bookmark
+    result = subprocess.run(
+        [jj_bin, "bookmark", "track", "main@origin"],
+        cwd=str(target),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        # Non-fatal — bookmark may already be tracked
+        if "already tracked" not in result.stderr.lower():
+            print(f"Warning: bookmark tracking failed: {result.stderr}", file=sys.stderr)
+    print("[2/2] Tracked main bookmark")
+
+    # Validate it looks like a data repo
+    if not (target / "config.yaml").exists():
+        print(f"\nWarning: {target} has no config.yaml — this may not be a FAVA Trails data repo.")
+        print("  If this is a new repo, use `fava-trails bootstrap` instead.")
+
+    print(f"\nData repo ready: {target}")
+    print("\nSet this in your MCP server config:")
+    print(f"  FAVA_TRAILS_DATA_REPO={target}")
+    return 0
+
+
 def cmd_scope(args: argparse.Namespace) -> int:
     """Show current scope and resolution source."""
     project_dir = Path.cwd()
@@ -433,14 +489,17 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         any_failed = True
 
     # Check 2: Data repo valid?
+    data_repo_source = "FAVA_TRAILS_DATA_REPO" if os.environ.get("FAVA_TRAILS_DATA_REPO") else "default (~/.fava-trails)"
     try:
         data_repo = get_data_repo_root()
         if not data_repo.exists():
-            print(f"Data repo:    NOT FOUND (expected: {data_repo})")
+            print(f"Data repo:    NOT FOUND — {data_repo} (from {data_repo_source})")
             print("  Fix: fava-trails bootstrap <path>")
+            if data_repo_source.startswith("default"):
+                print("  Or:  export FAVA_TRAILS_DATA_REPO=/path/to/your/data-repo")
             any_failed = True
         elif not (data_repo / "config.yaml").exists():
-            print(f"Data repo:    INVALID — missing config.yaml at {data_repo}")
+            print(f"Data repo:    INVALID — missing config.yaml at {data_repo} (from {data_repo_source})")
             print("  Fix: fava-trails bootstrap <path>")
             any_failed = True
         elif not (data_repo / "trails").exists():
@@ -638,10 +697,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_init.set_defaults(func=cmd_init)
 
     # bootstrap
-    p_bootstrap = subparsers.add_parser("bootstrap", help="Bootstrap a new FAVA Trails data repository")
+    p_bootstrap = subparsers.add_parser(
+        "bootstrap",
+        help="Create a new data repository from scratch (use 'clone' for existing remotes)",
+    )
     p_bootstrap.add_argument("path", help="Path to create the data repository")
     p_bootstrap.add_argument("--remote", metavar="URL", default=None, help="Git remote URL (optional)")
     p_bootstrap.set_defaults(func=cmd_bootstrap)
+
+    # clone
+    p_clone = subparsers.add_parser("clone", help="Clone an existing data repository from a remote")
+    p_clone.add_argument("url", help="Git remote URL to clone from")
+    p_clone.add_argument("path", help="Local path to clone into")
+    p_clone.set_defaults(func=cmd_clone)
 
     # scope
     p_scope = subparsers.add_parser("scope", help="Show or manage the current scope")

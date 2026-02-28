@@ -147,12 +147,13 @@ class JjBackend(VcsBackend):
     # --- VcsBackend interface ---
 
     async def init_monorepo(self) -> str:
-        """Initialize the monorepo at repo_root with three-case detection.
+        """Initialize the monorepo at repo_root with four-case detection.
 
         Cases:
         1. .git only (no .jj) → colocate JJ on top of existing git repo
         2. Both .jj and .git exist → already initialized, configure and skip
-        3. Neither exists → fresh init with jj git init --colocate
+        3. .jj only (no .git) → non-colocated repo, raise error with fix instructions
+        4. Neither exists → fresh init with jj git init --colocate
         """
         self.repo_root.mkdir(parents=True, exist_ok=True)
         jj_dir = self.repo_root / ".jj"
@@ -165,8 +166,17 @@ class JjBackend(VcsBackend):
             # Case 1: .git only — colocate JJ on top
             logger.info(f"Colocating JJ on existing git repo at {self.repo_root}")
             await self._run("git", "init", "--colocate")
+        elif jj_dir.exists() and not git_dir.exists():
+            # Case 3: .jj only — non-colocated repo, cannot proceed
+            raise RuntimeError(
+                f"Data repo at {self.repo_root} has .jj/ but no .git/ — "
+                f"this is a non-colocated JJ repo which FAVA Trails does not support.\n"
+                f"  Fix: re-clone with colocated mode:\n"
+                f"    rm -rf {self.repo_root}\n"
+                f"    fava-trails clone <remote-url> {self.repo_root}"
+            )
         else:
-            # Case 3: Neither exists (or .jj without .git — shouldn't happen in colocated mode)
+            # Case 4: Neither exists — fresh init
             logger.info(f"Initializing fresh monorepo at {self.repo_root}")
             await self._run("git", "init", "--colocate")
 
