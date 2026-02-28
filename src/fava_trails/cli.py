@@ -325,9 +325,17 @@ def cmd_clone(args: argparse.Namespace) -> int:
             return 1
 
     # Check target doesn't already exist
-    if target.exists() and any(target.iterdir()):
-        print(f"Error: {target} already exists and is not empty.", file=sys.stderr)
-        return 1
+    if target.exists():
+        if target.is_file():
+            print(f"Error: {target} exists and is a file.", file=sys.stderr)
+            return 1
+        if any(target.iterdir()):
+            print(f"Error: {target} already exists and is not empty.", file=sys.stderr)
+            return 1
+
+    # Ensure parent directories exist for nested paths
+    if not target.exists():
+        target.parent.mkdir(parents=True, exist_ok=True)
 
     # Clone with --colocate
     print(f"Cloning {url} into {target}...")
@@ -350,11 +358,14 @@ def cmd_clone(args: argparse.Namespace) -> int:
         capture_output=True,
         text=True,
     )
-    if result.returncode != 0:
-        # Non-fatal — bookmark may already be tracked
-        if "already tracked" not in result.stderr.lower():
+    if result.returncode == 0:
+        print("[2/2] Tracked main bookmark")
+    else:
+        lowered = result.stderr.lower()
+        if "already tracking" in lowered or "already tracked" in lowered:
+            print("[2/2] Bookmark main already tracked")
+        else:
             print(f"Warning: bookmark tracking failed: {result.stderr}", file=sys.stderr)
-    print("[2/2] Tracked main bookmark")
 
     # Validate it looks like a data repo
     if not (target / "config.yaml").exists():
