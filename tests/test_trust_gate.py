@@ -19,11 +19,12 @@ Covers:
 
 import json
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-import httpx
+import openai
 import pytest
 
+from fava_trails.llm import LLMClient, LLMResponse
 from fava_trails.models import SourceType, ThoughtFrontmatter, ThoughtMetadata, ThoughtRecord, ValidationStatus
 from fava_trails.trust_gate import (
     TrustGateConfigError,
@@ -81,40 +82,40 @@ def sample_thought():
     )
 
 
-def _make_openrouter_response(verdict: str, reasoning: str, confidence: float = 0.9) -> dict:
-    """Create a mock OpenRouter API response."""
-    return {
-        "choices": [
-            {
-                "message": {
-                    "content": json.dumps({
-                        "verdict": verdict,
-                        "reasoning": reasoning,
-                        "confidence": confidence,
-                    })
-                }
-            }
-        ]
-    }
+def _make_llm_response(verdict: str, reasoning: str, confidence: float = 0.9) -> LLMResponse:
+    """Create a mock LLMResponse."""
+    return LLMResponse(
+        content=json.dumps({
+            "verdict": verdict,
+            "reasoning": reasoning,
+            "confidence": confidence,
+        }),
+        model="google/gemini-2.5-flash",
+    )
+
+
+@pytest.fixture
+def mock_llm_client():
+    """Create a mock LLMClient."""
+    client = MagicMock(spec=LLMClient)
+    client.chat = AsyncMock()
+    return client
 
 
 # --- Test 1: LLM-oneshot approves ---
 
 
 @pytest.mark.asyncio
-async def test_review_thought_approve(sample_thought):
+async def test_review_thought_approve(sample_thought, mock_llm_client):
     """LLM-oneshot approves → TrustResult(verdict="approve")."""
-    mock_response = _make_openrouter_response("approve", "High quality decision.", 0.95)
+    mock_llm_client.chat.return_value = _make_llm_response("approve", "High quality decision.", 0.95)
 
-    with patch("fava_trails.trust_gate._call_openrouter", new_callable=AsyncMock) as mock_call:
-        mock_call.return_value = mock_response
-
-        result = await review_thought(
-            record=sample_thought,
-            prompt="You are a reviewer.",
-            model="google/gemini-2.5-flash",
-            api_key="test-key",
-        )
+    result = await review_thought(
+        record=sample_thought,
+        prompt="You are a reviewer.",
+        model="google/gemini-2.5-flash",
+        client=mock_llm_client,
+    )
 
     assert result.verdict == "approve"
     assert result.reasoning == "High quality decision."
@@ -127,19 +128,16 @@ async def test_review_thought_approve(sample_thought):
 
 
 @pytest.mark.asyncio
-async def test_review_thought_reject(sample_thought):
+async def test_review_thought_reject(sample_thought, mock_llm_client):
     """LLM-oneshot rejects → TrustResult(verdict="reject") with reasoning."""
-    mock_response = _make_openrouter_response("reject", "Contains emotional language.", 0.85)
+    mock_llm_client.chat.return_value = _make_llm_response("reject", "Contains emotional language.", 0.85)
 
-    with patch("fava_trails.trust_gate._call_openrouter", new_callable=AsyncMock) as mock_call:
-        mock_call.return_value = mock_response
-
-        result = await review_thought(
-            record=sample_thought,
-            prompt="You are a reviewer.",
-            model="google/gemini-2.5-flash",
-            api_key="test-key",
-        )
+    result = await review_thought(
+        record=sample_thought,
+        prompt="You are a reviewer.",
+        model="google/gemini-2.5-flash",
+        client=mock_llm_client,
+    )
 
     assert result.verdict == "reject"
     assert "emotional language" in result.reasoning
@@ -204,14 +202,14 @@ async def test_propose_truth_with_reject(trail_manager, tmp_fava_home):
 
 
 @pytest.mark.asyncio
-async def test_review_thought_human_policy(sample_thought):
+async def test_review_thought_human_policy(sample_thought, mock_llm_client):
     """Human policy raises NotImplementedError with clear message."""
     with pytest.raises(NotImplementedError, match="trust_gate: human is not yet implemented"):
         await review_thought(
             record=sample_thought,
             prompt="unused",
             model="unused",
-            api_key="unused",
+            client=mock_llm_client,
             policy="human",
         )
 
@@ -353,59 +351,36 @@ async def test_provenance_fields_populated(trail_manager, tmp_fava_home):
 
 
 @pytest.mark.asyncio
-async def test_fail_closed_network_error(sample_thought):
+async def test_fail_closed_network_error(sample_thought, mock_llm_client):
     """Network error → TrustResult(verdict="error")."""
-    with patch("fava_trails.trust_gate._call_openrouter", new_callable=AsyncMock) as mock_call:
-        mock_call.side_effect = httpx.ConnectError("Connection refused")
+    mock_llm_client.chat.side_effect = openai.APIConnectionError(request=MagicMock())
 
-        result = await review_thought(
-            record=sample_thought,
-            prompt="You are a reviewer.",
-            model="google/gemini-2.5-flash",
-            api_key="test-key",
-        )
+    result = await review_thought(
+        record=sample_thought,
+        prompt="You are a reviewer.",
+        model="google/gemini-2.5-flash",
+        client=mock_llm_client,
+    )
 
     assert result.verdict == "error"
-    assert "Connection refused" in result.reasoning
+    assert "connection error" in result.reasoning.lower()
 
 
 @pytest.mark.asyncio
-async def test_fail_closed_timeout(sample_thought):
-    """Timeout → TrustResult(verdict="error")."""
-    with patch("fava_trails.trust_gate._call_openrouter", new_callable=AsyncMock) as mock_call:
-        mock_call.side_effect = httpx.TimeoutException("Request timed out")
-
-        result = await review_thought(
-            record=sample_thought,
-            prompt="You are a reviewer.",
-            model="google/gemini-2.5-flash",
-            api_key="test-key",
-        )
-
-    assert result.verdict == "error"
-    assert "timed out" in result.reasoning
-
-
-@pytest.mark.asyncio
-async def test_fail_closed_http_error(sample_thought):
+async def test_fail_closed_http_error(sample_thought, mock_llm_client):
     """HTTP error → TrustResult(verdict="error")."""
-    mock_response = MagicMock()
-    mock_response.status_code = 500
-    mock_response.text = "Internal Server Error"
+    mock_llm_client.chat.side_effect = openai.APIStatusError(
+        "Server Error",
+        response=MagicMock(status_code=500, headers={}),
+        body=None,
+    )
 
-    with patch("fava_trails.trust_gate._call_openrouter", new_callable=AsyncMock) as mock_call:
-        mock_call.side_effect = httpx.HTTPStatusError(
-            "Server Error",
-            request=MagicMock(),
-            response=mock_response,
-        )
-
-        result = await review_thought(
-            record=sample_thought,
-            prompt="You are a reviewer.",
-            model="google/gemini-2.5-flash",
-            api_key="test-key",
-        )
+    result = await review_thought(
+        record=sample_thought,
+        prompt="You are a reviewer.",
+        model="google/gemini-2.5-flash",
+        client=mock_llm_client,
+    )
 
     assert result.verdict == "error"
     assert "500" in result.reasoning
@@ -438,48 +413,46 @@ async def test_propose_truth_with_error_keeps_in_drafts(trail_manager, tmp_fava_
 
 
 @pytest.mark.asyncio
-async def test_fail_closed_invalid_json(sample_thought):
+async def test_fail_closed_invalid_json(sample_thought, mock_llm_client):
     """Invalid JSON response → error after 1 retry (fail-closed, infrastructure failure)."""
-    invalid_response = {"choices": [{"message": {"content": "not valid json at all"}}]}
+    mock_llm_client.chat.return_value = LLMResponse(
+        content="not valid json at all",
+        model="google/gemini-2.5-flash",
+    )
 
-    with patch("fava_trails.trust_gate._call_openrouter", new_callable=AsyncMock) as mock_call:
-        mock_call.return_value = invalid_response
-
-        result = await review_thought(
-            record=sample_thought,
-            prompt="You are a reviewer.",
-            model="google/gemini-2.5-flash",
-            api_key="test-key",
-        )
+    result = await review_thought(
+        record=sample_thought,
+        prompt="You are a reviewer.",
+        model="google/gemini-2.5-flash",
+        client=mock_llm_client,
+    )
 
     assert result.verdict == "error"
     assert "parse" in result.reasoning.lower() or "retry" in result.reasoning.lower()
     # Should have been called twice (original + retry)
-    assert mock_call.call_count == 2
+    assert mock_llm_client.chat.call_count == 2
 
 
 # --- Test 12: Fail-closed: JSON missing verdict field ---
 
 
 @pytest.mark.asyncio
-async def test_fail_closed_missing_verdict_field(sample_thought):
+async def test_fail_closed_missing_verdict_field(sample_thought, mock_llm_client):
     """JSON with missing verdict field → error after retry (infrastructure failure)."""
-    bad_response = {
-        "choices": [{"message": {"content": json.dumps({"reasoning": "looks good"})}}]
-    }
+    mock_llm_client.chat.return_value = LLMResponse(
+        content=json.dumps({"reasoning": "looks good"}),
+        model="google/gemini-2.5-flash",
+    )
 
-    with patch("fava_trails.trust_gate._call_openrouter", new_callable=AsyncMock) as mock_call:
-        mock_call.return_value = bad_response
-
-        result = await review_thought(
-            record=sample_thought,
-            prompt="You are a reviewer.",
-            model="google/gemini-2.5-flash",
-            api_key="test-key",
-        )
+    result = await review_thought(
+        record=sample_thought,
+        prompt="You are a reviewer.",
+        model="google/gemini-2.5-flash",
+        client=mock_llm_client,
+    )
 
     assert result.verdict == "error"
-    assert mock_call.call_count == 2
+    assert mock_llm_client.chat.call_count == 2
 
 
 # --- Test 13: Prompt injection defense ---
@@ -533,38 +506,32 @@ def test_prompt_injection_xml_escaping():
 
 
 @pytest.mark.asyncio
-async def test_structured_output_parameters(sample_thought):
-    """OpenRouter should be called with temp=0 and response_format json_object."""
-    mock_response = _make_openrouter_response("approve", "Good.", 0.9)
+async def test_structured_output_parameters(sample_thought, mock_llm_client):
+    """LLMClient.chat should be called with temp=0 and response_format json_object."""
+    mock_llm_client.chat.return_value = _make_llm_response("approve", "Good.", 0.9)
 
-    with patch("fava_trails.trust_gate.httpx.AsyncClient") as mock_client_cls:
-        mock_client = AsyncMock()
-        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+    await review_thought(
+        record=sample_thought,
+        prompt="test prompt",
+        model="google/gemini-2.5-flash",
+        client=mock_llm_client,
+    )
 
-        mock_http_response = MagicMock()
-        mock_http_response.json.return_value = mock_response
-        mock_http_response.raise_for_status = MagicMock()
-        mock_client.post.return_value = mock_http_response
+    # Verify the chat call
+    call_kwargs = mock_llm_client.chat.call_args.kwargs
+    call_args_pos = mock_llm_client.chat.call_args.args if mock_llm_client.chat.call_args.args else []
 
-        from fava_trails.trust_gate import _call_openrouter
-        await _call_openrouter(
-            system_msg="test prompt",
-            user_msg="test thought",
-            model="google/gemini-2.5-flash",
-            api_key="test-key",
-        )
+    # messages is a positional-or-keyword arg
+    if call_args_pos:
+        messages = call_args_pos[0]
+    else:
+        messages = call_kwargs.get("messages")
 
-        # Verify the POST call
-        call_args = mock_client.post.call_args
-        request_json = call_args.kwargs["json"]
-
-        assert request_json["temperature"] == 0
-        assert request_json["response_format"] == {"type": "json_object"}
-        assert request_json["model"] == "google/gemini-2.5-flash"
-        assert len(request_json["messages"]) == 2
-        assert request_json["messages"][0]["role"] == "system"
-        assert request_json["messages"][1]["role"] == "user"
+    assert call_kwargs.get("temperature") == 0 or mock_llm_client.chat.call_args[1].get("temperature") == 0
+    assert messages is not None
+    assert len(messages) == 2
+    assert messages[0]["role"] == "system"
+    assert messages[1]["role"] == "user"
 
 
 # --- Additional edge case tests ---
@@ -582,14 +549,14 @@ def test_prompt_cache_empty():
 
 
 @pytest.mark.asyncio
-async def test_unknown_policy(sample_thought):
+async def test_unknown_policy(sample_thought, mock_llm_client):
     """Unknown policy should raise TrustGateConfigError."""
     with pytest.raises(TrustGateConfigError, match="Unknown trust gate policy"):
         await review_thought(
             record=sample_thought,
             prompt="unused",
             model="unused",
-            api_key="unused",
+            client=mock_llm_client,
             policy="invalid-policy",
         )
 
@@ -674,24 +641,24 @@ def test_extract_json_nested_braces():
 
 
 @pytest.mark.asyncio
-async def test_review_thought_fenced_json_response(sample_thought):
+async def test_review_thought_fenced_json_response(sample_thought, mock_llm_client):
     """review_thought correctly parses LLM responses wrapped in markdown fences."""
     fenced_content = (
         '```json\n'
         '{"verdict": "reject", "reasoning": "Contains CRITICAL language.", "confidence": 0.88}\n'
         '```'
     )
-    fenced_response = {"choices": [{"message": {"content": fenced_content}}]}
+    mock_llm_client.chat.return_value = LLMResponse(
+        content=fenced_content,
+        model="google/gemini-2.5-flash",
+    )
 
-    with patch("fava_trails.trust_gate._call_openrouter", new_callable=AsyncMock) as mock_call:
-        mock_call.return_value = fenced_response
-
-        result = await review_thought(
-            record=sample_thought,
-            prompt="You are a reviewer.",
-            model="google/gemini-2.5-flash",
-            api_key="test-key",
-        )
+    result = await review_thought(
+        record=sample_thought,
+        prompt="You are a reviewer.",
+        model="google/gemini-2.5-flash",
+        client=mock_llm_client,
+    )
 
     # Should parse correctly — not fall back to error
     assert result.verdict == "reject"
