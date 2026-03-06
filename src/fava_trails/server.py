@@ -27,6 +27,7 @@ from .config import (
     resolve_scope_globs,
     sanitize_scope_path,
 )
+from .hooks import HookRegistry, fire_hook
 from .trail import TrailManager
 from .trust_gate import TrustGatePromptCache
 from .vcs.jj_backend import JjBackend
@@ -126,6 +127,9 @@ _shared_backend: JjBackend | None = None
 # Trust gate prompt cache — loaded once at startup, never re-read from disk
 _prompt_cache: TrustGatePromptCache = TrustGatePromptCache()
 
+# Hook registry — loaded once at startup, never re-read from disk
+_hook_registry: HookRegistry = HookRegistry()
+
 
 async def _init_server() -> None:
     """Initialize monorepo at startup. Called once before server starts."""
@@ -149,6 +153,14 @@ async def _init_server() -> None:
     # Load trust gate prompts at startup (anti-tampering: never re-read from disk)
     _prompt_cache.load_from_trails_dir(trails_dir)
 
+    # Load lifecycle hooks at startup (anti-tampering: never re-read from disk)
+    hooks_dir = Path(os.environ.get("FAVA_TRAILS_HOOKS_DIR", str(repo_root / "hooks")))
+    _hook_registry.load_from_dir(hooks_dir)
+
+    # Fire on_startup hook
+    if _hook_registry.loaded_hooks:
+        await fire_hook(_hook_registry, "on_startup", trails_dir=trails_dir, config=load_global_config().__dict__)
+
 
 async def _get_trail(trail_name: str | None = None) -> TrailManager:
     """Get or create a TrailManager for the given trail.
@@ -165,7 +177,7 @@ async def _get_trail(trail_name: str | None = None) -> TrailManager:
         repo_root = get_data_repo_root()
         trail_path = get_trails_dir() / safe_name
         backend = JjBackend(repo_root=repo_root, trail_path=trail_path)
-        manager = TrailManager(safe_name, vcs=backend)
+        manager = TrailManager(safe_name, vcs=backend, hooks=_hook_registry)
         # Auto-initialize if trail doesn't exist (detect by thoughts/ dir, not .jj)
         if not (manager.trail_path / "thoughts").exists():
             await manager.init()

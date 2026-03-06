@@ -23,6 +23,7 @@ from .models import (
     TrailConfig,
     ValidationStatus,
 )
+from .hooks import HookRegistry, build_hook_ctx, fire_after, fire_before, fire_recall
 from .trust_gate import TrustResult
 from .vcs.base import RebaseResult, VcsBackend, VcsChange, VcsConflict, VcsDiff, VcsOpLogEntry
 
@@ -42,10 +43,11 @@ NAMESPACE_DIRS = [
 class TrailManager:
     """Manages a single trail: VCS ops, thought CRUD, namespace routing, GC."""
 
-    def __init__(self, trail_name: str, vcs: VcsBackend):
+    def __init__(self, trail_name: str, vcs: VcsBackend, hooks: HookRegistry | None = None):
         self.trail_name = sanitize_scope_path(trail_name)
         self.trail_path = get_trails_dir() / self.trail_name
         self.vcs = vcs
+        self._hooks = hooks
         self._lock = asyncio.Lock()
         self._config: TrailConfig | None = None
         self._snapshot_count = 0
@@ -146,6 +148,14 @@ class TrailManager:
 
         record = ThoughtRecord(frontmatter=frontmatter, content=content)
 
+        # before_save hook — receives a copy, can reject
+        if self._hooks:
+            import copy
+            thought_copy = copy.deepcopy(record)
+            ctx = build_hook_ctx(trail=self)
+            if not await fire_before(self._hooks, "before_save", thought=thought_copy, trail=self, **ctx):
+                raise ValueError("before_save hook rejected this thought")
+
         async with self._lock:
             thought_dir = self._thoughts_dir(ns)
             thought_dir.mkdir(parents=True, exist_ok=True)
@@ -158,6 +168,11 @@ class TrailManager:
             )
 
             await self._maybe_gc()
+
+        # after_save hook — fires post-commit
+        if self._hooks:
+            ctx = build_hook_ctx(trail=self)
+            await fire_after(self._hooks, "after_save", thought=record, trail=self, **ctx)
 
         return record
 
@@ -294,6 +309,11 @@ class TrailManager:
 
             await self._maybe_gc()
 
+        # after_supersede hook — fires post-commit
+        if self._hooks:
+            ctx = build_hook_ctx(trail=self)
+            await fire_after(self._hooks, "after_supersede", thought=new_record, original=original, trail=self, **ctx)
+
         return new_record
 
     async def recall(
@@ -379,6 +399,11 @@ class TrailManager:
                 if related and (include_superseded or not related.is_superseded):
                     results.append(related)
 
+        # on_recall hook — filter/reorder results
+        if self._hooks:
+            ctx = build_hook_ctx(trail=self, query=query, namespace=namespace, scope=scope)
+            results = await fire_recall(self._hooks, results, trail=self, **ctx)
+
         return results[:limit]
 
     async def propose_truth(
@@ -412,6 +437,12 @@ class TrailManager:
                 raise ValueError(f"Thought {thought_id} not found")
 
             record = ThoughtRecord.from_markdown(drafts_path.read_text())
+
+            # before_propose hook — can reject promotion
+            if self._hooks:
+                ctx = build_hook_ctx(trail=self)
+                if not await fire_before(self._hooks, "before_propose", thought=record, trail=self, **ctx):
+                    raise ValueError("before_propose hook rejected this promotion")
 
             # Apply trust gate result if provided
             if trust_result is not None:
@@ -461,6 +492,11 @@ class TrailManager:
                 f"Promote {thought_id[:8]} from drafts/ to {target_ns}/ [{record.frontmatter.source_type.value}]",
                 [str(target_path)],
             )
+
+        # after_propose hook — fires post-commit
+        if self._hooks:
+            ctx = build_hook_ctx(trail=self)
+            await fire_after(self._hooks, "after_propose", thought=record, trust_result=trust_result, trail=self, **ctx)
 
         return record
 
