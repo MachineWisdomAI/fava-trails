@@ -54,8 +54,51 @@ All PRs must pass ruff with zero errors.
 
 - Tests pass (`uv run pytest -v` exits 0)
 - Lint passes (`uv run ruff check src/ tests/` exits 0)
-- Descriptive commit messages (what changed and why)
+- **PR title follows [Conventional Commits](https://www.conventionalcommits.org/)** (e.g., `feat: add X`, `fix: resolve Y`, `chore: update Z`) — enforced by CI
 - One logical change per PR — keep PRs focused
+
+## Testing and Release Process
+
+FAVA Trails is used as a live MCP server, so changes need validation beyond unit tests.
+
+### 1. Automated checks (CI)
+
+Every PR runs:
+- **test** — `uv run pytest -v`
+- **Semantic PR** — validates PR title follows Conventional Commits
+
+Both must pass before merge.
+
+### 2. Dog-food locally (post-merge, pre-release)
+
+After merging to `main`, point your MCP server at the dev copy to test with real usage:
+
+```jsonc
+// In ~/.claude.json, change the fava-trails server entry:
+"args": [
+  "run", "--directory",
+  "/home/younes/git/MachineWisdomAI/fava-trails",  // dev copy
+  "fava-trails-server"
+]
+```
+
+Restart your MCP client (e.g., Claude Code) and use it for real work. Test the specific changes you made — save thoughts, recall, sync, etc. Use it for at least a working session before releasing.
+
+### 3. Release to PyPI
+
+Once dog-fooding confirms the changes work:
+
+1. Bump version in `pyproject.toml`
+2. Push the version bump via PR, merge to `main`
+3. Create a GitHub Release: `gh release create vX.Y.Z --generate-notes`
+4. CI builds, verifies the tag matches `pyproject.toml`, and publishes to PyPI
+5. Update the vendor copy:
+   ```bash
+   cd ~/git/vendor/fava-trails
+   git fetch && git checkout vX.Y.Z
+   ```
+6. Revert `~/.claude.json` back to the vendor path
+7. Restart your MCP client
 
 ## Reporting Issues
 
