@@ -20,6 +20,7 @@ dependencies = [
     "pyyaml>=6.0",
     "python-ulid>=3.0.0",
     "httpx>=0.28.1",
+    "openai>=1.0.0",
 ]
 
 [project.urls]
