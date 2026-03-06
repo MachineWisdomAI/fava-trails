@@ -706,7 +706,7 @@ def cmd_get(args: argparse.Namespace) -> int:
 
     # --list mode: list child scope names
     if getattr(args, "list_children", False):
-        if not scope_dir.exists():
+        if not scope_dir.is_dir():
             print(f"Error: scope '{scope}' not found", file=sys.stderr)
             return 1
         children = sorted(
@@ -719,7 +719,7 @@ def cmd_get(args: argparse.Namespace) -> int:
 
     # Find thoughts in this scope
     thoughts_dir = scope_dir / "thoughts"
-    if not thoughts_dir.exists():
+    if not thoughts_dir.is_dir():
         if getattr(args, "exists", False):
             return 1
         print(f"Error: no thoughts in scope '{scope}'", file=sys.stderr)
@@ -844,11 +844,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Retrieve thought content from a scope (stdout only, no logging)",
     )
     p_get.add_argument("scope", help="Scope path (e.g. mwai/eng/project/codev-assets/specs/17-feature)")
-    p_get.add_argument(
+    get_mode = p_get.add_mutually_exclusive_group()
+    get_mode.add_argument(
         "--list", dest="list_children", action="store_true",
         help="List child scope names instead of thought content",
     )
-    p_get.add_argument(
+    get_mode.add_argument(
         "--exists", action="store_true",
         help="Exit 0 if non-superseded thoughts exist, 1 if not (no output)",
     )
