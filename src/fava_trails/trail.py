@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
 import time
 from pathlib import Path
@@ -150,7 +151,6 @@ class TrailManager:
 
         # before_save hook — receives a copy, can reject
         if self._hooks:
-            import copy
             thought_copy = copy.deepcopy(record)
             ctx = build_hook_ctx(trail=self)
             if not await fire_before(self._hooks, "before_save", thought=thought_copy, trail=self, **ctx):

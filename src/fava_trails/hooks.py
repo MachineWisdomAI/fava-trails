@@ -83,7 +83,7 @@ class HookRegistry:
         # Add hooks dir to sys.path so common.py is importable
         hooks_dir_str = str(hooks_dir)
         if hooks_dir_str not in sys.path:
-            sys.path.insert(0, hooks_dir_str)
+            sys.path.append(hooks_dir_str)
 
         for py_file in sorted(hooks_dir.glob("*.py")):
             stem = py_file.stem
