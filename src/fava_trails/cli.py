@@ -19,6 +19,7 @@ from pathlib import Path
 import yaml
 
 from .config import get_data_repo_root, get_trails_dir, load_global_config, sanitize_scope_path
+from .models import ThoughtRecord
 
 # ─── .env helpers ────────────────────────────────────────────────────────────
 
@@ -679,6 +680,93 @@ def cmd_install_jj(args: argparse.Namespace) -> int:
     return 0
 
 
+# ─── get ───────────────────────────────────────────────────────────────────────
+
+
+def cmd_get(args: argparse.Namespace) -> int:
+    """Retrieve thought content from a scope path.
+
+    Stdout hygiene: ONLY requested content goes to stdout.
+    All errors/diagnostics go to stderr.
+    """
+    scope = args.scope
+    try:
+        scope = sanitize_scope_path(scope)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    try:
+        trails_dir = get_trails_dir()
+    except (OSError, ValueError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    scope_dir = trails_dir / scope
+
+    # --list mode: list child scope names
+    if getattr(args, "list_children", False):
+        if not scope_dir.exists():
+            print(f"Error: scope '{scope}' not found", file=sys.stderr)
+            return 1
+        children = sorted(
+            d.name for d in scope_dir.iterdir()
+            if d.is_dir() and d.name != "thoughts"
+        )
+        for child in children:
+            print(child)
+        return 0
+
+    # Find thoughts in this scope
+    thoughts_dir = scope_dir / "thoughts"
+    if not thoughts_dir.exists():
+        if getattr(args, "exists", False):
+            return 1
+        print(f"Error: no thoughts in scope '{scope}'", file=sys.stderr)
+        return 1
+
+    # Collect .md files across namespaces, sort by ULID descending (latest first)
+    md_files = sorted(
+        (f for f in thoughts_dir.rglob("*.md") if f.name != ".gitkeep"),
+        key=lambda p: p.stem,
+        reverse=True,
+    )
+
+    if not md_files:
+        if getattr(args, "exists", False):
+            return 1
+        print(f"Error: no thoughts in scope '{scope}'", file=sys.stderr)
+        return 1
+
+    # --exists mode: just check existence
+    if getattr(args, "exists", False):
+        # Check at least one non-superseded thought exists
+        for md_file in md_files:
+            try:
+                record = ThoughtRecord.from_markdown(md_file.read_text())
+                if not record.is_superseded:
+                    return 0
+            except Exception:
+                continue
+        return 1
+
+    # Default mode: output latest non-superseded thought content
+    for md_file in md_files:
+        try:
+            record = ThoughtRecord.from_markdown(md_file.read_text())
+        except Exception:
+            continue
+        if not record.is_superseded:
+            if getattr(args, "with_frontmatter", False):
+                print(record.to_markdown(), end="")
+            else:
+                print(record.content, end="")
+            return 0
+
+    print(f"Error: all thoughts in scope '{scope}' are superseded", file=sys.stderr)
+    return 1
+
+
 # ─── Argument parser ──────────────────────────────────────────────────────────
 
 
@@ -749,6 +837,26 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"JJ version to install (default: {JJ_DEFAULT_VERSION})",
     )
     p_install_jj.set_defaults(func=cmd_install_jj)
+
+    # get
+    p_get = subparsers.add_parser(
+        "get",
+        help="Retrieve thought content from a scope (stdout only, no logging)",
+    )
+    p_get.add_argument("scope", help="Scope path (e.g. mwai/eng/project/codev-assets/specs/17-feature)")
+    p_get.add_argument(
+        "--list", dest="list_children", action="store_true",
+        help="List child scope names instead of thought content",
+    )
+    p_get.add_argument(
+        "--exists", action="store_true",
+        help="Exit 0 if non-superseded thoughts exist, 1 if not (no output)",
+    )
+    p_get.add_argument(
+        "--with-frontmatter", action="store_true",
+        help="Include YAML frontmatter in output",
+    )
+    p_get.set_defaults(func=cmd_get)
 
     return parser
 
