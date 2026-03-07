@@ -1,1 +1,19 @@
-{"shell":{"architect":"claude","builder":"claude --model sonnet --dangerously-skip-permissions","shell":"bash"}}
+{
+  "shell": {
+    "architect": "claude",
+    "builder": "claude --model sonnet --dangerously-skip-permissions",
+    "shell": "bash"
+  },
+  "artifacts": {
+    "backend": "fava-trails",
+    "scope": "mwai/eng/fava-trails/codev-assets",
+    "data_repo": "/home/younes/git/MachineWisdomAI/fava-trails-data"
+  },
+  "porch": {
+    "checks": {
+      "build": { "command": "uv run ruff check src/", "cwd": "." },
+      "tests": { "command": "uv run pytest -v", "cwd": "." },
+      "e2e_tests": { "skip": true }
+    }
+  }
+}
