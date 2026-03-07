@@ -457,8 +457,9 @@ class TrailManager:
                 context=TrailContext(self),
             )
             pipeline_result = await run_pipeline(self._hooks, recall_event)
-            if pipeline_result.recall_selection:
-                # Reorder results by hook-specified ULID order
+            self._last_feedback = pipeline_result
+            if pipeline_result.recall_selection is not None:
+                # Reorder/filter results by hook-specified ULID order
                 ulid_order = {uid: i for i, uid in enumerate(pipeline_result.recall_selection)}
                 results = sorted(
                     [r for r in results if r.thought_id in ulid_order],
