@@ -7,13 +7,18 @@ from fava_trails.llm.registry import ModelInfo, ModelRegistry
 
 
 def test_registry_loads_from_json():
-    """Registry loads models from the bundled JSON file."""
+    """Registry loads 7 models from the bundled JSON file (no provider field)."""
     registry = ModelRegistry.from_json()
-    # Should have loaded some models
     info = registry.resolve("google/gemini-2.5-flash")
     assert info is not None
     assert info.model_name == "google/gemini-2.5-flash"
-    assert info.provider == "openrouter"
+    assert not hasattr(info, "provider")
+
+
+def test_registry_has_exactly_seven_entries():
+    """Registry has exactly 7 models after removing direct-OpenAI duplicates."""
+    registry = ModelRegistry.from_json()
+    assert len(registry._models) == 7
 
 
 def test_alias_resolution_case_insensitive():
@@ -42,12 +47,21 @@ def test_unknown_model_returns_none():
     assert registry.resolve("nonexistent/model-999") is None
 
 
-def test_openai_provider_models():
-    """OpenAI-provider models are correctly registered."""
+def test_bare_model_names_route_via_openrouter():
+    """Bare model names (without openai/ prefix) resolve to OpenRouter variants via aliases."""
     registry = ModelRegistry.from_json()
+    # gpt-4.1-mini alias still resolves but now points to openai/gpt-4.1-mini (OpenRouter)
     info = registry.resolve("gpt-4.1-mini")
     assert info is not None
-    assert info.provider == "openai"
+    assert info.model_name == "openai/gpt-4.1-mini"
+
+
+def test_openrouter_openai_models_present():
+    """OpenAI models via OpenRouter (with prefix) are still available."""
+    registry = ModelRegistry.from_json()
+    assert registry.resolve("openai/gpt-4.1-mini") is not None
+    assert registry.resolve("openai/gpt-4.1") is not None
+    assert registry.resolve("openai/o3-mini") is not None
 
 
 def test_supports_temperature_false():
@@ -59,12 +73,11 @@ def test_supports_temperature_false():
 
 
 def test_register_custom_model():
-    """Custom models can be registered."""
+    """Custom models can be registered without provider field."""
     registry = ModelRegistry()
     registry.register(ModelInfo(
         model_name="custom/test-model",
         aliases=["test"],
-        provider="openrouter",
     ))
     info = registry.resolve("test")
     assert info is not None
@@ -72,13 +85,12 @@ def test_register_custom_model():
 
 
 def test_from_json_with_custom_path(tmp_path):
-    """Registry can load from a custom JSON file."""
+    """Registry can load from a custom JSON file; provider field is ignored."""
     custom = tmp_path / "models.json"
     custom.write_text(json.dumps({
         "models": [{
             "model_name": "test/model",
             "aliases": ["tm"],
-            "provider": "openrouter",
             "supports_json_mode": True,
             "supports_temperature": True,
         }]

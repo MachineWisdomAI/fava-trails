@@ -16,7 +16,6 @@ _REGISTRY_FILE = Path(__file__).parent / "models_registry.json"
 class ModelInfo:
     model_name: str
     aliases: list[str] = field(default_factory=list)
-    provider: str = "openrouter"
     supports_json_mode: bool = True
     supports_temperature: bool = True
     max_output_tokens: int | None = None
@@ -54,7 +53,6 @@ class ModelRegistry:
                 info = ModelInfo(
                     model_name=entry["model_name"],
                     aliases=entry.get("aliases", []),
-                    provider=entry.get("provider", "openrouter"),
                     supports_json_mode=entry.get("supports_json_mode", True),
                     supports_temperature=entry.get("supports_temperature", True),
                     max_output_tokens=entry.get("max_output_tokens"),

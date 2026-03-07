@@ -3,7 +3,6 @@
     {
       "model_name": "google/gemini-2.5-flash",
       "aliases": ["gemini-flash", "gemini-2.5-flash"],
-      "provider": "openrouter",
       "supports_json_mode": true,
       "supports_temperature": true,
       "max_output_tokens": 65536
@@ -11,7 +10,6 @@
     {
       "model_name": "google/gemini-2.5-pro",
       "aliases": ["gemini-pro", "gemini-2.5-pro"],
-      "provider": "openrouter",
       "supports_json_mode": true,
       "supports_temperature": true,
       "max_output_tokens": 65536
@@ -19,7 +17,6 @@
     {
       "model_name": "anthropic/claude-sonnet-4.6",
       "aliases": ["sonnet", "sonnet4.6", "claude-sonnet"],
-      "provider": "openrouter",
       "supports_json_mode": false,
       "supports_temperature": true,
       "max_output_tokens": 64000
@@ -27,7 +24,6 @@
     {
       "model_name": "anthropic/claude-haiku-4.5",
       "aliases": ["haiku", "haiku4.5", "claude-haiku"],
-      "provider": "openrouter",
       "supports_json_mode": false,
       "supports_temperature": true,
       "max_output_tokens": 8192
@@ -35,7 +31,6 @@
     {
       "model_name": "openai/gpt-4.1-mini",
       "aliases": ["gpt-4.1-mini"],
-      "provider": "openrouter",
       "supports_json_mode": true,
       "supports_temperature": true,
       "max_output_tokens": 16384
@@ -43,7 +38,6 @@
     {
       "model_name": "openai/gpt-4.1",
       "aliases": ["gpt-4.1"],
-      "provider": "openrouter",
       "supports_json_mode": true,
       "supports_temperature": true,
       "max_output_tokens": 32768
@@ -51,31 +45,6 @@
     {
       "model_name": "openai/o3-mini",
       "aliases": ["o3-mini"],
-      "provider": "openrouter",
-      "supports_json_mode": true,
-      "supports_temperature": false,
-      "max_output_tokens": 100000
-    },
-    {
-      "model_name": "gpt-4.1-mini",
-      "aliases": [],
-      "provider": "openai",
-      "supports_json_mode": true,
-      "supports_temperature": true,
-      "max_output_tokens": 16384
-    },
-    {
-      "model_name": "gpt-4.1",
-      "aliases": [],
-      "provider": "openai",
-      "supports_json_mode": true,
-      "supports_temperature": true,
-      "max_output_tokens": 32768
-    },
-    {
-      "model_name": "o3-mini",
-      "aliases": [],
-      "provider": "openai",
       "supports_json_mode": true,
       "supports_temperature": false,
       "max_output_tokens": 100000
