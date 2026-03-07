@@ -1,9 +1,30 @@
 id: '17'
 title: Replace OpenAI SDK with any-llm-sdk
 protocol: aspir
-phase: plan
-plan_phases: []
-current_plan_phase: null
+phase: implement
+plan_phases:
+  - id: deps
+    title: Swap dependency in pyproject.toml
+    status: in_progress
+  - id: client
+    title: Rewrite LLMClient to use any-llm-sdk
+    status: pending
+  - id: retry
+    title: Update exception types in _retry.py
+    status: pending
+  - id: registry
+    title: Remove provider field from model registry
+    status: pending
+  - id: config
+    title: Remove openai_api_key_env from config
+    status: pending
+  - id: trust_gate
+    title: Update trust_gate.py openai exception references
+    status: pending
+  - id: tests
+    title: Update test suite for any-llm-sdk
+    status: pending
+current_plan_phase: deps
 gates:
   pr:
     status: pending
@@ -11,4 +32,4 @@ iteration: 1
 build_complete: false
 history: []
 started_at: '2026-03-07T19:42:48.224Z'
-updated_at: '2026-03-07T19:51:35.462Z'
+updated_at: '2026-03-07T20:00:15.979Z'
