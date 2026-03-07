@@ -174,6 +174,7 @@ class TrailManager:
             if pipeline_result.rejected:
                 raise ValueError("before_save hook rejected this thought")
             if pipeline_result.redirect_namespace:
+                sanitize_namespace(pipeline_result.redirect_namespace)
                 ns = pipeline_result.redirect_namespace
             if pipeline_result.event and pipeline_result.event.thought:
                 record = pipeline_result.event.thought
@@ -371,6 +372,7 @@ class TrailManager:
         _skip_hooks: bool = False,
     ) -> list[ThoughtRecord]:
         """Search thoughts by query, namespace, and scope. Hides superseded by default."""
+        self._last_feedback = None
         results = []
         search_dirs = []
 
@@ -497,9 +499,11 @@ class TrailManager:
 
             record = ThoughtRecord.from_markdown(drafts_path.read_text())
 
-            # before_propose hook — can reject promotion
+            # Determine target namespace from source_type
+            target_ns = NAMESPACE_ROUTES.get(record.frontmatter.source_type, "observations")
+
+            # before_propose hook — can reject, mutate, or redirect promotion
             if self._hooks and self._hooks.has_hooks:
-                target_ns = NAMESPACE_ROUTES.get(record.frontmatter.source_type, "observations")
                 propose_event = BeforeProposeEvent(
                     trail_name=self.trail_name,
                     thought=record,
@@ -510,6 +514,9 @@ class TrailManager:
                 self._last_feedback = pipeline_result
                 if pipeline_result.rejected:
                     raise ValueError("before_propose hook rejected this promotion")
+                if pipeline_result.redirect_namespace:
+                    sanitize_namespace(pipeline_result.redirect_namespace)
+                    target_ns = pipeline_result.redirect_namespace
                 if pipeline_result.event and pipeline_result.event.thought:
                     record = pipeline_result.event.thought
 
@@ -548,8 +555,6 @@ class TrailManager:
             else:
                 record.frontmatter.validation_status = ValidationStatus.PROPOSED
 
-            # Determine target namespace from source_type
-            target_ns = NAMESPACE_ROUTES.get(record.frontmatter.source_type, "observations")
             target_path = self._thought_path(thought_id, target_ns)
             target_path.parent.mkdir(parents=True, exist_ok=True)
 

@@ -165,7 +165,11 @@ async def _init_server() -> None:
         startup_event = OnStartupEvent(trails_dir=trails_dir, config=load_global_config().__dict__)
         for hook in _hook_registry.get_hooks("on_startup"):
             try:
-                await hook.fn(startup_event)
+                await asyncio.wait_for(hook.fn(startup_event), timeout=hook.timeout)
+            except asyncio.TimeoutError:
+                logger.error("on_startup hook %s timed out after %.1fs", hook.source, hook.timeout)
+                if hook.fail_mode == "closed":
+                    raise SystemExit(1)
             except Exception:
                 logger.error("on_startup hook %s failed", hook.source, exc_info=True)
                 if hook.fail_mode == "closed":
