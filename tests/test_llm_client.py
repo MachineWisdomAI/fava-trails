@@ -1,16 +1,16 @@
-"""Tests for LLM client — provider routing, retry logic, and chat interface."""
+"""Tests for LLM client — alias resolution, retry logic, and chat interface."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import openai
 import pytest
 
-from fava_trails.llm.client import OPENROUTER_BASE_URL, LLMClient, LLMError, LLMResponse
+from fava_trails.llm.client import LLMClient, LLMError, LLMResponse
 
 
 @pytest.fixture
 def client():
-    return LLMClient(openrouter_api_key="or-key", openai_api_key="oai-key")
+    return LLMClient(openrouter_api_key="or-key")
 
 
 def _mock_completion(content: str = '{"verdict":"approve"}', model: str = "test-model"):
@@ -33,10 +33,8 @@ async def test_chat_happy_path(client):
     """chat() returns LLMResponse with correct fields."""
     mock_resp = _mock_completion("Hello!", "google/gemini-2.5-flash")
 
-    with patch.object(client, "_get_client") as mock_get:
-        mock_oai = AsyncMock()
-        mock_oai.chat.completions.create.return_value = mock_resp
-        mock_get.return_value = mock_oai
+    with patch("fava_trails.llm.client.any_llm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        mock_acompletion.return_value = mock_resp
 
         result = await client.chat(
             messages=[{"role": "user", "content": "hi"}],
@@ -50,36 +48,21 @@ async def test_chat_happy_path(client):
 
 
 @pytest.mark.asyncio
-async def test_openrouter_provider_routing(client):
-    """OpenRouter models get routed to OpenRouter base URL."""
-    oai_client = client._get_client("openrouter")
-    assert oai_client.base_url == f"{OPENROUTER_BASE_URL}/"
-
-
-@pytest.mark.asyncio
-async def test_openai_provider_routing(client):
-    """OpenAI models get routed to default OpenAI base URL."""
-    oai_client = client._get_client("openai")
-    # Default OpenAI base URL
-    assert "openrouter" not in str(oai_client.base_url)
-
-
-@pytest.mark.asyncio
-async def test_unknown_model_defaults_to_openrouter(client):
-    """Unknown models default to OpenRouter."""
+async def test_unknown_model_uses_openrouter(client):
+    """Unknown models are passed through to OpenRouter."""
     mock_resp = _mock_completion("response", "unknown/model")
 
-    with patch.object(client, "_get_client") as mock_get:
-        mock_oai = AsyncMock()
-        mock_oai.chat.completions.create.return_value = mock_resp
-        mock_get.return_value = mock_oai
+    with patch("fava_trails.llm.client.any_llm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        mock_acompletion.return_value = mock_resp
 
         await client.chat(
             messages=[{"role": "user", "content": "hi"}],
             model="unknown/some-new-model",
         )
 
-    mock_get.assert_called_with("openrouter")
+    call_kwargs = mock_acompletion.call_args.kwargs
+    assert call_kwargs["provider"] == "openrouter"
+    assert call_kwargs["model"] == "unknown/some-new-model"
 
 
 @pytest.mark.asyncio
@@ -87,10 +70,8 @@ async def test_temperature_stripped_for_unsupported_model(client):
     """Temperature param is omitted for models that don't support it."""
     mock_resp = _mock_completion("ok", "openai/o3-mini")
 
-    with patch.object(client, "_get_client") as mock_get:
-        mock_oai = AsyncMock()
-        mock_oai.chat.completions.create.return_value = mock_resp
-        mock_get.return_value = mock_oai
+    with patch("fava_trails.llm.client.any_llm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        mock_acompletion.return_value = mock_resp
 
         await client.chat(
             messages=[{"role": "user", "content": "hi"}],
@@ -98,7 +79,7 @@ async def test_temperature_stripped_for_unsupported_model(client):
             temperature=0.5,
         )
 
-    call_kwargs = mock_oai.chat.completions.create.call_args.kwargs
+    call_kwargs = mock_acompletion.call_args.kwargs
     assert "temperature" not in call_kwargs
 
 
@@ -107,10 +88,8 @@ async def test_temperature_included_for_supported_model(client):
     """Temperature param is included for models that support it."""
     mock_resp = _mock_completion("ok", "google/gemini-2.5-flash")
 
-    with patch.object(client, "_get_client") as mock_get:
-        mock_oai = AsyncMock()
-        mock_oai.chat.completions.create.return_value = mock_resp
-        mock_get.return_value = mock_oai
+    with patch("fava_trails.llm.client.any_llm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        mock_acompletion.return_value = mock_resp
 
         await client.chat(
             messages=[{"role": "user", "content": "hi"}],
@@ -118,7 +97,7 @@ async def test_temperature_included_for_supported_model(client):
             temperature=0,
         )
 
-    call_kwargs = mock_oai.chat.completions.create.call_args.kwargs
+    call_kwargs = mock_acompletion.call_args.kwargs
     assert call_kwargs["temperature"] == 0
 
 
@@ -127,14 +106,16 @@ async def test_retry_on_transient_error(client):
     """Retry logic fires on transient API errors."""
     mock_resp = _mock_completion("ok")
 
-    with patch.object(client, "_get_client") as mock_get:
-        mock_oai = AsyncMock()
-        # First call fails, second succeeds
-        mock_oai.chat.completions.create.side_effect = [
-            openai.APIConnectionError(request=MagicMock()),
+    with patch("fava_trails.llm.client.any_llm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        # First call raises a retryable error, second succeeds
+        mock_acompletion.side_effect = [
+            openai.RateLimitError(
+                "rate limit",
+                response=MagicMock(status_code=429, headers={}),
+                body=None,
+            ),
             mock_resp,
         ]
-        mock_get.return_value = mock_oai
 
         with patch("fava_trails.llm._retry.asyncio.sleep", new_callable=AsyncMock):
             result = await client.chat(
@@ -143,20 +124,18 @@ async def test_retry_on_transient_error(client):
             )
 
     assert result.content == "ok"
-    assert mock_oai.chat.completions.create.call_count == 2
+    assert mock_acompletion.call_count == 2
 
 
 @pytest.mark.asyncio
 async def test_no_retry_on_auth_error(client):
     """Non-retryable errors propagate immediately."""
-    with patch.object(client, "_get_client") as mock_get:
-        mock_oai = AsyncMock()
-        mock_oai.chat.completions.create.side_effect = openai.AuthenticationError(
+    with patch("fava_trails.llm.client.any_llm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        mock_acompletion.side_effect = openai.AuthenticationError(
             "bad key",
             response=MagicMock(status_code=401, headers={}),
             body=None,
         )
-        mock_get.return_value = mock_oai
 
         with pytest.raises(openai.AuthenticationError):
             await client.chat(
@@ -164,26 +143,33 @@ async def test_no_retry_on_auth_error(client):
                 model="google/gemini-2.5-flash",
             )
 
-    assert mock_oai.chat.completions.create.call_count == 1
-
-
-def test_missing_openrouter_key():
-    """Missing OpenRouter key raises LLMError."""
-    client = LLMClient(openrouter_api_key=None, openai_api_key="oai-key")
-    with pytest.raises(LLMError, match="OpenRouter API key"):
-        client._get_client("openrouter")
-
-
-def test_missing_openai_key():
-    """Missing OpenAI key raises LLMError."""
-    client = LLMClient(openrouter_api_key="or-key", openai_api_key=None)
-    with pytest.raises(LLMError, match="OpenAI API key"):
-        client._get_client("openai")
+    assert mock_acompletion.call_count == 1
 
 
 @pytest.mark.asyncio
-async def test_client_caching(client):
-    """Clients are cached — same provider returns same instance."""
-    c1 = client._get_client("openrouter")
-    c2 = client._get_client("openrouter")
-    assert c1 is c2
+async def test_missing_openrouter_key():
+    """Missing OpenRouter key raises LLMError on chat()."""
+    client = LLMClient(openrouter_api_key=None)
+    with pytest.raises(LLMError, match="OpenRouter API key"):
+        await client.chat(
+            messages=[{"role": "user", "content": "hi"}],
+            model="google/gemini-2.5-flash",
+        )
+
+
+@pytest.mark.asyncio
+async def test_api_key_passed_to_acompletion(client):
+    """The openrouter_api_key is forwarded to acompletion."""
+    mock_resp = _mock_completion("ok")
+
+    with patch("fava_trails.llm.client.any_llm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        mock_acompletion.return_value = mock_resp
+
+        await client.chat(
+            messages=[{"role": "user", "content": "hi"}],
+            model="google/gemini-2.5-flash",
+        )
+
+    call_kwargs = mock_acompletion.call_args.kwargs
+    assert call_kwargs["api_key"] == "or-key"
+    assert call_kwargs["provider"] == "openrouter"
