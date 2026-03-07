@@ -27,7 +27,8 @@ from .config import (
     resolve_scope_globs,
     sanitize_scope_path,
 )
-from .hooks import HookRegistry, fire_hook
+from .hook_manifest import HookRegistry
+from .hook_pipeline import HookExecutionError
 from .trail import TrailManager
 from .trust_gate import TrustGatePromptCache
 from .vcs.jj_backend import JjBackend
@@ -153,13 +154,22 @@ async def _init_server() -> None:
     # Load trust gate prompts at startup (anti-tampering: never re-read from disk)
     _prompt_cache.load_from_trails_dir(trails_dir)
 
-    # Load lifecycle hooks at startup (anti-tampering: never re-read from disk)
+    # Load lifecycle hooks from manifest (anti-tampering: never re-read from disk)
     hooks_dir = Path(os.environ.get("FAVA_TRAILS_HOOKS_DIR", str(repo_root / "hooks")))
-    _hook_registry.load_from_dir(hooks_dir)
+    manifest_path = hooks_dir / "hooks.yaml"
+    _hook_registry.load_from_manifest(manifest_path)
 
-    # Fire on_startup hook
-    if _hook_registry.loaded_hooks:
-        await fire_hook(_hook_registry, "on_startup", trails_dir=trails_dir, config=load_global_config().__dict__)
+    # Fire on_startup hooks
+    if _hook_registry.has_hooks:
+        from .hook_types import OnStartupEvent
+        startup_event = OnStartupEvent(trails_dir=trails_dir, config=load_global_config().__dict__)
+        for hook in _hook_registry.get_hooks("on_startup"):
+            try:
+                await hook.fn(startup_event)
+            except Exception:
+                logger.error("on_startup hook %s failed", hook.source, exc_info=True)
+                if hook.fail_mode == "closed":
+                    raise SystemExit(1)
 
 
 async def _get_trail(trail_name: str | None = None) -> TrailManager:
@@ -611,6 +621,12 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
         # Attach root-level warning if applicable
         if warning and isinstance(result, dict) and result.get("status") == "ok":
             result["warning"] = warning
+
+        # Attach HookFeedback if hooks produced any
+        if isinstance(result, dict) and result.get("status") == "ok":
+            pipeline_result = getattr(trail, "_last_feedback", None)
+            if pipeline_result is not None and not pipeline_result.feedback.is_empty():
+                result["hook_feedback"] = pipeline_result.feedback.to_dict()
 
         # Post-write push hook: push after successful write operations
         if name in write_ops and isinstance(result, dict) and result.get("status") == "ok":
