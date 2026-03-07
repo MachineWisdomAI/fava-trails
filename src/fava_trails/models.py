@@ -161,6 +161,5 @@ class GlobalConfig(BaseModel):
     push_strategy: str = "manual"  # manual | immediate
     trust_gate: str = "llm-oneshot"  # llm-oneshot | human (future)
     openrouter_api_key_env: str = "OPENROUTER_API_KEY"
-    openai_api_key_env: str = "OPENAI_API_KEY"
     trust_gate_model: str = "google/gemini-2.5-flash"
     trails: dict[str, TrailConfig] = Field(default_factory=dict)
