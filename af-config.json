@@ -1,6 +1,6 @@
 {
   "shell": {
-    "architect": "claude --dangerously-skip-permissions",
+    "architect": "claude",
     "builder": "claude --model sonnet --dangerously-skip-permissions",
     "shell": "bash"
   },
