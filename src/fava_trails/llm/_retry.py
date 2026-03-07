@@ -7,7 +7,7 @@ import logging
 from collections.abc import Callable, Coroutine
 from typing import Any, TypeVar
 
-import openai
+from any_llm.exceptions import ProviderError, RateLimitError
 
 logger = logging.getLogger(__name__)
 
@@ -17,11 +17,11 @@ T = TypeVar("T")
 DEFAULT_MAX_ATTEMPTS = 3
 DEFAULT_DELAYS = [1.0, 3.0]
 
-# Exception types that warrant a retry (transient errors)
+# Exception types that warrant a retry (transient errors).
+# AuthenticationError is non-retryable and propagates immediately.
 RETRYABLE_EXCEPTIONS = (
-    openai.APIConnectionError,
-    openai.RateLimitError,
-    openai.InternalServerError,
+    RateLimitError,
+    ProviderError,
 )
 
 

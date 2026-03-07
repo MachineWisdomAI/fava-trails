@@ -2,8 +2,8 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import openai
 import pytest
+from any_llm.exceptions import AuthenticationError, RateLimitError
 
 from fava_trails.llm.client import LLMClient, LLMError, LLMResponse
 
@@ -109,11 +109,7 @@ async def test_retry_on_transient_error(client):
     with patch("fava_trails.llm.client.any_llm.acompletion", new_callable=AsyncMock) as mock_acompletion:
         # First call raises a retryable error, second succeeds
         mock_acompletion.side_effect = [
-            openai.RateLimitError(
-                "rate limit",
-                response=MagicMock(status_code=429, headers={}),
-                body=None,
-            ),
+            RateLimitError("rate limit exceeded"),
             mock_resp,
         ]
 
@@ -131,13 +127,9 @@ async def test_retry_on_transient_error(client):
 async def test_no_retry_on_auth_error(client):
     """Non-retryable errors propagate immediately."""
     with patch("fava_trails.llm.client.any_llm.acompletion", new_callable=AsyncMock) as mock_acompletion:
-        mock_acompletion.side_effect = openai.AuthenticationError(
-            "bad key",
-            response=MagicMock(status_code=401, headers={}),
-            body=None,
-        )
+        mock_acompletion.side_effect = AuthenticationError("bad key")
 
-        with pytest.raises(openai.AuthenticationError):
+        with pytest.raises(AuthenticationError):
             await client.chat(
                 messages=[{"role": "user", "content": "hi"}],
                 model="google/gemini-2.5-flash",
