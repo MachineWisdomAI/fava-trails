@@ -194,7 +194,7 @@ Lifecycle hooks let operators run custom Python code at key points in the though
 
 ### Setup
 
-1. Create a `hooks/` directory in your data repo (or set `FAVA_TRAILS_HOOKS_DIR`)
+1. Create a `hooks/` directory in your data repo
 2. Create a `hooks/hooks.yaml` manifest declaring your hooks
 3. Write Python hook files referenced by the manifest
 

@@ -1,4 +1,4 @@
-"""Tests for hook type system (Spec 17 v2 — Phase 1)."""
+"""Tests for hook type system."""
 
 from __future__ import annotations
 

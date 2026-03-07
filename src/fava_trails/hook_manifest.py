@@ -1,6 +1,6 @@
-"""Manifest-based hook registration (Spec 17 v2 — Phase 2).
+"""Manifest-based hook registration.
 
-Replaces convention-based file discovery with hooks.yaml manifest.
+Hooks are declared in hooks.yaml and loaded once at startup.
 Supports module: (PyPI packages) and path: (local files/dirs).
 """
 

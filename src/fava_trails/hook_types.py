@@ -1,4 +1,4 @@
-"""Hook type system for the Event-Action Pipeline (Spec 17 v2).
+"""Hook type system for the Event-Action Pipeline.
 
 Defines typed Events, Actions, HookFeedback, ThoughtPatch, TrailContext,
 and startup return types. All events and actions are frozen dataclasses.

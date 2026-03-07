@@ -28,7 +28,6 @@ from .config import (
     sanitize_scope_path,
 )
 from .hook_manifest import HookRegistry
-from .hook_pipeline import HookExecutionError
 from .trail import TrailManager
 from .trust_gate import TrustGatePromptCache
 from .vcs.jj_backend import JjBackend
@@ -155,8 +154,7 @@ async def _init_server() -> None:
     _prompt_cache.load_from_trails_dir(trails_dir)
 
     # Load lifecycle hooks from manifest (anti-tampering: never re-read from disk)
-    hooks_dir = Path(os.environ.get("FAVA_TRAILS_HOOKS_DIR", str(repo_root / "hooks")))
-    manifest_path = hooks_dir / "hooks.yaml"
+    manifest_path = repo_root / "hooks" / "hooks.yaml"
     _hook_registry.load_from_manifest(manifest_path)
 
     # Fire on_startup hooks

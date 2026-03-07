@@ -1,4 +1,4 @@
-"""Tests for manifest-based hook registration (Spec 17 v2 — Phase 2)."""
+"""Tests for manifest-based hook registration."""
 
 from __future__ import annotations
 

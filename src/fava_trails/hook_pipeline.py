@@ -1,6 +1,5 @@
-"""Pipeline execution engine for lifecycle hooks (Spec 17 v2 — Phase 3).
+"""Pipeline execution engine for lifecycle hooks.
 
-Replaces v1's fire_hook/fire_before/fire_after/fire_recall with:
 - run_pipeline(): synchronous gating pipeline for before_*/on_recall
 - dispatch_observer(): async fire-and-forget for after_* hooks
 """

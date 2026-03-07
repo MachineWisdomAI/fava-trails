@@ -1,4 +1,4 @@
-"""Tests for pipeline execution engine (Spec 17 v2 — Phase 3)."""
+"""Tests for pipeline execution engine."""
 
 from __future__ import annotations
 

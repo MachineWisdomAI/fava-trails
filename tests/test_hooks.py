@@ -1,6 +1,6 @@
-"""Tests for lifecycle hooks v2 integration (Spec 17 v2 — Phase 4).
+"""Integration tests for lifecycle hooks.
 
-Integration tests verifying hooks.yaml manifest → pipeline → TrailManager wiring.
+Verifies hooks.yaml manifest → pipeline → TrailManager wiring end-to-end.
 Unit tests for hook types, manifest, and pipeline are in their respective test files.
 """
 
@@ -64,7 +64,7 @@ class TestTrailManagerHookIntegration:
 
     @pytest.mark.asyncio
     async def test_save_no_hooks(self, trail_manager):
-        """save_thought works with no hooks (backward compat)."""
+        """save_thought works with no hooks registered."""
         record = await trail_manager.save_thought("hello", agent_id="test")
         assert record.content == "hello"
 
