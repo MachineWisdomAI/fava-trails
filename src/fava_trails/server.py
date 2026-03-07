@@ -27,6 +27,7 @@ from .config import (
     resolve_scope_globs,
     sanitize_scope_path,
 )
+from .hook_manifest import HookRegistry
 from .trail import TrailManager
 from .trust_gate import TrustGatePromptCache
 from .vcs.jj_backend import JjBackend
@@ -126,6 +127,9 @@ _shared_backend: JjBackend | None = None
 # Trust gate prompt cache — loaded once at startup, never re-read from disk
 _prompt_cache: TrustGatePromptCache = TrustGatePromptCache()
 
+# Hook registry — loaded once at startup, never re-read from disk
+_hook_registry: HookRegistry = HookRegistry()
+
 
 async def _init_server() -> None:
     """Initialize monorepo at startup. Called once before server starts."""
@@ -149,6 +153,26 @@ async def _init_server() -> None:
     # Load trust gate prompts at startup (anti-tampering: never re-read from disk)
     _prompt_cache.load_from_trails_dir(trails_dir)
 
+    # Load lifecycle hooks from manifest (anti-tampering: never re-read from disk)
+    manifest_path = repo_root / "hooks" / "hooks.yaml"
+    _hook_registry.load_from_manifest(manifest_path)
+
+    # Fire on_startup hooks
+    if _hook_registry.has_hooks:
+        from .hook_types import OnStartupEvent
+        startup_event = OnStartupEvent(trails_dir=trails_dir, config=load_global_config().__dict__)
+        for hook in _hook_registry.get_hooks("on_startup"):
+            try:
+                await asyncio.wait_for(hook.fn(startup_event), timeout=hook.timeout)
+            except asyncio.TimeoutError:
+                logger.error("on_startup hook %s timed out after %.1fs", hook.source, hook.timeout)
+                if hook.fail_mode == "closed":
+                    raise SystemExit(1)
+            except Exception:
+                logger.error("on_startup hook %s failed", hook.source, exc_info=True)
+                if hook.fail_mode == "closed":
+                    raise SystemExit(1)
+
 
 async def _get_trail(trail_name: str | None = None) -> TrailManager:
     """Get or create a TrailManager for the given trail.
@@ -165,7 +189,7 @@ async def _get_trail(trail_name: str | None = None) -> TrailManager:
         repo_root = get_data_repo_root()
         trail_path = get_trails_dir() / safe_name
         backend = JjBackend(repo_root=repo_root, trail_path=trail_path)
-        manager = TrailManager(safe_name, vcs=backend)
+        manager = TrailManager(safe_name, vcs=backend, hooks=_hook_registry)
         # Auto-initialize if trail doesn't exist (detect by thoughts/ dir, not .jj)
         if not (manager.trail_path / "thoughts").exists():
             await manager.init()
@@ -599,6 +623,12 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
         # Attach root-level warning if applicable
         if warning and isinstance(result, dict) and result.get("status") == "ok":
             result["warning"] = warning
+
+        # Attach HookFeedback if hooks produced any
+        if isinstance(result, dict) and result.get("status") == "ok":
+            pipeline_result = getattr(trail, "_last_feedback", None)
+            if pipeline_result is not None and not pipeline_result.feedback.is_empty():
+                result["hook_feedback"] = pipeline_result.feedback.to_dict()
 
         # Post-write push hook: push after successful write operations
         if name in write_ops and isinstance(result, dict) and result.get("status") == "ok":

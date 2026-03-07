@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
 import time
 from pathlib import Path
@@ -23,6 +24,17 @@ from .models import (
     TrailConfig,
     ValidationStatus,
 )
+from .hook_manifest import HookRegistry
+from .hook_pipeline import PipelineResult, dispatch_observer, run_pipeline
+from .hook_types import (
+    AfterProposeEvent,
+    AfterSaveEvent,
+    AfterSupersedeEvent,
+    BeforeProposeEvent,
+    BeforeSaveEvent,
+    OnRecallEvent,
+    TrailContext,
+)
 from .trust_gate import TrustResult
 from .vcs.base import RebaseResult, VcsBackend, VcsChange, VcsConflict, VcsDiff, VcsOpLogEntry
 
@@ -42,14 +54,16 @@ NAMESPACE_DIRS = [
 class TrailManager:
     """Manages a single trail: VCS ops, thought CRUD, namespace routing, GC."""
 
-    def __init__(self, trail_name: str, vcs: VcsBackend):
+    def __init__(self, trail_name: str, vcs: VcsBackend, hooks: HookRegistry | None = None):
         self.trail_name = sanitize_scope_path(trail_name)
         self.trail_path = get_trails_dir() / self.trail_name
         self.vcs = vcs
+        self._hooks = hooks
         self._lock = asyncio.Lock()
         self._config: TrailConfig | None = None
         self._snapshot_count = 0
         self._last_gc_time = time.time()
+        self._last_feedback: PipelineResult | None = None
 
     @property
     def config(self) -> TrailConfig:
@@ -146,6 +160,25 @@ class TrailManager:
 
         record = ThoughtRecord(frontmatter=frontmatter, content=content)
 
+        # before_save hook — can reject, mutate, or redirect
+        self._last_feedback = None
+        if self._hooks and self._hooks.has_hooks:
+            event = BeforeSaveEvent(
+                trail_name=self.trail_name,
+                thought=copy.deepcopy(record),
+                namespace=ns,
+                context=TrailContext(self),
+            )
+            pipeline_result = await run_pipeline(self._hooks, event)
+            self._last_feedback = pipeline_result
+            if pipeline_result.rejected:
+                raise ValueError("before_save hook rejected this thought")
+            if pipeline_result.redirect_namespace:
+                sanitize_namespace(pipeline_result.redirect_namespace)
+                ns = pipeline_result.redirect_namespace
+            if pipeline_result.event and pipeline_result.event.thought:
+                record = pipeline_result.event.thought
+
         async with self._lock:
             thought_dir = self._thoughts_dir(ns)
             thought_dir.mkdir(parents=True, exist_ok=True)
@@ -158,6 +191,15 @@ class TrailManager:
             )
 
             await self._maybe_gc()
+
+        # after_save hook — fires post-commit (fire-and-forget)
+        if self._hooks and self._hooks.has_hooks:
+            after_event = AfterSaveEvent(
+                trail_name=self.trail_name,
+                thought=record,
+                namespace=ns,
+            )
+            await dispatch_observer(self._hooks, after_event)
 
         return record
 
@@ -294,7 +336,30 @@ class TrailManager:
 
             await self._maybe_gc()
 
+        # after_supersede hook — fires post-commit (fire-and-forget)
+        if self._hooks and self._hooks.has_hooks:
+            after_event = AfterSupersedeEvent(
+                trail_name=self.trail_name,
+                new_thought=new_record,
+                original_thought=original,
+            )
+            await dispatch_observer(self._hooks, after_event)
+
         return new_record
+
+    async def _recall_internal(
+        self,
+        query: str = "",
+        namespace: str | None = None,
+        limit: int = 20,
+    ) -> list[ThoughtRecord]:
+        """Internal recall that bypasses hooks. Used by TrailContext to prevent recursion."""
+        return await self.recall(
+            query=query,
+            namespace=namespace,
+            limit=limit,
+            _skip_hooks=True,
+        )
 
     async def recall(
         self,
@@ -304,8 +369,10 @@ class TrailManager:
         include_superseded: bool = False,
         include_relationships: bool = False,
         limit: int = 20,
+        _skip_hooks: bool = False,
     ) -> list[ThoughtRecord]:
         """Search thoughts by query, namespace, and scope. Hides superseded by default."""
+        self._last_feedback = None
         results = []
         search_dirs = []
 
@@ -379,6 +446,26 @@ class TrailManager:
                 if related and (include_superseded or not related.is_superseded):
                     results.append(related)
 
+        # on_recall hook — filter/reorder results
+        if self._hooks and self._hooks.has_hooks and not _skip_hooks:
+            recall_event = OnRecallEvent(
+                trail_name=self.trail_name,
+                results=results,
+                query=query,
+                namespace=namespace,
+                scope=scope,
+                context=TrailContext(self),
+            )
+            pipeline_result = await run_pipeline(self._hooks, recall_event)
+            self._last_feedback = pipeline_result
+            if pipeline_result.recall_selection is not None:
+                # Reorder/filter results by hook-specified ULID order
+                ulid_order = {uid: i for i, uid in enumerate(pipeline_result.recall_selection)}
+                results = sorted(
+                    [r for r in results if r.thought_id in ulid_order],
+                    key=lambda r: ulid_order[r.thought_id],
+                )
+
         return results[:limit]
 
     async def propose_truth(
@@ -412,6 +499,27 @@ class TrailManager:
                 raise ValueError(f"Thought {thought_id} not found")
 
             record = ThoughtRecord.from_markdown(drafts_path.read_text())
+
+            # Determine target namespace from source_type
+            target_ns = NAMESPACE_ROUTES.get(record.frontmatter.source_type, "observations")
+
+            # before_propose hook — can reject, mutate, or redirect promotion
+            if self._hooks and self._hooks.has_hooks:
+                propose_event = BeforeProposeEvent(
+                    trail_name=self.trail_name,
+                    thought=record,
+                    target_namespace=target_ns,
+                    context=TrailContext(self),
+                )
+                pipeline_result = await run_pipeline(self._hooks, propose_event)
+                self._last_feedback = pipeline_result
+                if pipeline_result.rejected:
+                    raise ValueError("before_propose hook rejected this promotion")
+                if pipeline_result.redirect_namespace:
+                    sanitize_namespace(pipeline_result.redirect_namespace)
+                    target_ns = pipeline_result.redirect_namespace
+                if pipeline_result.event and pipeline_result.event.thought:
+                    record = pipeline_result.event.thought
 
             # Apply trust gate result if provided
             if trust_result is not None:
@@ -448,8 +556,6 @@ class TrailManager:
             else:
                 record.frontmatter.validation_status = ValidationStatus.PROPOSED
 
-            # Determine target namespace from source_type
-            target_ns = NAMESPACE_ROUTES.get(record.frontmatter.source_type, "observations")
             target_path = self._thought_path(thought_id, target_ns)
             target_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -461,6 +567,15 @@ class TrailManager:
                 f"Promote {thought_id[:8]} from drafts/ to {target_ns}/ [{record.frontmatter.source_type.value}]",
                 [str(target_path)],
             )
+
+        # after_propose hook — fires post-commit (fire-and-forget)
+        if self._hooks and self._hooks.has_hooks:
+            after_event = AfterProposeEvent(
+                trail_name=self.trail_name,
+                thought=record,
+                trust_result=trust_result,
+            )
+            await dispatch_observer(self._hooks, after_event)
 
         return record
 
