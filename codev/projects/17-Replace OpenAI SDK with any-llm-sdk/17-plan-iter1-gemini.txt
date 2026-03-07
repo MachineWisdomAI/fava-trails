@@ -1,0 +1,54 @@
+Model: gemini (via Pal MCP - gemini CLI not available)
+Review type: plan (protocol: aspir)
+Plan: /home/younes/git/MachineWisdomAI/fava-trails-llm-client/codev/plans/17-replace-openai-sdk-with-any-llm.md
+
+============================================================
+PLAN REVIEW: 17 - Replace OpenAI SDK with any-llm-sdk
+============================================================
+
+## Assessment
+
+The plan is well-structured with 7 sequential phases that mirror the spec's Files Affected table. Phase ordering (deps → client → retry → registry → config → trust_gate → tests) makes logical sense: dependencies are resolved before the code that uses them changes.
+
+### Strengths
+- Each phase has a single clear objective
+- Phases are atomic and independently committable
+- `trust_gate` phase added to address the spec omission
+- Verification section provides concrete shell commands
+- Commit messages follow the project convention `[Spec N][Phase: name] type: description`
+
+### Phase-by-Phase Assessment
+
+**Phase: deps** ✅
+Correct — remove `openai` and `httpx`, add `any-llm-sdk`. Running `uv lock` + `uv sync` validates the dep graph before touching any code.
+
+**Phase: client** ✅
+`os.environ.setdefault("ANY_LLM_UNIFIED_EXCEPTIONS", "1")` correctly addresses the concern raised in spec review. Explicit `api_key` passing is the right pattern. Response mapping is compatible since any-llm returns OpenAI-format responses.
+
+**Phase: retry** ✅
+Import replacements are correct: `RateLimitError`, `ProviderError`, `AuthenticationError` from `any_llm.exceptions`.
+
+**Phase: registry** ✅
+Removing 3 direct-OpenAI entries leaves 7 entries. Removing `provider` field is clean since routing is now handled by any-llm via model string prefix.
+
+**Phase: config** ✅
+Removing `openai_api_key_env` from `GlobalConfig` and simplifying `navigation.py` reduces complexity.
+
+**Phase: trust_gate** ✅
+Important addition addressing the spec consultation finding. Need to verify what any-llm exceptions correspond to `APIStatusError` and `APIConnectionError`.
+
+**Phase: tests** ✅
+Patching `fava_trails.llm.client.any_llm.acompletion` is the correct mock target for any-llm-sdk.
+
+### Risk
+
+- **trust_gate exception mapping**: The exact any-llm equivalents of `openai.APIStatusError` and `openai.APIConnectionError` should be verified. `ProviderError` is likely correct for status errors; connection errors may map to a different exception.
+
+---
+VERDICT: APPROVE
+SUMMARY: Well-structured sequential plan with correct phase ordering; trust_gate phase addresses spec consultation feedback.
+CONFIDENCE: HIGH
+---
+
+KEY_ISSUES:
+- Verify exact any-llm exception types for trust_gate.py (APIStatusError → ProviderError? APIConnectionError → ?)
