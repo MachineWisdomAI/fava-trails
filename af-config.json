@@ -6,8 +6,7 @@
   },
   "artifacts": {
     "backend": "fava-trails",
-    "scope": "mwai/eng/fava-trails/codev-assets",
-    "data_repo": "/home/younes/git/MachineWisdomAI/fava-trails-data"
+    "scope": "mwai/eng/fava-trails/codev-assets"
   },
   "porch": {
     "checks": {
