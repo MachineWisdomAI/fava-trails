@@ -21,8 +21,8 @@ import json
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
-import openai
 import pytest
+from any_llm.exceptions import AnyLLMError, ProviderError
 
 from fava_trails.llm import LLMClient, LLMResponse
 from fava_trails.models import SourceType, ThoughtFrontmatter, ThoughtMetadata, ThoughtRecord, ValidationStatus
@@ -353,7 +353,7 @@ async def test_provenance_fields_populated(trail_manager, tmp_fava_home):
 @pytest.mark.asyncio
 async def test_fail_closed_network_error(sample_thought, mock_llm_client):
     """Network error → TrustResult(verdict="error")."""
-    mock_llm_client.chat.side_effect = openai.APIConnectionError(request=MagicMock())
+    mock_llm_client.chat.side_effect = AnyLLMError("connection failed")
 
     result = await review_thought(
         record=sample_thought,
@@ -369,10 +369,12 @@ async def test_fail_closed_network_error(sample_thought, mock_llm_client):
 @pytest.mark.asyncio
 async def test_fail_closed_http_error(sample_thought, mock_llm_client):
     """HTTP error → TrustResult(verdict="error")."""
-    mock_llm_client.chat.side_effect = openai.APIStatusError(
+    orig_exc = MagicMock()
+    orig_exc.status_code = 500
+    mock_llm_client.chat.side_effect = ProviderError(
         "Server Error",
-        response=MagicMock(status_code=500, headers={}),
-        body=None,
+        original_exception=orig_exc,
+        provider_name="openrouter",
     )
 
     result = await review_thought(

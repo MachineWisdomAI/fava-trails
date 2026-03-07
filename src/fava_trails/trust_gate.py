@@ -18,8 +18,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-import openai
 import yaml
+from any_llm.exceptions import AnyLLMError, ProviderError
 
 from .llm import LLMClient
 from .models import ThoughtRecord
@@ -301,17 +301,18 @@ async def review_thought(
                 confidence=confidence,
             )
 
-        except openai.APIStatusError as e:
+        except ProviderError as e:
+            status_code = getattr(e.original_exception, "status_code", "unknown")
             return TrustResult(
                 verdict="error",
-                reasoning=f"LLM API HTTP {e.status_code}: {str(e.message)[:200]}",
+                reasoning=f"LLM API HTTP {status_code}: {str(e.message)[:200]}",
                 reviewer=reviewer_id,
             )
 
-        except openai.APIConnectionError as e:
+        except AnyLLMError as e:
             return TrustResult(
                 verdict="error",
-                reasoning=f"LLM connection error: {type(e).__name__}: {e}",
+                reasoning=f"LLM connection error: {type(e).__name__}: {e.message}",
                 reviewer=reviewer_id,
             )
 
