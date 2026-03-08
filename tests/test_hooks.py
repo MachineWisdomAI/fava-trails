@@ -250,8 +250,8 @@ class TestTrailManagerHookIntegration:
         """on_recall hook filters results via RecallSelect."""
         manager, registry, hooks_dir = hooked_trail
 
-        r1 = await manager.save_thought("keep this", agent_id="test", metadata={"tags": ["keep"]})
-        r2 = await manager.save_thought("drop this", agent_id="test", metadata={"tags": ["drop"]})
+        await manager.save_thought("keep this", agent_id="test", metadata={"tags": ["keep"]})
+        await manager.save_thought("drop this", agent_id="test", metadata={"tags": ["drop"]})
 
         _write_hook_file(hooks_dir, "recall_filter", """
             from fava_trails.hook_types import RecallSelect
@@ -277,7 +277,7 @@ class TestTrailManagerHookIntegration:
         manager, registry, hooks_dir = hooked_trail
 
         r1 = await manager.save_thought("thought 1", agent_id="test")
-        r2 = await manager.save_thought("thought 2", agent_id="test")
+        await manager.save_thought("thought 2", agent_id="test")
 
         # Hook that selects only the first thought
         _write_hook_file(hooks_dir, "recall_filter", f"""

@@ -170,14 +170,14 @@ async def _init_server() -> None:
                         raise SystemExit(1)
                 elif isinstance(ret, StartupWarn):
                     logger.warning("on_startup hook %s warning: %s", hook.source, ret.message)
-            except asyncio.TimeoutError:
+            except TimeoutError as exc:
                 logger.error("on_startup hook %s timed out after %.1fs", hook.source, hook.timeout)
                 if hook.fail_mode == "closed":
-                    raise SystemExit(1)
-            except Exception:
+                    raise SystemExit(1) from exc
+            except Exception as exc:
                 logger.error("on_startup hook %s failed", hook.source, exc_info=True)
                 if hook.fail_mode == "closed":
-                    raise SystemExit(1)
+                    raise SystemExit(1) from exc
 
 
 async def _get_trail(trail_name: str | None = None) -> TrailManager:

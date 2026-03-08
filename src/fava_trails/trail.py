@@ -15,15 +15,6 @@ from .config import (
     sanitize_scope_path,
     save_trail_config,
 )
-from .models import (
-    DEFAULT_NAMESPACE,
-    NAMESPACE_ROUTES,
-    SourceType,
-    ThoughtFrontmatter,
-    ThoughtRecord,
-    TrailConfig,
-    ValidationStatus,
-)
 from .hook_manifest import HookRegistry
 from .hook_pipeline import PipelineResult, dispatch_observer, run_pipeline
 from .hook_types import (
@@ -34,6 +25,15 @@ from .hook_types import (
     BeforeSaveEvent,
     OnRecallEvent,
     TrailContext,
+)
+from .models import (
+    DEFAULT_NAMESPACE,
+    NAMESPACE_ROUTES,
+    SourceType,
+    ThoughtFrontmatter,
+    ThoughtRecord,
+    TrailConfig,
+    ValidationStatus,
 )
 from .trust_gate import TrustResult
 from .vcs.base import RebaseResult, VcsBackend, VcsChange, VcsConflict, VcsDiff, VcsOpLogEntry

@@ -9,15 +9,13 @@ from __future__ import annotations
 import asyncio
 import copy
 import logging
-import time
 from dataclasses import dataclass, field, replace
 from typing import Any
 
 from .hook_manifest import HookRegistry, HookSpec
 from .hook_types import (
-    ACTION_VALIDITY,
-    Annotate,
     Advise,
+    Annotate,
     HookEvent,
     HookFeedback,
     Mutate,
@@ -78,7 +76,7 @@ async def run_pipeline(
         # Execute hook with timeout
         try:
             raw = await asyncio.wait_for(hook.fn(event), timeout=hook.timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError as exc:
             logger.warning(
                 "Hook %s:%s timed out after %.1fs (fail_mode=%s)",
                 hook.source, hook.name, hook.timeout, hook.fail_mode,
@@ -86,7 +84,7 @@ async def run_pipeline(
             if hook.fail_mode == "closed":
                 raise HookTimeoutError(
                     f"Hook '{hook.source}:{hook.name}' timed out after {hook.timeout}s"
-                )
+                ) from exc
             continue
         except Exception as e:
             logger.warning(
@@ -213,7 +211,7 @@ async def _run_observer_hook(hook: HookSpec, event: HookEvent) -> None:
     """Run a single observer hook with timeout and error handling."""
     try:
         await asyncio.wait_for(hook.fn(event), timeout=hook.timeout)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning(
             "Observer hook %s:%s timed out after %.1fs",
             hook.source, hook.name, hook.timeout,

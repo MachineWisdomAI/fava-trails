@@ -13,9 +13,10 @@ import logging
 import os
 import re
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, field_validator, model_validator
@@ -154,19 +155,19 @@ class HookRegistry:
             try:
                 # Interpolate env vars in config
                 config = _interpolate_env(entry.config)
-            except ValueError:
+            except ValueError as exc:
                 logger.error("Env var interpolation failed for hook entry", exc_info=True)
                 if entry.fail_mode == "closed":
-                    raise SystemExit(1)
+                    raise SystemExit(1) from exc
                 continue
 
             # Resolve module
             try:
                 mod = self._resolve_module(entry, manifest_path.parent)
-            except Exception:
+            except Exception as exc:
                 logger.error("Failed to load hook module", exc_info=True)
                 if entry.fail_mode == "closed":
-                    raise SystemExit(1)
+                    raise SystemExit(1) from exc
                 continue
 
             # Config injection
@@ -174,10 +175,10 @@ class HookRegistry:
             if configure_fn and callable(configure_fn):
                 try:
                     configure_fn(config)
-                except Exception:
+                except Exception as exc:
                     logger.error("configure() failed for hook", exc_info=True)
                     if entry.fail_mode == "closed":
-                        raise SystemExit(1)
+                        raise SystemExit(1) from exc
                     continue
 
             # Register each declared lifecycle point
