@@ -137,21 +137,27 @@ async def handle_propose_truth(
                 return {"status": "error", "message": str(e)}
 
             global_config = load_global_config()
-            api_key = os.environ.get(global_config.openrouter_api_key_env, "")
-            if not api_key:
+            openrouter_key = os.environ.get(global_config.openrouter_api_key_env, "")
+            if not openrouter_key:
                 return {
                     "status": "error",
                     "message": (
-                        f"OpenRouter API key not found. "
-                        f"Set the {global_config.openrouter_api_key_env} environment variable."
+                        f"No LLM API key found. "
+                        f"Set {global_config.openrouter_api_key_env} environment variable."
                     ),
                 }
+
+            from ..llm import LLMClient
+
+            llm_client = LLMClient(
+                openrouter_api_key=openrouter_key,
+            )
 
             trust_result = await review_thought(
                 record=record,
                 prompt=prompt,
                 model=global_config.trust_gate_model,
-                api_key=api_key,
+                client=llm_client,
                 policy=policy,
             )
 

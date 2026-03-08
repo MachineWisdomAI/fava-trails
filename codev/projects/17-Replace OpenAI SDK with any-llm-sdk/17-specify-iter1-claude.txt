@@ -1,0 +1,95 @@
+
+
+I'll read the specification file and then review the relevant project files to understand the codebase context.No `package.json` (this is a Python project) and no `src/*.{ts,js,svelte}` — let me look at the actual project structure.Good, now let me read the key source files referenced in the spec to verify the claims.Now let me check the test files and verify the `any-llm-sdk` library exists on PyPI.Good, the library exists. Let me now read the test files referenced in the spec and check the any-llm API more carefully.Now let me also check the `trust_gate.py` file since it directly catches `openai` exceptions:I now have a thorough understanding of the codebase and the spec. Let me compile my review.
+
+---
+
+## Specification Review: Spec 17 — Replace OpenAI SDK with any-llm-sdk
+
+### 1. Problem Statement — ✅ Accurate and well-supported by code
+
+The spec identifies three real problems, and I verified all of them against the source:
+
+- **Direct OpenAI routing**: `client.py` lines 46-49 do indeed create a direct `openai.AsyncOpenAI` client when `provider == "openai"`. Confirmed.
+- **API key loading in wrong layer**: `navigation.py` lines 139-157 load keys from env vars inside `handle_propose_truth()`. Confirmed.
+- **Duplicate registry entries**: `models_registry.json` has exactly 10 entries — 7 OpenRouter + 3 direct-OpenAI duplicates (`gpt-4.1-mini`, `gpt-4.1`, `o3-mini`). Confirmed.
+
+### 2. Solution — ⚠️ Mostly sound but has gaps
+
+**Strengths:**
+- `any-llm-sdk` is a real, actively maintained package ([PyPI](https://pypi.org/project/any-llm-sdk/), v1.10.0 released March 5, 2026).
+- It does expose `acompletion()` via `from any_llm import acompletion`.
+- It has a unified exception hierarchy: `AnyLLMError`, `RateLimitError`, `AuthenticationError`, `ProviderError` — via `from any_llm.exceptions import ...`.
+- Optional extras align: `bedrock`, `groq`, `anthropic`, `gemini`, `mistral`, `ollama` are all real extras on PyPI.
+
+**Issues I found:**
+
+#### Issue A: Missing file — `trust_gate.py` not listed in "Files Affected"
+
+This is the most significant omission. `trust_gate.py` directly imports `openai` (line 22) and catches `openai.APIStatusError` (line 304) and `openai.APIConnectionError` (line 311). These exception catches are the _entire_ fail-closed safety mechanism for the Trust Gate. The spec lists `_retry.py` for exception type updates but completely misses `trust_gate.py`, which has the same problem.
+
+#### Issue B: Spec says "Remove `provider` field from `ModelInfo`" — but doesn't explain the new routing
+
+Currently the `provider` field in `ModelInfo` controls which client gets created (OpenRouter vs. direct OpenAI). With `any-llm-sdk`, provider detection likely works via the model string prefix (e.g., `openai/gpt-4.1` routes to OpenAI through `any-llm`'s auto-detection). The spec should clarify how `any-llm-sdk` determines routing since this is the core of the migration — the builder needs to know whether `any-llm` auto-detects providers from model prefixes, or if explicit configuration is needed.
+
+#### Issue C: API key passing mechanism not specified
+
+The current code passes API keys explicitly to `openai.AsyncOpenAI(api_key=...)`. The `any-llm-sdk` documentation shows two methods: environment variables or an `api_key` parameter. The spec says to "Remove `openai_api_key_env` from `GlobalConfig`" and "Remove `openai_key` loading" from `navigation.py`, but doesn't say how `OPENROUTER_API_KEY` will reach `any_llm.acompletion()`. Will it be passed as a parameter? Read from env vars by `any-llm` automatically? The builder needs this specified.
+
+#### Issue D: `ANY_LLM_UNIFIED_EXCEPTIONS` not mentioned
+
+According to the any-llm docs, the unified exception types (`RateLimitError`, `AuthenticationError`, etc.) are **opt-in** via the `ANY_LLM_UNIFIED_EXCEPTIONS` environment variable. The spec references `any_llm.exceptions.*` in the retry module update but doesn't mention this activation requirement. If the env var isn't set, the library may raise raw provider exceptions instead — which would break the retry logic.
+
+#### Issue E: `httpx` removal may be premature
+
+The spec says to replace `httpx>=0.28.1` with `any-llm-sdk`. However, `httpx` might be used elsewhere in the project. Let me verify:Good — `httpx` is not imported anywhere in `src/`, so removing it as a direct dependency is safe (it was likely only pulled in as a transitive dependency of `openai`).
+
+#### Issue F: `LLMClient` constructor signature change not fully specified
+
+The spec says the `LLMClient` constructor should change, but doesn't detail the new interface. Currently it takes `openrouter_api_key` and `openai_api_key`. With `any-llm-sdk`, will `LLMClient` even exist as a wrapper class, or will the code call `acompletion()` directly? The `trust_gate.py` and `navigation.py` both instantiate `LLMClient(...)` — the builder needs to know the new API shape.
+
+#### Issue G: `any_llm.acompletion()` response format compatibility
+
+The current code accesses `response.choices[0].message.content`, `response.model`, and `response.usage.prompt_tokens`. The any-llm docs state it "normalizes outputs to return OpenAI ChatCompletion objects," so this should be compatible — but the spec should explicitly note this assumption so the builder can verify it.
+
+### 3. Success Criteria — ⚠️ Mostly good, one concern
+
+- ✅ `uv run pytest -v` passes — good, concrete
+- ✅ No `import openai` in `src/fava_trails/llm/` — but should also include `src/fava_trails/trust_gate.py`
+- ✅ `uv pip install -e ".[bedrock]"` — verifiable
+- ✅ 7 entries in `models_registry.json` — good
+- ✅ Trust gate smoke test — good
+
+**Missing criterion**: "No `import openai`" scope should be expanded to `src/fava_trails/` (entire package), not just `src/fava_trails/llm/`.
+
+### 4. Edge Cases / Security — Minor gaps
+
+- The spec doesn't address what happens if a user has `OPENAI_API_KEY` set but no `OPENROUTER_API_KEY`. Currently this works for OpenAI-provider models. After migration, what's the key fallback behavior?
+- No mention of `any-llm-sdk` version pinning. Given this is a core dependency swap, pinning to at least a minimum version (e.g., `any-llm-sdk>=1.10.0`) would be prudent.
+
+### 5. Scope — ✅ Appropriate
+
+This is a well-scoped refactor: swap one LLM SDK for another, remove dead routing code, clean up the registry. No feature additions, no behavioral changes beyond the internal plumbing.
+
+---
+
+## Verdict
+
+---
+VERDICT: REQUEST_CHANGES
+SUMMARY: Good spec but missing trust_gate.py from affected files and underspecified on API key passing and exception activation mechanism.
+CONFIDENCE: HIGH
+---
+
+KEY_ISSUES:
+- **`trust_gate.py` omitted from Files Affected** — It directly imports `openai` and catches `openai.APIStatusError`/`openai.APIConnectionError` for the fail-closed safety mechanism. This is a critical file to update and its omission risks the builder shipping a broken Trust Gate.
+- **API key passing mechanism unspecified** — How does `OPENROUTER_API_KEY` reach `any_llm.acompletion()`? Env var auto-detection by any-llm? Explicit parameter? The builder needs to know.
+- **`ANY_LLM_UNIFIED_EXCEPTIONS` env var not mentioned** — any-llm's unified exception types are opt-in. Without this, `_retry.py`'s exception handling will break silently.
+- **Success criterion scope too narrow** — "No `import openai`" should cover `src/fava_trails/` not just `src/fava_trails/llm/`.
+- **New `LLMClient` interface not specified** — Will the class remain as a thin wrapper around `acompletion()`? What's its constructor signature? `navigation.py` and `trust_gate.py` both instantiate it.
+
+Sources:
+- [any-llm-sdk on PyPI](https://pypi.org/project/any-llm-sdk/)
+- [any-llm GitHub](https://github.com/mozilla-ai/any-llm)
+- [any-llm Quickstart](https://mozilla-ai.github.io/any-llm/quickstart/)
+- [any-llm v1.0 blog post](https://blog.mozilla.ai/run-any-llm-with-a-single-api-introducing-any-llm-v1-0/)

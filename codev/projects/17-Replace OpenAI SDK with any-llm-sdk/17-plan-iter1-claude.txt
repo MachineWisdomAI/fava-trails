@@ -1,0 +1,109 @@
+
+
+I'll start by reading both the plan and spec files, plus exploring the relevant codebase to verify the plan's accuracy.Now let me verify the actual source files referenced in the plan to confirm accuracy.Now let me check the test files and verify the `any-llm-sdk` package exists and has the claimed API:Now let me verify the `any-llm-sdk` package actually exists and has the claimed API surface:
+
+This is very valuable. Let me check one more thing — whether `openrouter` works as a provider in the `acompletion` call, since the research flagged this as uncertain:Good — the `acompletion()` signature confirms `provider`, `api_key`, and `model` all exist as parameters. Now let me check the exception details more carefully:Now I have everything I need. Let me compile my review.
+
+---
+
+## Plan Review: 17 — Replace OpenAI SDK with any-llm-sdk
+
+### 1. Spec Coverage
+
+| Spec Requirement | Plan Phase | Covered? |
+|---|---|---|
+| Replace `openai>=1.0.0` and `httpx>=0.28.1` with `any-llm-sdk` | `deps` | ✅ |
+| Add optional extras (bedrock, groq, etc.) | `deps` | ✅ |
+| Rewrite `client.py` to use `any_llm.acompletion()` | `client` | ✅ |
+| Update `_retry.py` exception types | `retry` | ⚠️ See issues |
+| Remove `provider` field from `ModelInfo` / registry | `registry` | ✅ |
+| Remove `openai_api_key_env` from `GlobalConfig` | `config` | ✅ |
+| Remove `openai_key` loading in `navigation.py` | `config` | ✅ |
+| Update `trust_gate.py` exception references | `trust_gate` | ⚠️ See issues |
+| Update test suite | `tests` | ✅ |
+| Success: `uv run pytest -v` passes, no `import openai`, 7 registry entries | verification | ✅ |
+| Success: `uv pip install -e ".[bedrock]"` resolves | Not explicitly in a phase | ⚠️ Minor |
+
+### 2. Critical Issues
+
+#### Issue A: `ProviderError` exists, but retry exceptions mapping is incomplete
+
+The plan says:
+```python
+RETRYABLE_EXCEPTIONS = (RateLimitError, ProviderError)
+```
+
+The current code retries on `openai.APIConnectionError`, `openai.RateLimitError`, and `openai.InternalServerError`. The any-llm-sdk exception hierarchy has no `APIConnectionError` equivalent — **connection-level errors may surface as `ProviderError` or as raw `httpx`/`aiohttp` exceptions** that won't be caught. The plan needs to specify exactly which any-llm exceptions map to "transient/retryable" and confirm that connection errors are covered. If they aren't, the retry logic silently breaks — calls that previously retried on network hiccups will now crash.
+
+**Recommendation**: The builder should test what exception type a connection timeout/refusal raises through any-llm's unified exception layer with `ANY_LLM_UNIFIED_EXCEPTIONS=1`. It may need to also catch `AnyLLMError` broadly or a combination.
+
+#### Issue B: `trust_gate.py` exception mapping is vague
+
+The plan says:
+> Replace `import openai` with `from any_llm.exceptions import ...`
+> Update `except openai.APIStatusError` and `except openai.APIConnectionError` to use any-llm equivalents
+
+But the any-llm-sdk **does not have `APIStatusError` or `APIConnectionError`**. The trust gate currently uses:
+- `except openai.APIStatusError as e:` → accesses `e.status_code` and `e.message`
+- `except openai.APIConnectionError as e:` → uses `type(e).__name__`
+
+The plan doesn't specify **which** any-llm exceptions replace these, or whether the attribute access patterns (`e.status_code`, `e.message`) are compatible. The closest mapping would likely be:
+- `openai.APIStatusError` → `ProviderError` (but does it have `.status_code`?)
+- `openai.APIConnectionError` → `ProviderError` or `AnyLLMError` (unclear)
+
+This needs to be explicit so the builder doesn't guess wrong.
+
+#### Issue C: `httpx` removal may be premature
+
+The plan removes `httpx>=0.28.1` from dependencies. But `httpx` might be used elsewhere in the project — or it may be a transitive dependency of `any-llm-sdk` itself. The plan should verify `httpx` isn't imported anywhere else before removing it.Good — `httpx` is not directly imported anywhere in `src/`. So removing it from `dependencies` is safe (it was only there as a transitive dep of the OpenAI SDK). Issue C is resolved.
+
+### 3. Phase Breakdown & Ordering
+
+The phase sequence is logical: deps → client → retry → registry → config → trust_gate → tests. Dependencies are respected. Each phase could be committed independently.
+
+**One concern:** After phase `client`, the code will be broken because `_retry.py` still imports `openai` and `trust_gate.py` still imports `openai`. The project won't pass `ruff check` or tests between phases `client` and `trust_gate`. This is acceptable if commits are treated as a logical sequence applied in one sitting, but worth noting — individual commits won't be green until after phase `tests`.
+
+### 4. Technical Approach
+
+The `acompletion()` call in the plan:
+```python
+await any_llm.acompletion(model=resolved_model, provider="openrouter", messages=messages, api_key=self._openrouter_api_key, **kwargs)
+```
+
+This is correct per the verified API signature. The `provider="openrouter"` and `api_key=...` parameters are confirmed to exist.
+
+**One detail the plan misses**: The current `chat()` method passes `timeout=timeout` in kwargs. The any-llm-sdk `acompletion()` signature doesn't show an explicit `timeout` parameter, though it has `**kwargs`. The builder should verify if `timeout` is passed through or needs to be handled via `client_args`.
+
+### 5. Test Strategy
+
+The plan correctly identifies:
+- Patch target changes from `openai.AsyncOpenAI` → `fava_trails.llm.client.any_llm.acompletion`
+- Removing provider-routing tests (no more `_get_client`)
+- Keeping alias resolution, temperature stripping, retry tests
+
+**Tests that need careful rewriting (not fully specified in plan):**
+- `test_retry_on_transient_error` — currently raises `openai.APIConnectionError`. Needs equivalent any-llm exception.
+- `test_no_retry_on_auth_error` — currently raises `openai.AuthenticationError`. Needs `any_llm.exceptions.AuthenticationError`.
+- `test_fail_closed_network_error` and `test_fail_closed_http_error` in `test_trust_gate.py` — same issue.
+- `test_missing_openrouter_key` / `test_missing_openai_key` / `test_client_caching` — These tests exercise `_get_client()` which will be deleted. The plan says "Remove tests for 'openai' provider routing" but these aren't provider-routing tests — they test error handling for missing keys and client caching. The plan should specify replacement tests (e.g., what happens when `openrouter_api_key` is None and `chat()` is called).
+
+### 6. Minor Issues
+
+- The plan's `config` phase says "simplify error check" in `navigation.py` but doesn't specify the new error check logic. Currently lines 142-150 check for `openrouter_key` OR `openai_key`. After the change, it should only check for `openrouter_key`. This should be explicit.
+- The spec success criterion "`uv pip install -e '.[bedrock]'` resolves correctly" isn't in any phase's verification step.
+
+---
+
+## Verdict
+
+---
+VERDICT: REQUEST_CHANGES
+SUMMARY: Exception mapping for retry and trust_gate is underspecified — any-llm-sdk has no APIConnectionError/APIStatusError equivalents, and the plan doesn't specify what replaces them or whether attribute access (.status_code, .message) is compatible.
+CONFIDENCE: HIGH
+---
+
+KEY_ISSUES:
+- **Exception mapping in `_retry.py`**: The plan proposes `(RateLimitError, ProviderError)` but doesn't account for connection-level errors (the old `APIConnectionError`). Any-llm-sdk has no direct equivalent — the builder needs guidance on what catches network failures.
+- **Exception mapping in `trust_gate.py`**: The plan says "use any-llm equivalents" for `APIStatusError` and `APIConnectionError` but doesn't name them. Additionally, the current code accesses `e.status_code` and `e.message` on `APIStatusError` — the plan must confirm these attributes exist on the replacement exception class (likely `ProviderError`), or specify how to extract the same information.
+- **Test gap for deleted functionality**: Tests like `test_missing_openrouter_key`, `test_missing_openai_key`, and `test_client_caching` will break when `_get_client()` is removed. The plan says "remove tests for openai provider routing" but doesn't address these non-routing tests or specify replacements.
+- **`timeout` parameter**: The current `chat()` passes `timeout` to `client.chat.completions.create()`. The plan should specify whether `timeout` works with `acompletion()` or needs different handling.
