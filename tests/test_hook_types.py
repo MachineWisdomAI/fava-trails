@@ -28,15 +28,14 @@ from fava_trails.hook_types import (
     RecallSelect,
     Redirect,
     Reject,
-    Warn,
     StartupFail,
     StartupOk,
     StartupWarn,
     ThoughtPatch,
     TrailContext,
+    Warn,
     validate_action,
 )
-
 
 # ─── Action Construction & Immutability ───
 

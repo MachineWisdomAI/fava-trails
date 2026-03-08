@@ -3,19 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-import textwrap
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import yaml
 
 from fava_trails.hook_manifest import HookRegistry, HookSpec
 from fava_trails.hook_pipeline import (
     MAX_MUTATIONS_PER_PIPELINE,
     HookExecutionError,
     HookTimeoutError,
-    PipelineResult,
     dispatch_observer,
     run_pipeline,
 )
@@ -23,7 +18,6 @@ from fava_trails.hook_types import (
     Advise,
     Annotate,
     BeforeSaveEvent,
-    HookFeedback,
     Mutate,
     OnRecallEvent,
     Proceed,

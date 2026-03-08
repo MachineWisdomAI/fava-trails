@@ -10,7 +10,6 @@ import yaml
 
 from fava_trails.hook_manifest import (
     HookEntry,
-    HookManifest,
     HookRegistry,
     _interpolate_env,
 )
