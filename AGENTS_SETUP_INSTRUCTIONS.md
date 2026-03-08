@@ -188,6 +188,129 @@ The prompt is plain markdown. It's sent to the trust gate model along with the t
 
 Prompt files are cached in memory at server startup and never re-read during a session. This prevents adversarial agents from modifying prompts mid-session.
 
+## Lifecycle Hooks
+
+Lifecycle hooks let operators run custom Python code at key points in the thought lifecycle: before/after save, before/after promote, after supersede, on recall, and at server startup.
+
+### Setup
+
+1. Create a `hooks/` directory in your data repo
+2. Create a `hooks/hooks.yaml` manifest declaring your hooks
+3. Write Python hook files referenced by the manifest
+
+### Manifest (`hooks/hooks.yaml`)
+
+```yaml
+hooks:
+  - path: ./quality_gate.py
+    points: [before_save, before_propose]
+    order: 10                     # lower = runs first (default: 50)
+    fail_mode: open               # open (skip on error) | closed (halt on error)
+    config:
+      min_confidence: 0.3
+
+  - path: ./metrics.py
+    points: [after_save, after_propose]
+    config:
+      endpoint: "${METRICS_URL}/push"   # env var interpolation
+
+  - path: ./recall_ranker.py
+    points: [on_recall]
+
+  - module: my_published_package.hooks   # PyPI package instead of local file
+    points: [before_save]
+```
+
+### Hook Contract (v2)
+
+Each hook is an **async function** named after its lifecycle point. It receives a typed **Event** and returns one or more **Actions**:
+
+```python
+# quality_gate.py
+from fava_trails.hook_types import Reject, Warn, Proceed
+
+async def before_save(event):
+    """Reject thoughts with very low confidence."""
+    if event.thought and event.thought.frontmatter.confidence < 0.1:
+        return Reject(reason="Confidence too low", code="LOW_CONF")
+    if event.thought and len(event.thought.content) < 20:
+        return Warn(message="Very short thought", code="SHORT")
+    return Proceed()
+```
+
+### Available Actions
+
+| Action | Effect | Valid for |
+|--------|--------|-----------|
+| `Proceed()` | Continue pipeline | all |
+| `Reject(reason, code)` | Block operation (terminal) | before_save, before_propose |
+| `Mutate(patch=ThoughtPatch(...))` | Modify thought content/tags/confidence | before_save, before_propose |
+| `Redirect(namespace)` | Save to different namespace (terminal) | before_save, before_propose |
+| `Warn(message, code)` | Surface concern in response | all |
+| `Advise(message, code, target)` | Guidance for agent | all |
+| `Annotate(values={...})` | Attach metadata | all |
+| `RecallSelect(ordered_ulids=[...])` | Filter/reorder recall results | on_recall |
+
+Hooks can return a single action, `None` (treated as `Proceed`), or a list of actions.
+
+### Config Injection
+
+If your hook module defines a `configure(config)` function, it's called at startup with the `config` dict from `hooks.yaml` (after env var interpolation):
+
+```python
+_min_confidence = 0.3
+
+def configure(config):
+    global _min_confidence
+    _min_confidence = config.get("min_confidence", 0.3)
+
+async def before_save(event):
+    if event.thought and event.thought.frontmatter.confidence < _min_confidence:
+        return Reject(reason="Below minimum confidence")
+```
+
+### HookFeedback in MCP Responses
+
+When hooks produce warnings, advice, or annotations, they appear in the MCP tool response under `hook_feedback`:
+
+```json
+{
+  "status": "ok",
+  "thought": { "thought_id": "..." },
+  "hook_feedback": {
+    "accepted": true,
+    "warnings": [{"message": "Very short thought", "code": "SHORT"}],
+    "annotations": {"quality_score": 0.85}
+  }
+}
+```
+
+### TrailContext
+
+Hooks that need to query trail state receive a `TrailContext` via `event.context`. It provides hook-safe methods that bypass hook firing (preventing recursion):
+
+- `await event.context.stats()` — thought count by namespace
+- `await event.context.count(namespace=None)` — total or per-namespace count
+- `await event.context.recall(query, namespace, limit)` — search thoughts (max 50)
+
+### Lifecycle Points
+
+| Point | When | Pipeline type |
+|-------|------|---------------|
+| `before_save` | Before thought is written to disk | Gating (can reject/mutate/redirect) |
+| `after_save` | After thought is committed | Observer (fire-and-forget) |
+| `before_propose` | Before promotion from drafts | Gating (can reject/mutate/redirect) |
+| `after_propose` | After promotion is committed | Observer |
+| `after_supersede` | After supersession is committed | Observer |
+| `on_recall` | During recall search | Gating (can filter/reorder via RecallSelect) |
+| `on_startup` | Server startup | Startup (separate contract) |
+
+### Error Handling
+
+- **`fail_mode: open`** (default): Hook errors/timeouts are logged and skipped — the operation proceeds
+- **`fail_mode: closed`**: Hook errors/timeouts halt the operation with an exception
+- Import errors with `fail_mode: closed` cause `sys.exit(1)` at startup
+
 ## Pushing to Remote
 
 **NEVER use `git push origin main`** after JJ colocates. In JJ colocated mode:
@@ -210,6 +333,9 @@ jj git push --bookmark main    # push to remote
 FAVA_TRAILS_DATA_REPO/          # Monorepo root (.jj/ + .git/)
 ├── config.yaml                 # Global config
 ├── .gitignore
+├── hooks/                      # Lifecycle hooks (optional)
+│   ├── hooks.yaml              # Hook manifest
+│   └── quality_gate.py         # Hook implementation
 └── trails/
     ├── trust-gate-prompt.md    # Root trust gate prompt
     └── mw/                     # Company scope
