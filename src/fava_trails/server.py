@@ -159,11 +159,17 @@ async def _init_server() -> None:
 
     # Fire on_startup hooks
     if _hook_registry.has_hooks:
-        from .hook_types import OnStartupEvent
+        from .hook_types import OnStartupEvent, StartupFail, StartupWarn
         startup_event = OnStartupEvent(trails_dir=trails_dir, config=load_global_config().__dict__)
         for hook in _hook_registry.get_hooks("on_startup"):
             try:
-                await asyncio.wait_for(hook.fn(startup_event), timeout=hook.timeout)
+                ret = await asyncio.wait_for(hook.fn(startup_event), timeout=hook.timeout)
+                if isinstance(ret, StartupFail):
+                    logger.error("on_startup hook %s requested failure: %s", hook.source, ret.message)
+                    if hook.fail_mode == "closed":
+                        raise SystemExit(1)
+                elif isinstance(ret, StartupWarn):
+                    logger.warning("on_startup hook %s warning: %s", hook.source, ret.message)
             except asyncio.TimeoutError:
                 logger.error("on_startup hook %s timed out after %.1fs", hook.source, hook.timeout)
                 if hook.fail_mode == "closed":
@@ -624,9 +630,9 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
         if warning and isinstance(result, dict) and result.get("status") == "ok":
             result["warning"] = warning
 
-        # Attach HookFeedback if hooks produced any
+        # Attach HookFeedback if hooks produced any (task-scoped, consume-once)
         if isinstance(result, dict) and result.get("status") == "ok":
-            pipeline_result = getattr(trail, "_last_feedback", None)
+            pipeline_result = trail.consume_feedback() if trail else None
             if pipeline_result is not None and not pipeline_result.feedback.is_empty():
                 result["hook_feedback"] = pipeline_result.feedback.to_dict()
 

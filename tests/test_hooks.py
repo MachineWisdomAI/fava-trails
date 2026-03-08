@@ -154,8 +154,9 @@ class TestTrailManagerHookIntegration:
 
         record = await manager.save_thought("hi", agent_id="test")
         assert record.content == "hi"
-        assert manager._last_feedback is not None
-        assert len(manager._last_feedback.feedback.warnings) == 1
+        feedback = manager.consume_feedback()
+        assert feedback is not None
+        assert len(feedback.feedback.warnings) == 1
 
     @pytest.mark.asyncio
     async def test_save_with_after_hook(self, hooked_trail):
@@ -317,7 +318,7 @@ class TestTrailManagerHookIntegration:
 
         record = await manager.save_thought("test", agent_id="test")
         assert record.content == "test"
-        fb = manager._last_feedback.feedback
+        fb = manager.consume_feedback().feedback
         assert len(fb.warnings) == 1
         assert fb.annotations["quality_score"] == 0.3
 

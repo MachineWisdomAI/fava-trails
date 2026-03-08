@@ -63,7 +63,20 @@ class TrailManager:
         self._config: TrailConfig | None = None
         self._snapshot_count = 0
         self._last_gc_time = time.time()
-        self._last_feedback: PipelineResult | None = None
+        self._feedback_by_task: dict[asyncio.Task, PipelineResult | None] = {}
+
+    def _set_feedback(self, value: PipelineResult | None) -> None:
+        """Store pipeline feedback scoped to the current asyncio task."""
+        task = asyncio.current_task()
+        if task is not None:
+            self._feedback_by_task[task] = value
+
+    def consume_feedback(self) -> PipelineResult | None:
+        """Consume and return pipeline feedback for the current asyncio task."""
+        task = asyncio.current_task()
+        if task is None:
+            return None
+        return self._feedback_by_task.pop(task, None)
 
     @property
     def config(self) -> TrailConfig:
@@ -161,7 +174,7 @@ class TrailManager:
         record = ThoughtRecord(frontmatter=frontmatter, content=content)
 
         # before_save hook — can reject, mutate, or redirect
-        self._last_feedback = None
+        self._set_feedback(None)
         if self._hooks and self._hooks.has_hooks:
             event = BeforeSaveEvent(
                 trail_name=self.trail_name,
@@ -170,7 +183,7 @@ class TrailManager:
                 context=TrailContext(self),
             )
             pipeline_result = await run_pipeline(self._hooks, event)
-            self._last_feedback = pipeline_result
+            self._set_feedback(pipeline_result)
             if pipeline_result.rejected:
                 raise ValueError("before_save hook rejected this thought")
             if pipeline_result.redirect_namespace:
@@ -372,7 +385,7 @@ class TrailManager:
         _skip_hooks: bool = False,
     ) -> list[ThoughtRecord]:
         """Search thoughts by query, namespace, and scope. Hides superseded by default."""
-        self._last_feedback = None
+        self._set_feedback(None)
         results = []
         search_dirs = []
 
@@ -457,7 +470,7 @@ class TrailManager:
                 context=TrailContext(self),
             )
             pipeline_result = await run_pipeline(self._hooks, recall_event)
-            self._last_feedback = pipeline_result
+            self._set_feedback(pipeline_result)
             if pipeline_result.recall_selection is not None:
                 # Reorder/filter results by hook-specified ULID order
                 ulid_order = {uid: i for i, uid in enumerate(pipeline_result.recall_selection)}
@@ -512,7 +525,7 @@ class TrailManager:
                     context=TrailContext(self),
                 )
                 pipeline_result = await run_pipeline(self._hooks, propose_event)
-                self._last_feedback = pipeline_result
+                self._set_feedback(pipeline_result)
                 if pipeline_result.rejected:
                     raise ValueError("before_propose hook rejected this promotion")
                 if pipeline_result.redirect_namespace:

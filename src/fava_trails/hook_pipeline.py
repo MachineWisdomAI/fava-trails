@@ -7,9 +7,10 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from .hook_manifest import HookRegistry, HookSpec
@@ -141,11 +142,11 @@ async def run_pipeline(
                         raise HookExecutionError(msg)
                     continue
 
-                # Apply patch to event's thought
+                # Apply patch to event's thought — replace event immutably
                 if hasattr(event, "thought") and event.thought is not None:
                     patched = action.patch.apply(event.thought)
-                    # Replace thought on the (frozen) event via object.__setattr__
-                    object.__setattr__(event, "thought", patched)
+                    event = replace(event, thought=patched)
+                    result.event = event
                     logger.debug(
                         "Hook %s:%s mutated thought (mutation %d/%d)",
                         hook.source, hook.name, mutation_count, MAX_MUTATIONS_PER_PIPELINE,
@@ -203,7 +204,7 @@ async def dispatch_observer(
 
     for hook in hooks:
         asyncio.create_task(
-            _run_observer_hook(hook, event),
+            _run_observer_hook(hook, copy.deepcopy(event)),
             name=f"hook:{hook.source}:{hook.name}",
         )
 
