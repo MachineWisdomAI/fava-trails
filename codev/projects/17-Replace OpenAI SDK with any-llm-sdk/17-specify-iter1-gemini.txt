@@ -1,0 +1,39 @@
+Model: gemini (via Pal MCP - gemini CLI not available)
+Review type: spec (protocol: aspir)
+Spec: /home/younes/git/MachineWisdomAI/fava-trails-llm-client/codev/specs/17-replace-openai-sdk-with-any-llm.md
+
+============================================================
+SPEC REVIEW: 17 - Replace OpenAI SDK with any-llm-sdk
+============================================================
+
+## Assessment
+
+The spec clearly identifies three real problems in the current codebase and proposes a clean solution via `any-llm-sdk`. The problem analysis is accurate and well-grounded in the existing code.
+
+### Strengths
+- Problem statement is concrete and code-grounded (direct OpenAI routing, API key loading in wrong layer, duplicate registry entries)
+- `any-llm-sdk` is a real PyPI package with OpenRouter support built-in
+- Optional extras passthrough design is clean and user-friendly
+- Files Affected table is detailed
+
+### Issues Found
+
+1. **`trust_gate.py` missing from Files Affected**: This file imports `openai` directly (line 21) and catches `openai.APIStatusError` and `openai.APIConnectionError` for the fail-closed safety mechanism. It must be updated as part of this migration.
+
+2. **`ANY_LLM_UNIFIED_EXCEPTIONS` environment variable**: any-llm-sdk requires `os.environ["ANY_LLM_UNIFIED_EXCEPTIONS"] = "1"` to enable the unified exception hierarchy (`RateLimitError`, `AuthenticationError`, etc.). The plan mentions this but the spec should also note it.
+
+3. **API key passing unspecified**: The spec removes `openai_api_key_env` and the OpenAI key loading, but doesn't clarify whether `OPENROUTER_API_KEY` is auto-read by any-llm or must be passed explicitly.
+
+4. **Success criterion scope**: "No `import openai`" should cover all of `src/fava_trails/`, not just `src/fava_trails/llm/`.
+
+### Verdict
+
+---
+VERDICT: APPROVE
+SUMMARY: Solid spec with accurate problem analysis and clean solution; missing trust_gate.py from Files Affected is the main gap but can be handled during implementation.
+CONFIDENCE: HIGH
+---
+
+KEY_ISSUES:
+- trust_gate.py imports openai but is not listed in Files Affected
+- Success criterion for openai import grep is too narrow (llm/ only, not full src/)

@@ -1,6 +1,6 @@
 [project]
 name = "fava-trails"
-version = "0.4.12"
+version = "0.4.13"
 description = "FAVA Trails 🫛👣 — Federated Agents Versioned Audit Trail. VCS-backed memory for AI agents via MCP."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -19,8 +19,17 @@ dependencies = [
     "pydantic>=2.0.0",
     "pyyaml>=6.0",
     "python-ulid>=3.0.0",
-    "httpx>=0.28.1",
+    "any-llm-sdk>=1.10.0",
 ]
+
+[project.optional-dependencies]
+bedrock   = ["any-llm-sdk[bedrock]"]
+groq      = ["any-llm-sdk[groq]"]
+anthropic = ["any-llm-sdk[anthropic]"]
+gemini    = ["any-llm-sdk[gemini]"]
+mistral   = ["any-llm-sdk[mistral]"]
+ollama    = ["any-llm-sdk[ollama]"]
+all       = ["any-llm-sdk[bedrock,groq,anthropic,gemini,mistral,ollama]"]
 
 [project.urls]
 Homepage = "https://github.com/MachineWisdomAI/fava-trails"
