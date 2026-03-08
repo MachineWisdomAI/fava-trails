@@ -4,7 +4,7 @@ Intercepts thought promotion and requires either LLM-based critic review
 or explicit human approval before a thought enters a permanent namespace.
 
 Policies:
-  - llm-oneshot: Send thought to OpenRouter model with startup-loaded prompt. Fail-closed.
+  - llm-oneshot: Send thought to LLM model via LLMClient. Fail-closed.
   - human: Not yet implemented — raises NotImplementedError.
 """
 
@@ -18,9 +18,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-import httpx
 import yaml
+from any_llm.exceptions import AnyLLMError, ProviderError
 
+from .llm import LLMClient
 from .models import ThoughtRecord
 
 logger = logging.getLogger(__name__)
@@ -175,38 +176,6 @@ def _build_review_payload(
     return system_msg, user_msg
 
 
-async def _call_openrouter(
-    system_msg: str,
-    user_msg: str,
-    model: str,
-    api_key: str,
-    timeout: float = 30.0,
-) -> dict:
-    """Call OpenRouter API with structured JSON output.
-
-    Uses temperature=0 for deterministic output and response_format for JSON.
-    """
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        response = await client.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": model,
-                "temperature": 0,
-                "response_format": {"type": "json_object"},
-                "messages": [
-                    {"role": "system", "content": system_msg},
-                    {"role": "user", "content": user_msg},
-                ],
-            },
-        )
-        response.raise_for_status()
-        return response.json()
-
-
 def _extract_json_from_llm_response(raw: str) -> str:
     """Extract JSON content from an LLM response, stripping markdown code fences.
 
@@ -256,18 +225,14 @@ def _extract_json_from_llm_response(raw: str) -> str:
     return result
 
 
-def _parse_verdict(response_data: dict) -> tuple[str, str, float | None]:
-    """Parse structured JSON verdict from OpenRouter response.
+def _parse_verdict(content: str) -> tuple[str, str, float | None]:
+    """Parse structured JSON verdict from LLM response content.
 
     Returns (verdict, reasoning, confidence).
     Raises ValueError if response format is invalid.
     """
-    choices = response_data.get("choices", [])
-    if not choices:
-        raise ValueError("No choices in OpenRouter response")
-
-    message = choices[0].get("message", {})
-    content = message.get("content", "")
+    if not content:
+        raise ValueError("Empty response content from LLM")
 
     verdict_data = json.loads(_extract_json_from_llm_response(content))
 
@@ -285,7 +250,7 @@ async def review_thought(
     record: ThoughtRecord,
     prompt: str,
     model: str,
-    api_key: str,
+    client: LLMClient,
     policy: str = "llm-oneshot",
 ) -> TrustResult:
     """Review a thought using the specified policy.
@@ -293,8 +258,8 @@ async def review_thought(
     Args:
         record: The thought to review.
         prompt: The trust gate prompt (loaded at startup).
-        model: OpenRouter model ID for the reviewer.
-        api_key: OpenRouter API key.
+        model: Model ID for the reviewer (alias or canonical name).
+        client: LLMClient instance for making API calls.
         policy: Review policy ("llm-oneshot" or "human").
 
     Returns:
@@ -318,8 +283,16 @@ async def review_thought(
     last_error = None
     for attempt in range(2):
         try:
-            response_data = await _call_openrouter(system_msg, user_msg, model, api_key)
-            verdict, reasoning, confidence = _parse_verdict(response_data)
+            response = await client.chat(
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": user_msg},
+                ],
+                model=model,
+                temperature=0,
+                response_format={"type": "json_object"},
+            )
+            verdict, reasoning, confidence = _parse_verdict(response.content)
 
             return TrustResult(
                 verdict=verdict,
@@ -328,17 +301,18 @@ async def review_thought(
                 confidence=confidence,
             )
 
-        except httpx.HTTPStatusError as e:
+        except ProviderError as e:
+            status_code = getattr(e.original_exception, "status_code", "unknown")
             return TrustResult(
                 verdict="error",
-                reasoning=f"OpenRouter HTTP {e.response.status_code}: {e.response.text[:200]}",
+                reasoning=f"LLM API HTTP {status_code}: {str(e.message)[:200]}",
                 reviewer=reviewer_id,
             )
 
-        except (httpx.ConnectError, httpx.TimeoutException, httpx.ConnectTimeout) as e:
+        except AnyLLMError as e:
             return TrustResult(
                 verdict="error",
-                reasoning=f"OpenRouter connection error: {type(e).__name__}: {e}",
+                reasoning=f"LLM connection error: {type(e).__name__}: {e.message}",
                 reviewer=reviewer_id,
             )
 
@@ -347,7 +321,6 @@ async def review_thought(
             if attempt == 0:
                 logger.warning(f"Trust gate parse error (retrying): {e}")
                 continue
-            # After 1 retry, fail-closed as error (infrastructure failure, not reviewer decision)
             return TrustResult(
                 verdict="error",
                 reasoning=f"Failed to parse reviewer response after retry: {e}",

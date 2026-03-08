@@ -1,0 +1,40 @@
+Model: codex (via Pal MCP - codex CLI auth unavailable)
+Review type: spec (protocol: aspir)
+Spec: /home/younes/git/MachineWisdomAI/fava-trails-llm-client/codev/specs/17-replace-openai-sdk-with-any-llm.md
+
+============================================================
+SPEC REVIEW: 17 - Replace OpenAI SDK with any-llm-sdk
+============================================================
+
+## Assessment
+
+Well-scoped refactoring spec. The three problems identified are real and the solution of using `any-llm-sdk` as a unified provider abstraction is appropriate.
+
+### Technical Feasibility
+- `any-llm-sdk` v1.10.0 (2026-03-05) supports OpenRouter natively
+- `acompletion()` returns OpenAI-compatible response objects
+- Exception hierarchy is unified via `any_llm.exceptions.*`
+- Optional extras (bedrock, groq, etc.) are available on PyPI
+
+### Issues Found
+
+1. **Missing file**: `src/fava_trails/trust_gate.py` has `import openai` at line 21 and catches `openai.APIStatusError` / `openai.APIConnectionError`. This is the fail-closed safety gate and must be updated.
+
+2. **Interface clarity**: The new `LLMClient` constructor signature should be specified. Currently `__init__` takes `openrouter_api_key` and `openai_api_key`. After migration, only `openrouter_api_key` remains, but how is this passed to `any_llm.acompletion()`?
+
+3. **Exception activation**: any-llm requires `os.environ.setdefault("ANY_LLM_UNIFIED_EXCEPTIONS", "1")` for the unified exception types. The plan addresses this but the spec is silent.
+
+4. **Version pinning**: Recommend specifying `any-llm-sdk>=1.10.0` in dependencies.
+
+### Verdict
+
+---
+VERDICT: APPROVE
+SUMMARY: Feasible and well-scoped; trust_gate.py omission should be fixed during implementation.
+CONFIDENCE: HIGH
+---
+
+KEY_ISSUES:
+- trust_gate.py not listed in Files Affected (imports openai, catches openai exceptions)
+- LLMClient constructor interface not specified for new implementation
+- any-llm-sdk version not pinned

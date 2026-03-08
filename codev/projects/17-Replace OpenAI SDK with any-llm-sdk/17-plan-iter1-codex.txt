@@ -1,0 +1,45 @@
+Model: codex (via Pal MCP - codex CLI auth unavailable)
+Review type: plan (protocol: aspir)
+Plan: /home/younes/git/MachineWisdomAI/fava-trails-llm-client/codev/plans/17-replace-openai-sdk-with-any-llm.md
+
+============================================================
+PLAN REVIEW: 17 - Replace OpenAI SDK with any-llm-sdk
+============================================================
+
+## Assessment
+
+The plan correctly breaks down the SDK migration into 7 atomic phases. The sequencing is sensible: deps first, then the implementation, then cleanup, then tests.
+
+### Technical Review
+
+**Dependency swap (Phase: deps)**: Correct. `any-llm-sdk` replaces both `openai` and `httpx`. Optional extras passthrough is clean.
+
+**Client rewrite (Phase: client)**: `any_llm.acompletion()` with explicit `api_key` and `provider="openrouter"` is correct. The `ANY_LLM_UNIFIED_EXCEPTIONS` setdefault is necessary and correctly placed at module level.
+
+**Retry exceptions (Phase: retry)**: `from any_llm.exceptions import RateLimitError, ProviderError, AuthenticationError` — verified against any-llm-sdk v1.10.0 API. `RETRYABLE_EXCEPTIONS = (RateLimitError, ProviderError)` is appropriate.
+
+**Registry cleanup (Phase: registry)**: Removing 3 duplicate entries + `provider` field is clean. 7 remaining entries use OpenRouter model IDs (`openai/gpt-4.1`, `google/gemini-2.5-flash`, etc.) which any-llm-sdk routes correctly via its prefix detection.
+
+**Config cleanup (Phase: config)**: Straightforward removal of dead code.
+
+**Trust gate (Phase: trust_gate)**: Important — `trust_gate.py` must be updated. For exception mapping:
+- `openai.APIStatusError` → `any_llm.exceptions.ProviderError` (HTTP status errors from provider)
+- `openai.APIConnectionError` → `any_llm.exceptions.NetworkError` (if available) or catch base `AnyLLMError`
+
+Builder should verify available exception types in `any_llm.exceptions` before implementing.
+
+**Tests (Phase: tests)**: Patching `fava_trails.llm.client.any_llm.acompletion` via `mock.patch` is correct for the new implementation structure.
+
+### Concerns
+
+1. The plan doesn't specify what any-llm exception class corresponds to `openai.APIConnectionError`. This should be verified against the library.
+2. No mention of `uv run ruff check` after each phase — builder should run linting with each commit.
+
+---
+VERDICT: APPROVE
+SUMMARY: Technically sound plan; builder should verify trust_gate exception type mapping before implementing that phase.
+CONFIDENCE: HIGH
+---
+
+KEY_ISSUES:
+- any-llm equivalent of `openai.APIConnectionError` not specified — verify before trust_gate phase
