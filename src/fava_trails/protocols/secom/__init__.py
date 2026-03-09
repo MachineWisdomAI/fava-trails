@@ -111,9 +111,10 @@ def _parse_engine_config(raw: Any) -> dict[str, Any]:
 
 def configure(config: dict[str, Any]) -> None:
     """Receive hook config from HookRegistry at load time."""
-    global _CONFIG, _ENGINE_CONFIG
+    global _CONFIG, _ENGINE_CONFIG, _COMPRESSOR
     _CONFIG = config
     _ENGINE_CONFIG = _parse_engine_config(config.get("compression_engine"))
+    _COMPRESSOR = None  # Reset so lazy-load picks up new engine config
 
 
 # --- Compression Engine ---
@@ -285,7 +286,7 @@ async def on_recall(event: OnRecallEvent) -> list[Any] | None:
     if not has_compressed:
         return None
 
-    scored.sort(key=lambda x: x[1], reverse=True)
+    scored.sort(key=lambda x: (x[1], x[0].thought_id), reverse=True)
     ordered_ulids = [t.thought_id for t, _ in scored]
 
     return [

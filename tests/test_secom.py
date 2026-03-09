@@ -137,6 +137,15 @@ class TestConfigure:
     def test_known_engines_registry(self):
         assert "llmlingua" in KNOWN_ENGINES
 
+    def test_reconfigure_resets_compressor(self):
+        """Calling configure() again resets _COMPRESSOR so new config takes effect."""
+        import fava_trails.protocols.secom as mod
+
+        mod._COMPRESSOR = "sentinel"  # Simulate a loaded compressor
+        configure({"compression_engine": {"type": "llmlingua", "model_name": "other/model"}})
+        assert mod._COMPRESSOR is None
+        assert mod._ENGINE_CONFIG["model_name"] == "other/model"
+
 
 # --- before_propose Hook ---
 
