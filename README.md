@@ -180,9 +180,12 @@ fava-trails (this repo)        fava-trails-data (your repo)
 │   ├── trail.py                   └── myorg/eng/project/
 │   ├── config.py                      └── thoughts/
 │   ├── trust_gate.py                      ├── drafts/
-│   └── vcs/                               ├── decisions/
-│       └── jj_backend.py                  ├── observations/
-└── tests/                                 └── preferences/
+│   ├── hook_manifest.py                   ├── decisions/
+│   ├── protocols/                         ├── observations/
+│   │   └── secom/                         └── preferences/
+│   └── vcs/
+│       └── jj_backend.py
+└── tests/
 ```
 
 - **Engine** (`fava-trails`) — stateless MCP server, Apache-2.0. Install via `pip install fava-trails`.
@@ -212,6 +215,35 @@ When `push_strategy: immediate`, the server auto-pushes after every successful w
 
 See [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) for full config reference including trust gate and per-trail overrides.
 
+## Protocols
+
+FAVA Trails supports optional **lifecycle protocols** — hook modules that run custom logic at key points in the thought lifecycle (save, promote, recall). Protocols are registered in your data repo's `config.yaml` and loaded at server startup.
+
+### SECOM — Compression at Promote Time
+
+Extractive token-level compression via [LLMLingua-2](https://github.com/microsoft/LLMLingua), based on [Microsoft's ICLR 2025 SECOM paper](https://arxiv.org/abs/2502.05589). Thoughts are compressed once at promote time (WORM pattern), reducing storage and boosting recall density. Zero hallucination — only original tokens survive.
+
+```bash
+pip install fava-trails[secom]
+```
+
+Add to your data repo's `config.yaml`:
+
+```yaml
+hooks:
+  - module: fava_trails.protocols.secom
+    points: [before_propose, before_save, on_recall]
+    order: 20
+    fail_mode: open
+    config:
+      compression_threshold_chars: 500
+      target_compress_rate: 0.6
+      compression_engine:
+        type: llmlingua
+```
+
+See [protocols/secom/README.md](src/fava_trails/protocols/secom/README.md) for full config reference and model options. See [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md#lifecycle-hooks) for the general hooks system.
+
 ## Development
 
 ```bash
@@ -223,7 +255,8 @@ uv run pytest --cov       # with coverage
 
 - [AGENTS.md](AGENTS.md) — Agent-facing: MCP tools reference, scope discovery, thought lifecycle, agent conventions
 - [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md) — Canonical usage: scope discovery, session protocol, agent identity
-- [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) — Data repo setup, config reference, trust gate prompts
+- [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) — Data repo setup, config reference, trust gate prompts, lifecycle hooks
+- [protocols/secom/README.md](src/fava_trails/protocols/secom/README.md) — SECOM compression protocol: config, models, WORM architecture
 - [docs/fava_trails_faq.md](docs/fava_trails_faq.md) — Detailed FAQ for framework authors and ML engineers
 
 ## Contributing

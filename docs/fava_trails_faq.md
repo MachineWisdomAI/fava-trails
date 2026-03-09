@@ -35,6 +35,16 @@ If the Trust Gate rejects the proposal, the hallucination stays contained in dra
 
 This is not post-hoc rollback — it is **containment at the source**. The hallucination never becomes shared "truth" in the first place. Note: the Trust Gate reduces blast radius; it does not eliminate hallucinations entirely. A misconfigured gate or a sufficiently convincing hallucination can still pass review. Defense-in-depth (multiple reviewers, policy-based strictness per namespace, human override for high-stakes domains) is the correct mitigation.
 
+### How does FAVA Trails relate to Context Engineering protocols like SECOM or ACE?
+
+Academic protocols like Microsoft's SECOM (Segmentation and Compression, ICLR 2025) or Stanford's ACE (Agentic Context Engine) define *what* to do with context — compress memories, curate retrieval, manage information density — but leave the production substrate unspecified. Where do compressed memories live? How do you version them? What happens when compression fails mid-operation?
+
+FAVA Trails provides the versioned substrate and the **Event-Action Pipeline** (lifecycle hooks) to run these protocols safely. Hooks fire at key lifecycle points (`before_propose`, `before_save`, `on_recall`, etc.) and return typed actions (`Mutate`, `Advise`, `RecallSelect`) that the pipeline executes atomically.
+
+For example, the built-in [SECOM protocol](../src/fava_trails/protocols/secom/README.md) uses a Write-Once, Read-Many (WORM) optimization: the `before_propose` hook compresses content inline via LLMLingua-2 (extractive token-level compression, zero hallucination) before the thought is committed to its permanent namespace. This avoids read-path latency entirely, amortizes compression cost from O(recalls × thoughts) to O(promotes), and preserves the original verbose draft in the Jujutsu commit history. If compression fails, `fail_mode: open` lets the thought through unchanged — the operation never blocks.
+
+Install with `pip install fava-trails[secom]` and add a `hooks:` entry to your data repo's `config.yaml`. See the [Protocols section](../README.md#protocols) for quick start.
+
 ---
 
 ## The Architecture
