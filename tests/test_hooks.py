@@ -12,16 +12,9 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-import yaml
 
 from fava_trails.hook_manifest import HookRegistry
-
-
-def _write_manifest(hooks_dir: Path, hooks: list[dict]) -> Path:
-    """Write a hooks.yaml manifest."""
-    path = hooks_dir / "hooks.yaml"
-    path.write_text(yaml.dump({"hooks": hooks}))
-    return path
+from fava_trails.models import HookEntry
 
 
 def _write_hook_file(hooks_dir: Path, name: str, code: str) -> Path:
@@ -58,9 +51,9 @@ class TestTrailManagerHookIntegration:
         return d
 
     def _load_hooks(self, registry, hooks_dir, hooks_config):
-        """Write manifest and hook files, then load into registry."""
-        _write_manifest(hooks_dir, hooks_config)
-        registry.load_from_manifest(hooks_dir / "hooks.yaml")
+        """Create HookEntry objects and load into registry."""
+        entries = [HookEntry(**h) for h in hooks_config]
+        registry.load_from_entries(entries, base_dir=hooks_dir)
 
     @pytest.mark.asyncio
     async def test_save_no_hooks(self, trail_manager):
@@ -331,13 +324,12 @@ class TestTrailManagerHookIntegration:
             async def before_save(event):
                 await asyncio.sleep(10)
         """)
-        _write_manifest(hooks_dir, [{
+        self._load_hooks(registry, hooks_dir, [{
             "path": "./slow.py",
             "points": ["before_save"],
             "fail_mode": "open",
         }])
         # Override timeout to something fast for testing
-        registry.load_from_manifest(hooks_dir / "hooks.yaml")
         for hook in registry.get_hooks("before_save"):
             hook.timeout = 0.1
 

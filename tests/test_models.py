@@ -1,14 +1,20 @@
 """Tests for Pydantic models and markdown serialization."""
 
+import pytest
+
 from fava_trails.models import (
     DEFAULT_NAMESPACE,
+    KNOWN_HOOKS,
     NAMESPACE_ROUTES,
+    GlobalConfig,
+    HookEntry,
     Relationship,
     RelationshipType,
     SourceType,
     ThoughtFrontmatter,
     ThoughtMetadata,
     ThoughtRecord,
+    TrailConfig,
     ValidationStatus,
 )
 
@@ -104,3 +110,95 @@ def test_namespace_routes():
     assert NAMESPACE_ROUTES[SourceType.OBSERVATION] == "observations"
     assert NAMESPACE_ROUTES[SourceType.USER_INPUT] == "preferences"
     assert DEFAULT_NAMESPACE == "drafts"
+
+
+# ─── HookEntry ───
+
+
+def test_hook_entry_path():
+    entry = HookEntry(path="./my_hook.py", points=["before_save"])
+    assert entry.path == "./my_hook.py"
+    assert entry.module is None
+    assert entry.order == 50
+    assert entry.fail_mode == "open"
+    assert entry.config == {}
+
+
+def test_hook_entry_module():
+    entry = HookEntry(module="my_hooks.plugin", points=["after_save", "on_recall"])
+    assert entry.module == "my_hooks.plugin"
+    assert entry.path is None
+
+
+def test_hook_entry_mutable_default_not_shared():
+    """Each HookEntry gets its own config dict (Field(default_factory=dict))."""
+    a = HookEntry(path="./a.py", points=["before_save"])
+    b = HookEntry(path="./b.py", points=["before_save"])
+    a.config["key"] = "value"
+    assert b.config == {}
+
+
+def test_hook_entry_both_sources_rejected():
+    with pytest.raises(ValueError, match="not both"):
+        HookEntry(module="foo", path="./bar.py", points=["before_save"])
+
+
+def test_hook_entry_no_source_rejected():
+    with pytest.raises(ValueError, match="must have either"):
+        HookEntry(points=["before_save"])
+
+
+def test_hook_entry_unknown_point_rejected():
+    with pytest.raises(ValueError, match="Unknown lifecycle point"):
+        HookEntry(path="./x.py", points=["not_a_hook"])
+
+
+def test_hook_entry_invalid_fail_mode():
+    with pytest.raises(ValueError, match="fail_mode"):
+        HookEntry(path="./x.py", points=["before_save"], fail_mode="maybe")
+
+
+def test_known_hooks_contains_expected():
+    expected = {"before_save", "after_save", "before_propose", "after_propose",
+                "after_supersede", "on_recall", "on_startup"}
+    assert KNOWN_HOOKS == expected
+
+
+# ─── GlobalConfig.hooks ───
+
+
+def test_global_config_defaults_no_hooks():
+    config = GlobalConfig()
+    assert config.hooks == []
+
+
+def test_global_config_with_hooks():
+    config = GlobalConfig(hooks=[
+        {"path": "./my_hook.py", "points": ["before_save"]},
+    ])
+    assert len(config.hooks) == 1
+    assert isinstance(config.hooks[0], HookEntry)
+    assert config.hooks[0].path == "./my_hook.py"
+
+
+def test_global_config_hooks_mutable_default_not_shared():
+    a = GlobalConfig()
+    b = GlobalConfig()
+    a.hooks.append(HookEntry(path="./x.py", points=["before_save"]))
+    assert b.hooks == []
+
+
+# ─── TrailConfig.hooks ───
+
+
+def test_trail_config_defaults_no_hooks():
+    config = TrailConfig(name="my-trail")
+    assert config.hooks == []
+
+
+def test_trail_config_hooks_raises_valueerror():
+    """Non-empty hooks in TrailConfig raises ValueError at parse time."""
+    with pytest.raises(ValueError, match="Per-trail hook overrides not yet supported"):
+        TrailConfig(name="my-trail", hooks=[
+            {"path": "./hook.py", "points": ["before_save"]},
+        ])

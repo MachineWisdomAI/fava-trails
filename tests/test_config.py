@@ -4,14 +4,18 @@ import os
 from pathlib import Path
 
 import pytest
+import yaml
 
 from fava_trails.config import (
+    ConfigStore,
     ensure_data_repo_root,
     get_data_repo_root,
     get_trails_dir,
+    load_global_config,
     sanitize_namespace,
     sanitize_scope_path,
 )
+from fava_trails.models import GlobalConfig
 
 
 def test_fava_home_default(monkeypatch, tmp_path):
@@ -189,3 +193,77 @@ def test_ensure_data_repo_root_creates_custom_trails_dir(monkeypatch, tmp_path):
 
     assert home.exists()
     assert custom_trails.exists()
+
+
+# ─── ConfigStore ───
+
+
+def test_config_store_singleton(monkeypatch, tmp_path):
+    """ConfigStore.get() returns the same instance on repeated calls."""
+    monkeypatch.setenv("FAVA_TRAILS_DATA_REPO", str(tmp_path))
+    monkeypatch.delenv("FAVA_TRAILS_DIR", raising=False)
+    a = ConfigStore.get()
+    b = ConfigStore.get()
+    assert a is b
+
+
+def test_config_store_reset(monkeypatch, tmp_path):
+    """ConfigStore.reset() clears cache; next get() re-reads disk."""
+    monkeypatch.setenv("FAVA_TRAILS_DATA_REPO", str(tmp_path))
+    monkeypatch.delenv("FAVA_TRAILS_DIR", raising=False)
+    a = ConfigStore.get()
+    ConfigStore.reset()
+    b = ConfigStore.get()
+    assert a is not b
+
+
+def test_config_store_override(monkeypatch, tmp_path):
+    """ConfigStore.override() injects a pre-built instance."""
+    monkeypatch.setenv("FAVA_TRAILS_DATA_REPO", str(tmp_path))
+    monkeypatch.delenv("FAVA_TRAILS_DIR", raising=False)
+    injected = ConfigStore(
+        global_config=GlobalConfig(push_strategy="immediate"),
+        data_repo_root=tmp_path,
+        trails_dir=tmp_path / "trails",
+    )
+    ConfigStore.override(injected)
+    assert ConfigStore.get() is injected
+    assert ConfigStore.get().global_config.push_strategy == "immediate"
+
+
+def test_config_store_data_repo_root(monkeypatch, tmp_path):
+    """ConfigStore.data_repo_root matches FAVA_TRAILS_DATA_REPO."""
+    monkeypatch.setenv("FAVA_TRAILS_DATA_REPO", str(tmp_path))
+    monkeypatch.delenv("FAVA_TRAILS_DIR", raising=False)
+    store = ConfigStore.get()
+    assert store.data_repo_root == tmp_path
+
+
+def test_config_store_trails_dir_default(monkeypatch, tmp_path):
+    """ConfigStore.trails_dir defaults to data_repo_root/trails."""
+    monkeypatch.setenv("FAVA_TRAILS_DATA_REPO", str(tmp_path))
+    monkeypatch.delenv("FAVA_TRAILS_DIR", raising=False)
+    store = ConfigStore.get()
+    assert store.trails_dir == tmp_path / "trails"
+
+
+def test_load_global_config_delegates_to_store(monkeypatch, tmp_path):
+    """load_global_config() returns ConfigStore.get().global_config."""
+    monkeypatch.setenv("FAVA_TRAILS_DATA_REPO", str(tmp_path))
+    monkeypatch.delenv("FAVA_TRAILS_DIR", raising=False)
+    config = load_global_config()
+    assert config is ConfigStore.get().global_config
+
+
+def test_config_store_reads_hooks_from_config_yaml(monkeypatch, tmp_path):
+    """ConfigStore parses hooks: key from config.yaml into GlobalConfig."""
+    config_path = tmp_path / "config.yaml"
+    with open(config_path, "w") as f:
+        yaml.dump({
+            "hooks": [{"path": "./my_hook.py", "points": ["before_save"]}]
+        }, f)
+    monkeypatch.setenv("FAVA_TRAILS_DATA_REPO", str(tmp_path))
+    monkeypatch.delenv("FAVA_TRAILS_DIR", raising=False)
+    store = ConfigStore.get()
+    assert len(store.global_config.hooks) == 1
+    assert store.global_config.hooks[0].path == "./my_hook.py"
