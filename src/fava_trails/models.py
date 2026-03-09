@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from ulid import ULID
 
 
@@ -129,6 +129,51 @@ class ThoughtRecord(BaseModel):
         return cls(frontmatter=frontmatter, content=content)
 
 
+KNOWN_HOOKS = frozenset({
+    "before_save",
+    "after_save",
+    "before_propose",
+    "after_propose",
+    "after_supersede",
+    "on_recall",
+    "on_startup",
+})
+
+
+class HookEntry(BaseModel):
+    """A single hook entry in global or trail config."""
+
+    module: str | None = None
+    path: str | None = None
+    points: list[str]
+    order: int = 50
+    fail_mode: str = "open"
+    config: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def exactly_one_source(self) -> HookEntry:
+        if self.module and self.path:
+            raise ValueError("Hook entry must have either 'module' or 'path', not both")
+        if not self.module and not self.path:
+            raise ValueError("Hook entry must have either 'module' or 'path'")
+        return self
+
+    @field_validator("points")
+    @classmethod
+    def validate_points(cls, v: list[str]) -> list[str]:
+        for p in v:
+            if p not in KNOWN_HOOKS:
+                raise ValueError(f"Unknown lifecycle point: {p!r}. Valid: {sorted(KNOWN_HOOKS)}")
+        return v
+
+    @field_validator("fail_mode")
+    @classmethod
+    def validate_fail_mode(cls, v: str) -> str:
+        if v not in ("open", "closed"):
+            raise ValueError(f"fail_mode must be 'open' or 'closed', got {v!r}")
+        return v
+
+
 # Namespace routing: source_type -> permanent namespace
 NAMESPACE_ROUTES: dict[SourceType, str] = {
     SourceType.DECISION: "decisions",
@@ -151,6 +196,17 @@ class TrailConfig(BaseModel):
     gc_interval_snapshots: int = 500
     gc_interval_seconds: int = 3600
     stale_draft_days: int = 0  # 0 = disabled; >0 = tombstone drafts older than N days
+    hooks: list[HookEntry] = Field(default_factory=list)
+
+    @field_validator("hooks")
+    @classmethod
+    def hooks_not_yet_supported(cls, v: list[HookEntry]) -> list[HookEntry]:
+        if v:
+            raise ValueError(
+                "Per-trail hook overrides not yet supported — "
+                "define hooks in global config.yaml"
+            )
+        return v
 
 
 class GlobalConfig(BaseModel):
@@ -163,3 +219,4 @@ class GlobalConfig(BaseModel):
     openrouter_api_key_env: str = "OPENROUTER_API_KEY"
     trust_gate_model: str = "google/gemini-2.5-flash"
     trails: dict[str, TrailConfig] = Field(default_factory=dict)
+    hooks: list[HookEntry] = Field(default_factory=list)

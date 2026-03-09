@@ -20,10 +20,10 @@ from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
 from .config import (
+    ConfigStore,
     ensure_data_repo_root,
     get_data_repo_root,
     get_trails_dir,
-    load_global_config,
     resolve_scope_globs,
     sanitize_scope_path,
 )
@@ -153,14 +153,15 @@ async def _init_server() -> None:
     # Load trust gate prompts at startup (anti-tampering: never re-read from disk)
     _prompt_cache.load_from_trails_dir(trails_dir)
 
-    # Load lifecycle hooks from manifest (anti-tampering: never re-read from disk)
-    manifest_path = repo_root / "hooks" / "hooks.yaml"
-    _hook_registry.load_from_manifest(manifest_path)
+    # Load lifecycle hooks from config.yaml (anti-tampering: never re-read from disk)
+    store = ConfigStore.get()
+    if store.global_config.hooks:
+        _hook_registry.load_from_entries(store.global_config.hooks, base_dir=store.data_repo_root)
 
     # Fire on_startup hooks
     if _hook_registry.has_hooks:
         from .hook_types import OnStartupEvent, StartupFail, StartupWarn
-        startup_event = OnStartupEvent(trails_dir=trails_dir, config=load_global_config().__dict__)
+        startup_event = OnStartupEvent(trails_dir=trails_dir, config=store.global_config.model_dump(mode="json"))
         for hook in _hook_registry.get_hooks("on_startup"):
             try:
                 ret = await asyncio.wait_for(hook.fn(startup_event), timeout=hook.timeout)
@@ -638,7 +639,7 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
 
         # Post-write push hook: push after successful write operations
         if name in write_ops and isinstance(result, dict) and result.get("status") == "ok":
-            config = load_global_config()
+            config = ConfigStore.get().global_config
             if config.push_strategy == "immediate" and _shared_backend is not None:
                 push_result = await _shared_backend.try_push()
                 if push_result.get("status") == "warning":

@@ -1,0 +1,35 @@
+# Consultation Report — GPT-5.1-Codex
+# Project: 13 — Spec 22: Unified Config Architecture
+# Type: PR Code Review (post-implementation)
+# Date: 2026-03-09
+
+## VERDICT: APPROVED (with one fix addressed)
+
+## Summary
+Spec 22 implementation is complete and correct. ConfigStore singleton is appropriate
+for the asyncio MCP server context (single-process, no threading). All test isolation
+via autouse reset_config_store fixture is correct. load_from_entries() behavior is
+identical to load_from_manifest() sans YAML parsing. No regressions.
+
+## Issues Found
+
+### [MEDIUM — FIXED] server.py:164 — GlobalConfig.__dict__ not Pydantic V2 safe
+GlobalConfig.__dict__ in Pydantic V2 does not recursively serialize nested models.
+With hooks: list[HookEntry] now present, hook plugins receiving this as the startup
+config dict would get raw HookEntry instances instead of plain dicts.
+
+Fix applied: model_dump(mode='json') for full recursive JSON-compatible serialization.
+
+### [MEDIUM — PRE-EXISTING, OUT OF SCOPE] FAVA_TRAILS_DATA_REPO tilde expansion
+The original get_data_repo_root() also did not expand tilde. This PR preserves existing
+behavior. Not a regression; deferred to a future cleanup.
+
+### [MEDIUM — PRE-EXISTING, OUT OF SCOPE] Threading lock for ConfigStore
+asyncio MCP server is single-threaded. Threading lock not required. Not addressed.
+
+## Positive Aspects
+- ConfigStore is clean and idiomatic for the asyncio context
+- HookEntry validators (exactly_one_source, validate_points, validate_fail_mode) correct
+- autouse fixture provides clean per-test isolation
+- Free functions (load_global_config etc.) unchanged — zero call-site migration needed
+- save_global_config() correctly invalidates cache with ConfigStore.reset()

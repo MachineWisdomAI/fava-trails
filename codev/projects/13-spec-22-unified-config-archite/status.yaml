@@ -1,0 +1,15 @@
+id: '13'
+title: spec-22-unified-config-archite
+protocol: aspir
+phase: specify
+plan_phases: []
+current_plan_phase: null
+gates:
+  pr:
+    status: approved
+    approved_at: '2026-03-09T13:08:52.639Z'
+iteration: 1
+build_complete: true
+history: []
+started_at: '2026-03-09T12:39:15.350Z'
+updated_at: '2026-03-09T13:08:52.640Z'

@@ -6,7 +6,7 @@ import logging
 import os
 from typing import Any
 
-from ..config import get_trails_dir, get_trust_gate_policy, load_global_config
+from ..config import ConfigStore, get_trails_dir, get_trust_gate_policy
 from ..trust_gate import TrustGateConfigError, TrustGatePromptCache, review_thought
 
 logger = logging.getLogger(__name__)
@@ -136,7 +136,7 @@ async def handle_propose_truth(
             except TrustGateConfigError as e:
                 return {"status": "error", "message": str(e)}
 
-            global_config = load_global_config()
+            global_config = ConfigStore.get().global_config
             openrouter_key = os.environ.get(global_config.openrouter_api_key_env, "")
             if not openrouter_key:
                 return {

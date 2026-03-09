@@ -6,6 +6,7 @@ import logging
 import os
 import re
 from pathlib import Path
+from typing import ClassVar
 
 import yaml
 
@@ -65,15 +66,73 @@ def sanitize_namespace(namespace: str) -> str:
     return namespace
 
 
+class ConfigStore:
+    """Singleton for cached global config access.
+
+    Caches global config (config.yaml) only. Per-trail configs
+    remain lazily loaded in TrailManager.
+
+    Cache lifecycle: env var changes and config file edits require
+    server restart or ConfigStore.reset().
+    """
+
+    _instance: ClassVar[ConfigStore | None] = None
+
+    def __init__(self, global_config: GlobalConfig, data_repo_root: Path, trails_dir: Path) -> None:
+        self.global_config = global_config
+        self.data_repo_root = data_repo_root
+        self.trails_dir = trails_dir
+
+    @classmethod
+    def get(cls) -> ConfigStore:
+        """Return cached instance, loading from disk on first call."""
+        if cls._instance is None:
+            cls._instance = cls._load_from_disk()
+        return cls._instance
+
+    @classmethod
+    def _load_from_disk(cls) -> ConfigStore:
+        data_repo = os.environ.get("FAVA_TRAILS_DATA_REPO")
+        data_repo_root = Path(data_repo) if data_repo else Path(DEFAULT_FAVA_HOME)
+
+        config_path = data_repo_root / "config.yaml"
+        if config_path.exists():
+            with open(config_path) as f:
+                data = yaml.safe_load(f) or {}
+            global_config = GlobalConfig(**data)
+        else:
+            global_config = GlobalConfig()
+
+        # Resolve trails_dir
+        env_override = os.environ.get("FAVA_TRAILS_DIR")
+        if env_override:
+            trails_dir = Path(os.path.expanduser(env_override))
+        else:
+            trails_path = Path(global_config.trails_dir)
+            if trails_path.is_absolute():
+                trails_dir = trails_path
+            else:
+                trails_dir = data_repo_root / global_config.trails_dir
+
+        return cls(global_config=global_config, data_repo_root=data_repo_root, trails_dir=trails_dir)
+
+    @classmethod
+    def reset(cls) -> None:
+        """Clear cached instance. Next .get() will re-read from disk."""
+        cls._instance = None
+
+    @classmethod
+    def override(cls, instance: ConfigStore) -> None:
+        """Inject a pre-built instance (for tests)."""
+        cls._instance = instance
+
+
 def get_data_repo_root() -> Path:
     """Get the FAVA Trails data repo root directory (monorepo root where .jj/ and .git/ live).
 
     Checks FAVA_TRAILS_DATA_REPO env var, falls back to ~/.fava-trails.
     """
-    data_repo = os.environ.get("FAVA_TRAILS_DATA_REPO")
-    if data_repo:
-        return Path(data_repo)
-    return Path(DEFAULT_FAVA_HOME)
+    return ConfigStore.get().data_repo_root
 
 
 def get_trails_dir() -> Path:
@@ -84,34 +143,21 @@ def get_trails_dir() -> Path:
     2. config.yaml trails_dir (absolute path used directly, relative resolved from FAVA_TRAILS_DATA_REPO)
     3. Default: $FAVA_TRAILS_DATA_REPO/trails
     """
-    env_override = os.environ.get("FAVA_TRAILS_DIR")
-    if env_override:
-        return Path(os.path.expanduser(env_override))
-
-    home = get_data_repo_root()
-    config = load_global_config()
-    trails_path = Path(config.trails_dir)
-    if trails_path.is_absolute():
-        return trails_path
-    return home / config.trails_dir
+    return ConfigStore.get().trails_dir
 
 
 def load_global_config() -> GlobalConfig:
     """Load global configuration from config.yaml."""
-    config_path = get_data_repo_root() / "config.yaml"
-    if config_path.exists():
-        with open(config_path) as f:
-            data = yaml.safe_load(f) or {}
-        return GlobalConfig(**data)
-    return GlobalConfig()
+    return ConfigStore.get().global_config
 
 
 def save_global_config(config: GlobalConfig) -> None:
     """Save global configuration to config.yaml."""
-    config_path = get_data_repo_root() / "config.yaml"
+    config_path = ConfigStore.get().data_repo_root / "config.yaml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     with open(config_path, "w") as f:
         yaml.dump(config.model_dump(), f, default_flow_style=False, sort_keys=False)
+    ConfigStore.reset()  # Invalidate cache after write
 
 
 def load_trail_config(trail_name: str) -> TrailConfig:
