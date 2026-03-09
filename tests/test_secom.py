@@ -1,6 +1,13 @@
-"""Tests for SECOM Compression Hooks (protocols/secom)."""
+"""Tests for SECOM Compression Hooks (protocols/secom).
+
+The compression engine (LLMLingua-2) is an optional heavy dependency.
+Tests that exercise before_propose compression mock _compress() to avoid
+requiring the llmlingua package in the test environment.
+"""
 
 from __future__ import annotations
+
+from unittest.mock import patch
 
 import pytest
 
@@ -15,7 +22,7 @@ from fava_trails.hook_types import (
 )
 from fava_trails.models import ThoughtFrontmatter, ThoughtMetadata, ThoughtRecord
 from fava_trails.protocols.secom import (
-    _compress_heuristic,
+    KNOWN_ENGINES,
     before_propose,
     before_save,
     configure,
@@ -54,64 +61,38 @@ def _configure(**overrides):
         "compression_threshold_chars": 500,
         "verbosity_warn_chars": 1000,
         "target_compress_rate": 0.6,
-        "compression_engine": "heuristic",
+        "compression_engine": "llmlingua",
     }
     config.update(overrides)
     configure(config)
 
 
-# --- Heuristic Compression Engine ---
+def _mock_compress(text: str, target_rate: float) -> tuple[str, float]:
+    """Deterministic mock compressor: keeps first target_rate fraction of text."""
+    keep = max(1, int(len(text) * target_rate))
+    compressed = text[:keep]
+    return compressed, len(compressed) / len(text) if text else 1.0
 
 
-class TestHeuristicCompression:
-    def test_short_text_unchanged(self):
-        """Text with <= 2 sentences passes through unchanged."""
-        text = "Hello world. Goodbye world."
-        compressed, rate = _compress_heuristic(text, 0.6)
-        assert compressed == text
-        assert rate == 1.0
+# --- Configure Validation ---
 
-    def test_single_sentence_unchanged(self):
-        text = "Just one sentence here."
-        compressed, rate = _compress_heuristic(text, 0.6)
-        assert compressed == text
-        assert rate == 1.0
 
-    def test_compresses_multi_sentence(self):
-        """Multi-sentence text is compressed by removing short sentences."""
-        text = (
-            "This is the first important sentence with significant content. "
-            "Short. "
-            "This is another important sentence that contains key information. "
-            "Also short. "
-            "This is the third important sentence with substantial details."
-        )
-        compressed, rate = _compress_heuristic(text, 0.6)
-        assert len(compressed) < len(text)
-        assert rate < 1.0
+class TestConfigure:
+    def test_known_engine_accepted(self):
+        """Known engines don't raise."""
+        configure({"compression_engine": "llmlingua"})
 
-    def test_preserves_sentence_order(self):
-        """Compressed output retains original sentence ordering."""
-        text = "First sentence is long enough to keep. Second is tiny. Third sentence is also quite long enough."
-        compressed, rate = _compress_heuristic(text, 0.6)
-        sentences = compressed.split(". ")
-        # Verify ordering is preserved (no reordering)
-        if len(sentences) > 1:
-            first_pos = text.find(sentences[0])
-            last_pos = text.find(sentences[-1].rstrip("."))
-            assert first_pos < last_pos
+    def test_unknown_engine_raises(self):
+        """Unknown engine raises ValueError at configure time."""
+        with pytest.raises(ValueError, match="unknown compression_engine"):
+            configure({"compression_engine": "magic"})
 
-    def test_empty_text(self):
-        compressed, rate = _compress_heuristic("", 0.6)
-        assert compressed == ""
-        assert rate == 1.0
+    def test_default_engine_is_llmlingua(self):
+        """Omitting compression_engine defaults to llmlingua (no error)."""
+        configure({})
 
-    def test_duplicate_sentences(self):
-        """Duplicate sentences are handled correctly via index-based selection."""
-        text = "Important fact. Filler. Important fact. More filler. Important fact."
-        compressed, rate = _compress_heuristic(text, 0.6)
-        # Should not keep all duplicates when only some indices are selected
-        assert rate < 1.0 or len(compressed) <= len(text)
+    def test_known_engines_registry(self):
+        assert "llmlingua" in KNOWN_ENGINES
 
 
 # --- before_propose Hook ---
@@ -131,20 +112,12 @@ class TestBeforePropose:
     async def test_above_threshold_compresses(self):
         """Content above threshold is compressed."""
         _configure(compression_threshold_chars=100)
-        long_content = (
-            "This is the first substantial sentence with important details. "
-            "This is filler. "
-            "This is the second substantial sentence containing key facts. "
-            "More filler. "
-            "This is the third substantial sentence with significant information. "
-            "Tiny. "
-            "This is the fourth substantial sentence that has relevant content. "
-            "Brief. "
-            "This is the fifth substantial sentence with critical data points."
-        )
-        thought = _make_thought(content=long_content)
-        event = BeforeProposeEvent(trail_name="t", thought=thought)
-        result = await before_propose(event)
+        long_content = "A" * 200
+
+        with patch("fava_trails.protocols.secom._compress", side_effect=_mock_compress):
+            thought = _make_thought(content=long_content)
+            event = BeforeProposeEvent(trail_name="t", thought=thought)
+            result = await before_propose(event)
 
         assert result is not None
         assert len(result) == 2
@@ -156,7 +129,7 @@ class TestBeforePropose:
         assert "secom-compressed" in mutate_action.patch.tags
         assert "secom_compress_rate" in mutate_action.patch.metadata
         assert "secom_original_chars" in mutate_action.patch.metadata
-        assert "secom_engine" in mutate_action.patch.metadata
+        assert mutate_action.patch.metadata["secom_engine"] == "llmlingua"
 
         annotate_action = result[1]
         assert isinstance(annotate_action, Annotate)
@@ -185,13 +158,17 @@ class TestBeforePropose:
     @pytest.mark.asyncio
     async def test_minimal_compression_skipped(self):
         """If compression achieves < 5% reduction, annotate skip (no Mutate)."""
-        _configure(compression_threshold_chars=10, target_compress_rate=0.99)
-        # Two long sentences of similar length -- heuristic can't remove much at 0.99
-        text = "First long sentence. Second long sentence."
-        thought = _make_thought(content=text)
-        event = BeforeProposeEvent(trail_name="t", thought=thought)
-        result = await before_propose(event)
-        # With only 2 sentences at 0.99 rate, heuristic returns 1.0 -- minimal compression
+        _configure(compression_threshold_chars=10)
+
+        def _barely_compress(text, rate):
+            # Remove 1 char — 0.99+ rate
+            return text[:-1], (len(text) - 1) / len(text)
+
+        with patch("fava_trails.protocols.secom._compress", side_effect=_barely_compress):
+            thought = _make_thought(content="A" * 200)
+            event = BeforeProposeEvent(trail_name="t", thought=thought)
+            result = await before_propose(event)
+
         assert result is not None
         assert len(result) == 1
         assert isinstance(result[0], Annotate)
@@ -200,27 +177,20 @@ class TestBeforePropose:
     @pytest.mark.asyncio
     async def test_compression_failure_fails_open(self):
         """Compression error returns Annotate with error, does not block."""
-        import fava_trails.protocols.secom as mod
-
-        _configure(compression_threshold_chars=10, compression_engine="heuristic")
-
-        # Monkey-patch heuristic to raise
-        original = mod._compress_heuristic
+        _configure(compression_threshold_chars=10)
 
         def _bad_compress(text, rate):
             raise RuntimeError("compressor exploded")
 
-        mod._compress_heuristic = _bad_compress
-        try:
-            thought = _make_thought(content="A" * 100 + ". B" * 50 + ". C" * 50 + ".")
+        with patch("fava_trails.protocols.secom._compress", side_effect=_bad_compress):
+            thought = _make_thought(content="A" * 200)
             event = BeforeProposeEvent(trail_name="t", thought=thought)
             result = await before_propose(event)
-            assert result is not None
-            assert len(result) == 1
-            assert isinstance(result[0], Annotate)
-            assert result[0].values["secom_status"] == "compression_failed"
-        finally:
-            mod._compress_heuristic = original
+
+        assert result is not None
+        assert len(result) == 1
+        assert isinstance(result[0], Annotate)
+        assert result[0].values["secom_status"] == "compression_failed"
 
     @pytest.mark.asyncio
     async def test_idempotency_no_double_compress(self):
@@ -239,16 +209,12 @@ class TestBeforePropose:
     async def test_preserves_existing_tags(self):
         """Compression adds secom-compressed without removing existing tags."""
         _configure(compression_threshold_chars=10)
-        long_content = (
-            "First important sentence with substantial details. "
-            "Filler. "
-            "Second important sentence with key information. "
-            "More filler. "
-            "Third important sentence with critical content."
-        )
-        thought = _make_thought(content=long_content, tags=["my-tag", "another-tag"])
-        event = BeforeProposeEvent(trail_name="t", thought=thought)
-        result = await before_propose(event)
+
+        with patch("fava_trails.protocols.secom._compress", side_effect=_mock_compress):
+            thought = _make_thought(content="A" * 200, tags=["my-tag", "another-tag"])
+            event = BeforeProposeEvent(trail_name="t", thought=thought)
+            result = await before_propose(event)
+
         assert result is not None
         mutate_action = result[0]
         assert isinstance(mutate_action, Mutate)
@@ -332,13 +298,10 @@ class TestOnRecall:
         result = await on_recall(event)
         assert result is not None
 
-        # Find RecallSelect
         select = [a for a in result if isinstance(a, RecallSelect)][0]
-        # Compressed thought should be ranked first (higher score)
         assert select.ordered_ulids[0] == "COMP"
         assert select.reason == "secom_density_rerank"
 
-        # Find Annotate
         annotate = [a for a in result if isinstance(a, Annotate)][0]
         assert annotate.values["compressed_count"] == 1
         assert annotate.values["total_count"] == 2
@@ -355,12 +318,12 @@ class TestOnRecall:
             extra={"secom_compress_rate": 0.6},
         )
         t_verbose = _make_thought(
-            content="x" * 100,  # Above 10 char threshold
+            content="x" * 100,
             thought_id="VERBOSE",
             confidence=0.5,
         )
         t_short = _make_thought(
-            content="tiny",  # Below 10 char threshold
+            content="tiny",
             thought_id="SHORT",
             confidence=0.5,
         )
@@ -369,7 +332,6 @@ class TestOnRecall:
         assert result is not None
 
         select = [a for a in result if isinstance(a, RecallSelect)][0]
-        # Compressed first (boosted), then short (no penalty), then verbose (penalized)
         assert select.ordered_ulids.index("COMP") < select.ordered_ulids.index("VERBOSE")
 
     @pytest.mark.asyncio
@@ -394,7 +356,6 @@ class TestOnRecall:
         result = await on_recall(event)
         assert result is not None
         select = [a for a in result if isinstance(a, RecallSelect)][0]
-        # Normal (0.5 base) should rank above zero (0.0 base)
         assert select.ordered_ulids[0] == "NORM"
 
     @pytest.mark.asyncio
@@ -415,7 +376,6 @@ class TestOnRecall:
         )
         event = OnRecallEvent(trail_name="t", results=[t_bad, t_ok])
         result = await on_recall(event)
-        # Should not crash -- falls back to 0.6 rate
         assert result is not None
 
     @pytest.mark.asyncio
@@ -427,21 +387,20 @@ class TestOnRecall:
             thought_id="HEAVY",
             tags=["secom-compressed"],
             confidence=0.5,
-            extra={"secom_compress_rate": 0.4},  # 60% removed
+            extra={"secom_compress_rate": 0.4},
         )
         t_light = _make_thought(
             content="light",
             thought_id="LIGHT",
             tags=["secom-compressed"],
             confidence=0.5,
-            extra={"secom_compress_rate": 0.8},  # 20% removed
+            extra={"secom_compress_rate": 0.8},
         )
         event = OnRecallEvent(trail_name="t", results=[t_light, t_heavy])
         result = await on_recall(event)
         assert result is not None
 
         select = [a for a in result if isinstance(a, RecallSelect)][0]
-        # Heavy compression = higher density = ranked first
         assert select.ordered_ulids[0] == "HEAVY"
 
 
@@ -470,16 +429,12 @@ class TestPipelineIntegration:
         )
         registry._hooks.setdefault("before_propose", []).append(spec)
 
-        long_content = (
-            "This is the first significant sentence with details. "
-            "Tiny. "
-            "This is the second significant sentence with information. "
-            "Small. "
-            "This is the third significant sentence with more content."
-        )
-        thought = _make_thought(content=long_content)
-        event = BeforeProposeEvent(trail_name="t", thought=thought)
-        result = await run_pipeline(registry, event)
+        long_content = "A" * 200
+
+        with patch("fava_trails.protocols.secom._compress", side_effect=_mock_compress):
+            thought = _make_thought(content=long_content)
+            event = BeforeProposeEvent(trail_name="t", thought=thought)
+            result = await run_pipeline(registry, event)
 
         assert result.feedback.mutated
         assert result.event.thought.content != long_content

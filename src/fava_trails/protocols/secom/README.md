@@ -1,6 +1,6 @@
 # SECOM Compression Hooks (WORM Pattern)
 
-Extractive compression at promote time for information density, based on:
+Extractive token-level compression at promote time for information density, based on:
 
 > Microsoft ICLR 2025 "On Memory Construction and Retrieval for Personalized Conversational Agents" (arXiv:2502.05589)
 > Reference implementation: [microsoft/SeCom](https://github.com/microsoft/SeCom)
@@ -15,6 +15,7 @@ The original verbose draft is preserved in JJ commit history (draft -> promoted 
 
 ### Prerequisites
 - FAVA Trails installed: `uv add fava-trails` (or `pip install fava-trails`)
+- LLMLingua-2 installed: `uv add fava-trails[secom]` (or `pip install fava-trails[secom]`)
 - A working FAVA Trails configuration with at least one trail
 
 ### Option A: Module Reference (zero-friction, no copying)
@@ -32,7 +33,7 @@ hooks:
       compression_threshold_chars: 500
       verbosity_warn_chars: 1000
       target_compress_rate: 0.6
-      compression_engine: heuristic
+      compression_engine: llmlingua
 ```
 
 ### Option B: Local Copy (for customization)
@@ -52,7 +53,7 @@ hooks:
       compression_threshold_chars: 500
       verbosity_warn_chars: 1000
       target_compress_rate: 0.6
-      compression_engine: heuristic
+      compression_engine: llmlingua
 ```
 
 ### Where Is `config.yaml`?
@@ -68,23 +69,22 @@ hooks:
 | `compression_threshold_chars` | `int` | `500` | Minimum content length to trigger compression in `before_propose` |
 | `verbosity_warn_chars` | `int` | `1000` | Content length that triggers verbosity advisory in `before_save` |
 | `target_compress_rate` | `float` | `0.6` | Target token retention rate (0.5-0.7 optimal per paper) |
-| `compression_engine` | `str` | `"heuristic"` | `"heuristic"` (zero-dep) or `"llmlingua"` (production) |
+| `compression_engine` | `str` | `"llmlingua"` | Compression engine. Only `"llmlingua"` is supported. Unknown engines fail loudly at configure time. |
 
-## Compression Engines
+## Compression Engine: LLMLingua-2
 
-| Engine | Dependency | Speed | Quality | Hallucination-free |
-|--------|-----------|-------|---------|-------------------|
-| `heuristic` | None | ~1ms | Sentence-level filtering | Yes |
-| `llmlingua` | `llmlingua` PyPI | ~200-500ms CPU | Token-level extractive (paper's method) | Yes |
+Uses the `microsoft/llmlingua-2-xlm-roberta-large-meetingbank` model (355M params) for **extractive token-level compression**. For each token, the model predicts keep/discard. Key properties:
 
-### Installing LLMLingua-2
+- **Zero hallucination**: Only original tokens survive. No paraphrasing, no rewriting.
+- **Preserves named entities and identifiers**: Token-level decisions maintain factual anchors.
+- **Speed**: ~200-500ms on CPU per thought.
+- **Optimal rate**: tau = 0.5-0.7 (retain 50-70% of tokens). Below 0.5, critical information loss.
 
+Install with:
 ```bash
-uv add llmlingua
-# or: pip install llmlingua
+pip install fava-trails[secom]
+# or: uv add fava-trails[secom]
 ```
-
-Then set `compression_engine: llmlingua` in config. Uses the `microsoft/llmlingua-2-xlm-roberta-large-meetingbank` model (355M params).
 
 ## Hooks
 

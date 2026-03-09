@@ -9,9 +9,9 @@ Three lifecycle hooks:
   - before_save: Verbosity advisory via Advise
   - on_recall: Density-aware scoring via RecallSelect
 
-Compression engines:
-  - heuristic (default, zero-dependency): sentence-level filtering
-  - llmlingua (optional): token-level extractive compression via LLMLingua-2
+Compression engine:
+  - llmlingua: Token-level extractive compression via LLMLingua-2.
+    Install with: pip install fava-trails[secom]
 
 Configure via config.yaml hooks entry or test harness::
 
@@ -24,13 +24,12 @@ Configure via config.yaml hooks entry or test harness::
           compression_threshold_chars: 500
           verbosity_warn_chars: 1000
           target_compress_rate: 0.6
-          compression_engine: heuristic
+          compression_engine: llmlingua
 """
 
 from __future__ import annotations
 
 import logging
-import re
 from typing import Any
 
 from fava_trails.hook_types import (
@@ -46,6 +45,10 @@ from fava_trails.hook_types import (
 
 logger = logging.getLogger(__name__)
 
+# Known compression engines.  Each must implement:
+#   (text: str, target_rate: float) -> tuple[str, float]
+KNOWN_ENGINES = frozenset({"llmlingua"})
+
 _CONFIG: dict[str, Any] = {}
 _COMPRESSOR: Any = None
 
@@ -55,71 +58,36 @@ def configure(config: dict[str, Any]) -> None:
     global _CONFIG
     _CONFIG = config
 
+    engine = config.get("compression_engine", "llmlingua")
+    if engine not in KNOWN_ENGINES:
+        raise ValueError(
+            f"SECOM: unknown compression_engine {engine!r}. "
+            f"Known engines: {sorted(KNOWN_ENGINES)}"
+        )
 
-# --- Compression Engines ---
+
+# --- Compression Engine ---
 
 
 def _get_compressor() -> Any:
-    """Lazy-load compression engine to avoid import cost on startup."""
+    """Lazy-load LLMLingua-2 compressor on first use."""
     global _COMPRESSOR
     if _COMPRESSOR is not None:
         return _COMPRESSOR
 
-    engine = _CONFIG.get("compression_engine", "heuristic")
+    from llmlingua import PromptCompressor
 
-    if engine == "llmlingua":
-        try:
-            from llmlingua import PromptCompressor
-
-            _COMPRESSOR = PromptCompressor(
-                model_name="microsoft/llmlingua-2-xlm-roberta-large-meetingbank",
-                use_llmlingua2=True,
-            )
-            logger.info("SECOM: LLMLingua-2 compressor loaded")
-        except ImportError:
-            logger.warning("SECOM: llmlingua not installed, falling back to heuristic")
-            _COMPRESSOR = "heuristic"
-    else:
-        _COMPRESSOR = "heuristic"
-
+    _COMPRESSOR = PromptCompressor(
+        model_name="microsoft/llmlingua-2-xlm-roberta-large-meetingbank",
+        use_llmlingua2=True,
+    )
+    logger.info("SECOM: LLMLingua-2 compressor loaded")
     return _COMPRESSOR
 
 
-def _compress_heuristic(text: str, target_rate: float) -> tuple[str, float]:
-    """Sentence-level compression fallback.
-
-    Removes lowest-density (shortest) sentences while preserving original
-    sentence order.  Zero-dependency and fast (~1ms).
-    """
-    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
-    if len(sentences) <= 2:
-        return text, 1.0
-
-    scored = [(i, s, len(s)) for i, s in enumerate(sentences)]
-    scored.sort(key=lambda x: x[2], reverse=True)
-
-    target_chars = int(len(text) * target_rate)
-    kept_idx: set[int] = set()
-    total = 0
-    for i, _sentence, length in scored:
-        if total + length > target_chars and kept_idx:
-            break
-        kept_idx.add(i)
-        total += length
-
-    # Restore original order
-    ordered = [s for i, s in enumerate(sentences) if i in kept_idx]
-    compressed = " ".join(ordered)
-    actual_rate = len(compressed) / len(text) if text else 1.0
-    return compressed, actual_rate
-
-
-def _compress_llmlingua(text: str, target_rate: float) -> tuple[str, float]:
-    """LLMLingua-2 extractive token-level compression."""
+def _compress(text: str, target_rate: float) -> tuple[str, float]:
+    """Run extractive token-level compression via LLMLingua-2."""
     compressor = _get_compressor()
-    if compressor == "heuristic":
-        return _compress_heuristic(text, target_rate)
-
     result = compressor.compress_prompt(
         [text],
         rate=target_rate,
@@ -155,13 +123,10 @@ async def before_propose(event: BeforeProposeEvent) -> list[Any] | None:
         return None
 
     target_rate = _CONFIG.get("target_compress_rate", 0.6)
-    engine = _CONFIG.get("compression_engine", "heuristic")
+    engine = _CONFIG.get("compression_engine", "llmlingua")
 
     try:
-        if engine == "llmlingua":
-            compressed, actual_rate = _compress_llmlingua(content, target_rate)
-        else:
-            compressed, actual_rate = _compress_heuristic(content, target_rate)
+        compressed, actual_rate = _compress(content, target_rate)
     except Exception as e:
         # fail_mode: open -- compression failure should not block promotion
         logger.error("SECOM: compression failed, proceeding with original: %s", e)
