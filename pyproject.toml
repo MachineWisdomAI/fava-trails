@@ -29,7 +29,10 @@ anthropic = ["any-llm-sdk[anthropic]"]
 gemini    = ["any-llm-sdk[gemini]"]
 mistral   = ["any-llm-sdk[mistral]"]
 ollama    = ["any-llm-sdk[ollama]"]
-all       = ["any-llm-sdk[bedrock,groq,anthropic,gemini,mistral,ollama]"]
+# Protocol extras: lightweight protocols (1-2 deps) live here as extras.
+# Protocols with heavy dependency trees must be UV workspace members instead.
+secom     = ["llmlingua>=0.2.0"]
+all       = ["any-llm-sdk[bedrock,groq,anthropic,gemini,mistral,ollama]", "llmlingua>=0.2.0"]
 
 [project.urls]
 Homepage = "https://github.com/MachineWisdomAI/fava-trails"
