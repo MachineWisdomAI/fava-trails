@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 import pytest
 
+import fava_trails.protocols.secom as secom
 from fava_trails.hook_types import (
     Advise,
     Annotate,
@@ -21,13 +22,6 @@ from fava_trails.hook_types import (
     RecallSelect,
 )
 from fava_trails.models import ThoughtFrontmatter, ThoughtMetadata, ThoughtRecord
-from fava_trails.protocols.secom import (
-    KNOWN_ENGINES,
-    before_propose,
-    before_save,
-    configure,
-    on_recall,
-)
 
 
 def _make_thought(
@@ -46,15 +40,13 @@ def _make_thought(
 @pytest.fixture(autouse=True)
 def _reset_secom():
     """Reset SECOM module state between tests."""
-    import fava_trails.protocols.secom as mod
-
-    mod._CONFIG = {}
-    mod._ENGINE_CONFIG = {}
-    mod._COMPRESSOR = None
+    secom._CONFIG = {}
+    secom._ENGINE_CONFIG = {}
+    secom._COMPRESSOR = None
     yield
-    mod._CONFIG = {}
-    mod._ENGINE_CONFIG = {}
-    mod._COMPRESSOR = None
+    secom._CONFIG = {}
+    secom._ENGINE_CONFIG = {}
+    secom._COMPRESSOR = None
 
 
 def _configure(**overrides):
@@ -66,7 +58,7 @@ def _configure(**overrides):
         "compression_engine": "llmlingua",
     }
     config.update(overrides)
-    configure(config)
+    secom.configure(config)
 
 
 def _mock_compress(text: str, target_rate: float) -> tuple[str, float]:
@@ -82,69 +74,64 @@ def _mock_compress(text: str, target_rate: float) -> tuple[str, float]:
 class TestConfigure:
     def test_string_engine_accepted(self):
         """String shorthand for known engines works."""
-        configure({"compression_engine": "llmlingua"})
+        secom.configure({"compression_engine": "llmlingua"})
 
     def test_unknown_string_engine_raises(self):
         """Unknown engine string raises ValueError."""
         with pytest.raises(ValueError, match="unknown compression_engine"):
-            configure({"compression_engine": "magic"})
+            secom.configure({"compression_engine": "magic"})
 
     def test_default_engine_is_llmlingua(self):
         """Omitting compression_engine defaults to llmlingua."""
-        configure({})
-        import fava_trails.protocols.secom as mod
-        assert mod._ENGINE_CONFIG["type"] == "llmlingua"
+        secom.configure({})
+        assert secom._ENGINE_CONFIG["type"] == "llmlingua"
 
     def test_dict_engine_accepted(self):
         """Dict config with type + constructor args works."""
-        configure({"compression_engine": {
+        secom.configure({"compression_engine": {
             "type": "llmlingua",
             "model_name": "custom/model",
             "device_map": "cuda",
         }})
-        import fava_trails.protocols.secom as mod
-        assert mod._ENGINE_CONFIG["type"] == "llmlingua"
-        assert mod._ENGINE_CONFIG["model_name"] == "custom/model"
-        assert mod._ENGINE_CONFIG["device_map"] == "cuda"
+        assert secom._ENGINE_CONFIG["type"] == "llmlingua"
+        assert secom._ENGINE_CONFIG["model_name"] == "custom/model"
+        assert secom._ENGINE_CONFIG["device_map"] == "cuda"
 
     def test_dict_engine_requires_type(self):
         """Dict config without type raises."""
         with pytest.raises(ValueError, match="must include 'type'"):
-            configure({"compression_engine": {"model_name": "foo"}})
+            secom.configure({"compression_engine": {"model_name": "foo"}})
 
     def test_dict_engine_unknown_type_raises(self):
         """Dict config with unknown type raises."""
         with pytest.raises(ValueError, match="unknown compression_engine type"):
-            configure({"compression_engine": {"type": "magic"}})
+            secom.configure({"compression_engine": {"type": "magic"}})
 
     def test_dict_engine_with_compress_args(self):
         """compress_args are stored for pass-through to compress_prompt()."""
-        configure({"compression_engine": {
+        secom.configure({"compression_engine": {
             "type": "llmlingua",
             "compress_args": {
                 "force_tokens": ["\n", "."],
                 "drop_consecutive": True,
             },
         }})
-        import fava_trails.protocols.secom as mod
-        assert mod._ENGINE_CONFIG["compress_args"]["drop_consecutive"] is True
+        assert secom._ENGINE_CONFIG["compress_args"]["drop_consecutive"] is True
 
     def test_invalid_type_raises(self):
         """Non-string, non-dict raises."""
         with pytest.raises(ValueError, match="must be a string or dict"):
-            configure({"compression_engine": 42})
+            secom.configure({"compression_engine": 42})
 
     def test_known_engines_registry(self):
-        assert "llmlingua" in KNOWN_ENGINES
+        assert "llmlingua" in secom.KNOWN_ENGINES
 
     def test_reconfigure_resets_compressor(self):
         """Calling configure() again resets _COMPRESSOR so new config takes effect."""
-        import fava_trails.protocols.secom as mod
-
-        mod._COMPRESSOR = "sentinel"  # Simulate a loaded compressor
-        configure({"compression_engine": {"type": "llmlingua", "model_name": "other/model"}})
-        assert mod._COMPRESSOR is None
-        assert mod._ENGINE_CONFIG["model_name"] == "other/model"
+        secom._COMPRESSOR = "sentinel"  # Simulate a loaded compressor
+        secom.configure({"compression_engine": {"type": "llmlingua", "model_name": "other/model"}})
+        assert secom._COMPRESSOR is None
+        assert secom._ENGINE_CONFIG["model_name"] == "other/model"
 
 
 # --- before_propose Hook ---
@@ -157,7 +144,7 @@ class TestBeforePropose:
         _configure(compression_threshold_chars=500)
         thought = _make_thought(content="Short content.")
         event = BeforeProposeEvent(trail_name="t", thought=thought)
-        result = await before_propose(event)
+        result = await secom.before_propose(event)
         assert result is None
 
     @pytest.mark.asyncio
@@ -169,7 +156,7 @@ class TestBeforePropose:
         with patch("fava_trails.protocols.secom._compress", side_effect=_mock_compress):
             thought = _make_thought(content=long_content)
             event = BeforeProposeEvent(trail_name="t", thought=thought)
-            result = await before_propose(event)
+            result = await secom.before_propose(event)
 
         assert result is not None
         assert len(result) == 2
@@ -196,7 +183,7 @@ class TestBeforePropose:
             tags=["secom-compressed"],
         )
         event = BeforeProposeEvent(trail_name="t", thought=thought)
-        result = await before_propose(event)
+        result = await secom.before_propose(event)
         assert result is None
 
     @pytest.mark.asyncio
@@ -204,7 +191,7 @@ class TestBeforePropose:
         """Event without thought returns None."""
         _configure()
         event = BeforeProposeEvent(trail_name="t")
-        result = await before_propose(event)
+        result = await secom.before_propose(event)
         assert result is None
 
     @pytest.mark.asyncio
@@ -219,7 +206,7 @@ class TestBeforePropose:
         with patch("fava_trails.protocols.secom._compress", side_effect=_barely_compress):
             thought = _make_thought(content="A" * 200)
             event = BeforeProposeEvent(trail_name="t", thought=thought)
-            result = await before_propose(event)
+            result = await secom.before_propose(event)
 
         assert result is not None
         assert len(result) == 1
@@ -237,7 +224,7 @@ class TestBeforePropose:
         with patch("fava_trails.protocols.secom._compress", side_effect=_bad_compress):
             thought = _make_thought(content="A" * 200)
             event = BeforeProposeEvent(trail_name="t", thought=thought)
-            result = await before_propose(event)
+            result = await secom.before_propose(event)
 
         assert result is not None
         assert len(result) == 1
@@ -254,7 +241,7 @@ class TestBeforePropose:
             extra={"secom_compress_rate": 0.6, "secom_original_chars": 2000},
         )
         event = BeforeProposeEvent(trail_name="t", thought=thought)
-        result = await before_propose(event)
+        result = await secom.before_propose(event)
         assert result is None
 
     @pytest.mark.asyncio
@@ -265,7 +252,7 @@ class TestBeforePropose:
         with patch("fava_trails.protocols.secom._compress", side_effect=_mock_compress):
             thought = _make_thought(content="A" * 200, tags=["my-tag", "another-tag"])
             event = BeforeProposeEvent(trail_name="t", thought=thought)
-            result = await before_propose(event)
+            result = await secom.before_propose(event)
 
         assert result is not None
         mutate_action = result[0]
@@ -285,7 +272,7 @@ class TestBeforeSave:
         _configure(verbosity_warn_chars=1000)
         thought = _make_thought(content="Short.")
         event = BeforeSaveEvent(trail_name="t", thought=thought)
-        result = await before_save(event)
+        result = await secom.before_save(event)
         assert result is None
 
     @pytest.mark.asyncio
@@ -294,7 +281,7 @@ class TestBeforeSave:
         _configure(verbosity_warn_chars=50, compression_threshold_chars=30)
         thought = _make_thought(content="A" * 100)
         event = BeforeSaveEvent(trail_name="t", thought=thought)
-        result = await before_save(event)
+        result = await secom.before_save(event)
         assert result is not None
         assert len(result) == 1
         assert isinstance(result[0], Advise)
@@ -305,7 +292,7 @@ class TestBeforeSave:
     async def test_no_thought_returns_none(self):
         _configure()
         event = BeforeSaveEvent(trail_name="t")
-        result = await before_save(event)
+        result = await secom.before_save(event)
         assert result is None
 
 
@@ -317,7 +304,7 @@ class TestOnRecall:
     async def test_no_results_returns_none(self):
         _configure()
         event = OnRecallEvent(trail_name="t", results=[])
-        result = await on_recall(event)
+        result = await secom.on_recall(event)
         assert result is None
 
     @pytest.mark.asyncio
@@ -327,7 +314,7 @@ class TestOnRecall:
         t1 = _make_thought(content="short", thought_id="A")
         t2 = _make_thought(content="also short", thought_id="B")
         event = OnRecallEvent(trail_name="t", results=[t1, t2])
-        result = await on_recall(event)
+        result = await secom.on_recall(event)
         assert result is None
 
     @pytest.mark.asyncio
@@ -347,7 +334,7 @@ class TestOnRecall:
             confidence=0.5,
         )
         event = OnRecallEvent(trail_name="t", results=[t_normal, t_compressed])
-        result = await on_recall(event)
+        result = await secom.on_recall(event)
         assert result is not None
 
         select = [a for a in result if isinstance(a, RecallSelect)][0]
@@ -380,7 +367,7 @@ class TestOnRecall:
             confidence=0.5,
         )
         event = OnRecallEvent(trail_name="t", results=[t_verbose, t_short, t_compressed])
-        result = await on_recall(event)
+        result = await secom.on_recall(event)
         assert result is not None
 
         select = [a for a in result if isinstance(a, RecallSelect)][0]
@@ -405,7 +392,7 @@ class TestOnRecall:
             extra={"secom_compress_rate": 0.5},
         )
         event = OnRecallEvent(trail_name="t", results=[t_zero, t_normal])
-        result = await on_recall(event)
+        result = await secom.on_recall(event)
         assert result is not None
         select = [a for a in result if isinstance(a, RecallSelect)][0]
         assert select.ordered_ulids[0] == "NORM"
@@ -427,7 +414,7 @@ class TestOnRecall:
             confidence=0.5,
         )
         event = OnRecallEvent(trail_name="t", results=[t_bad, t_ok])
-        result = await on_recall(event)
+        result = await secom.on_recall(event)
         assert result is not None
 
     @pytest.mark.asyncio
@@ -449,7 +436,7 @@ class TestOnRecall:
             extra={"secom_compress_rate": 0.8},
         )
         event = OnRecallEvent(trail_name="t", results=[t_light, t_heavy])
-        result = await on_recall(event)
+        result = await secom.on_recall(event)
         assert result is not None
 
         select = [a for a in result if isinstance(a, RecallSelect)][0]
@@ -473,7 +460,7 @@ class TestPipelineIntegration:
         registry = HookRegistry()
         spec = HookSpec(
             name="before_propose",
-            fn=before_propose,
+            fn=secom.before_propose,
             fail_mode="open",
             timeout=5.0,
             order=20,
