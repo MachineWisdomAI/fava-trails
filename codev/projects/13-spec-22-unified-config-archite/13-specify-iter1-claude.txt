@@ -1,0 +1,39 @@
+# Consultation Report — Gemini 2.5 Pro
+# Project: 13 — Spec 22: Unified Config Architecture
+# Type: PR Code Review (post-implementation)
+# Date: 2026-03-09
+
+## VERDICT: APPROVED (with one fix addressed)
+
+## Summary
+High-quality implementation. ConfigStore singleton correct for asyncio (single-threaded).
+Model consolidation cleanly decouples HookEntry from hook_manifest.py preventing circular
+import debt. TrailConfig.hooks validator is a clean explicit feature-flag for deferred
+per-trail hook support. load_from_entries() preserves all error handling behavior.
+
+## Issues Found
+
+### [HIGH — FIXED] server.py:164 — OnStartupEvent config uses GlobalConfig.__dict__
+Pydantic V2 __dict__ does not recursively serialize nested models. GlobalConfig now
+contains hooks: list[HookEntry]. Hook plugins consuming the startup config event would
+receive raw HookEntry model instances, not plain dicts, potentially crashing.
+
+Fix applied: store.global_config.model_dump(mode="json") — full recursive JSON serialization.
+
+### [MEDIUM — PRE-EXISTING, OUT OF SCOPE] hook_manifest.py sys.path mutation
+sys.path modification for directory-based hook packages is pre-existing behavior.
+Not introduced by this PR. Deferred to future refactor.
+
+### [MEDIUM — PRE-EXISTING, OUT OF SCOPE] _trail_managers unbounded cache
+Pre-existing server design decision. Out of scope for Spec 22. Not addressed.
+
+### [MEDIUM — PRE-EXISTING, OUT OF SCOPE] ThoughtRecord.to_markdown redundant conversions
+Pre-existing. Not addressed.
+
+## Positive Aspects
+- ConfigStore.get()/reset()/override() shows excellent consideration for testability
+- Moving HookEntry to models.py creates clear data layer, prevents circular dependencies
+- Strong safeguards: sanitize_scope_path, sanitize_namespace protect against path traversal
+- Graceful degradation: missing config.yaml falls back to GlobalConfig() defaults
+- TrailConfig.hooks validator is clean explicit feature-flagging
+- 353 tests pass with full regression coverage

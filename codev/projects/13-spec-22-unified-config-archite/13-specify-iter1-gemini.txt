@@ -1,0 +1,37 @@
+# Consultation Report — Gemini 3.1 Pro Preview
+# Project: 13 — Spec 22: Unified Config Architecture
+# Type: PR Code Review (post-implementation)
+# Date: 2026-03-09
+
+## VERDICT: APPROVED (with one fix addressed)
+
+## Summary
+The implementation correctly delivers all Spec 22 success criteria:
+- HookEntry + KNOWN_HOOKS colocated in models.py (avoids circular imports)
+- GlobalConfig.hooks reads from config.yaml; TrailConfig.hooks defers with @field_validator
+- ConfigStore singleton with reset()/override() for test isolation
+- load_from_entries() cleanly replaces load_from_manifest()
+- hooks/hooks.yaml convention fully deleted
+- 353 tests pass, ruff clean
+
+## Issues Found
+
+### [HIGH — FIXED] server.py:164 — Pydantic V2 __dict__ serialization bug
+Using .__dict__ on a Pydantic V2 model does not recursively serialize nested models.
+GlobalConfig now contains hooks: list[HookEntry] — __dict__ would expose raw model objects
+to hook plugins expecting JSON-serializable data.
+
+Fix applied: store.global_config.model_dump(mode="json") replaces .__dict__
+
+### [HIGH — PRE-EXISTING, OUT OF SCOPE] get_trust_gate_policy condition
+Pre-existing logic issue unrelated to this PR's changes. Not addressed.
+
+### [LOW — PRE-EXISTING, OUT OF SCOPE] Root-level warning path handling
+Pre-existing. Not addressed.
+
+## Positive Aspects
+- ConfigStore singleton design correct for asyncio MCP server (single-threaded)
+- reset()/override() pattern provides excellent test isolation
+- Pydantic v2 @field_validator correctly defers per-trail hooks with ValueError
+- load_from_entries() preserves all load_from_manifest() behavior with cleaner interface
+- Mutable default dict fixed with Field(default_factory=dict)

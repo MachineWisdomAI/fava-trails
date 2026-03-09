@@ -161,7 +161,7 @@ async def _init_server() -> None:
     # Fire on_startup hooks
     if _hook_registry.has_hooks:
         from .hook_types import OnStartupEvent, StartupFail, StartupWarn
-        startup_event = OnStartupEvent(trails_dir=trails_dir, config=store.global_config.__dict__)
+        startup_event = OnStartupEvent(trails_dir=trails_dir, config=store.global_config.model_dump(mode="json"))
         for hook in _hook_registry.get_hooks("on_startup"):
             try:
                 ret = await asyncio.wait_for(hook.fn(startup_event), timeout=hook.timeout)
