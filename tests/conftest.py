@@ -14,6 +14,15 @@ if not Path(jj_bin).exists():
     pytest.skip("jj binary not found — install via: fava-trails install-jj", allow_module_level=True)
 
 
+@pytest.fixture(autouse=True)
+def reset_config_store():
+    """Reset ConfigStore singleton before and after every test for isolation."""
+    from fava_trails.config import ConfigStore
+    ConfigStore.reset()
+    yield
+    ConfigStore.reset()
+
+
 @pytest.fixture
 def tmp_fava_home(tmp_path):
     """Create a temporary FAVA_TRAILS_DATA_REPO with monorepo initialized at root."""
