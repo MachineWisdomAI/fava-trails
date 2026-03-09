@@ -24,7 +24,13 @@ Configure via config.yaml hooks entry or test harness::
           compression_threshold_chars: 500
           verbosity_warn_chars: 1000
           target_compress_rate: 0.6
-          compression_engine: llmlingua
+          compression_engine:
+            type: llmlingua
+            model_name: microsoft/llmlingua-2-xlm-roberta-large-meetingbank
+            device_map: cpu
+            compress_args:
+              force_tokens: ["\\n", ".", "?", "!", ",", "#", "-", "*"]
+              drop_consecutive: true
 """
 
 from __future__ import annotations
@@ -45,28 +51,75 @@ from fava_trails.hook_types import (
 
 logger = logging.getLogger(__name__)
 
-# Known compression engines.  Each must implement:
-#   (text: str, target_rate: float) -> tuple[str, float]
+# Known compression engine types.
 KNOWN_ENGINES = frozenset({"llmlingua"})
 
+# Default compression_engine config when none is provided.
+DEFAULT_ENGINE_CONFIG: dict[str, Any] = {
+    "type": "llmlingua",
+    "model_name": "microsoft/llmlingua-2-xlm-roberta-large-meetingbank",
+    "device_map": "cpu",
+    "use_llmlingua2": True,
+}
+
 _CONFIG: dict[str, Any] = {}
+_ENGINE_CONFIG: dict[str, Any] = {}
 _COMPRESSOR: Any = None
+
+
+def _parse_engine_config(raw: Any) -> dict[str, Any]:
+    """Normalize compression_engine config to a dict.
+
+    Accepts:
+      - omitted/None  -> DEFAULT_ENGINE_CONFIG
+      - str ("llmlingua") -> {"type": "llmlingua", ...defaults}
+      - dict           -> merged with defaults, "type" required
+    """
+    if raw is None:
+        return dict(DEFAULT_ENGINE_CONFIG)
+
+    if isinstance(raw, str):
+        if raw not in KNOWN_ENGINES:
+            raise ValueError(
+                f"SECOM: unknown compression_engine {raw!r}. "
+                f"Known engines: {sorted(KNOWN_ENGINES)}"
+            )
+        return {**DEFAULT_ENGINE_CONFIG, "type": raw}
+
+    if isinstance(raw, dict):
+        engine_type = raw.get("type")
+        if engine_type is None:
+            raise ValueError(
+                "SECOM: compression_engine dict must include 'type'. "
+                f"Known engines: {sorted(KNOWN_ENGINES)}"
+            )
+        if engine_type not in KNOWN_ENGINES:
+            raise ValueError(
+                f"SECOM: unknown compression_engine type {engine_type!r}. "
+                f"Known engines: {sorted(KNOWN_ENGINES)}"
+            )
+        return {**DEFAULT_ENGINE_CONFIG, **raw}
+
+    raise ValueError(
+        f"SECOM: compression_engine must be a string or dict, got {type(raw).__name__}"
+    )
 
 
 def configure(config: dict[str, Any]) -> None:
     """Receive hook config from HookRegistry at load time."""
-    global _CONFIG
+    global _CONFIG, _ENGINE_CONFIG
     _CONFIG = config
-
-    engine = config.get("compression_engine", "llmlingua")
-    if engine not in KNOWN_ENGINES:
-        raise ValueError(
-            f"SECOM: unknown compression_engine {engine!r}. "
-            f"Known engines: {sorted(KNOWN_ENGINES)}"
-        )
+    _ENGINE_CONFIG = _parse_engine_config(config.get("compression_engine"))
 
 
 # --- Compression Engine ---
+
+# Keys from compression_engine config that are passed to PromptCompressor().
+# Everything else is either our own key ("type", "compress_args") or unknown.
+_CONSTRUCTOR_KEYS = frozenset({
+    "model_name", "device_map", "model_config", "open_api_config",
+    "use_llmlingua2", "use_slingua", "llmlingua2_config",
+})
 
 
 def _get_compressor() -> Any:
@@ -77,22 +130,24 @@ def _get_compressor() -> Any:
 
     from llmlingua import PromptCompressor
 
-    _COMPRESSOR = PromptCompressor(
-        model_name="microsoft/llmlingua-2-xlm-roberta-large-meetingbank",
-        use_llmlingua2=True,
-    )
-    logger.info("SECOM: LLMLingua-2 compressor loaded")
+    constructor_args = {
+        k: v for k, v in _ENGINE_CONFIG.items()
+        if k in _CONSTRUCTOR_KEYS
+    }
+    _COMPRESSOR = PromptCompressor(**constructor_args)
+    logger.info("SECOM: compressor loaded with %s", constructor_args)
     return _COMPRESSOR
 
 
 def _compress(text: str, target_rate: float) -> tuple[str, float]:
-    """Run extractive token-level compression via LLMLingua-2."""
+    """Run extractive token-level compression."""
     compressor = _get_compressor()
-    result = compressor.compress_prompt(
-        [text],
-        rate=target_rate,
-        force_tokens=["\n", "?", "!", ".", ",", "#", "-", "*"],
-    )
+
+    # Start with configured defaults, then set rate
+    call_args: dict[str, Any] = dict(_ENGINE_CONFIG.get("compress_args", {}))
+    call_args["rate"] = target_rate
+
+    result = compressor.compress_prompt([text], **call_args)
     compressed = result["compressed_prompt"]
     actual_rate = len(compressed) / len(text) if text else 1.0
     return compressed, actual_rate
@@ -123,7 +178,7 @@ async def before_propose(event: BeforeProposeEvent) -> list[Any] | None:
         return None
 
     target_rate = _CONFIG.get("target_compress_rate", 0.6)
-    engine = _CONFIG.get("compression_engine", "llmlingua")
+    engine_type = _ENGINE_CONFIG.get("type", "llmlingua")
 
     try:
         compressed, actual_rate = _compress(content, target_rate)
@@ -147,7 +202,7 @@ async def before_propose(event: BeforeProposeEvent) -> list[Any] | None:
                 "secom_compress_rate": round(actual_rate, 3),
                 "secom_original_chars": original_chars,
                 "secom_compressed_chars": len(compressed),
-                "secom_engine": engine,
+                "secom_engine": engine_type,
             },
         )),
         Annotate({

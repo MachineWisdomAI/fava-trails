@@ -49,9 +49,11 @@ def _reset_secom():
     import fava_trails.protocols.secom as mod
 
     mod._CONFIG = {}
+    mod._ENGINE_CONFIG = {}
     mod._COMPRESSOR = None
     yield
     mod._CONFIG = {}
+    mod._ENGINE_CONFIG = {}
     mod._COMPRESSOR = None
 
 
@@ -78,18 +80,59 @@ def _mock_compress(text: str, target_rate: float) -> tuple[str, float]:
 
 
 class TestConfigure:
-    def test_known_engine_accepted(self):
-        """Known engines don't raise."""
+    def test_string_engine_accepted(self):
+        """String shorthand for known engines works."""
         configure({"compression_engine": "llmlingua"})
 
-    def test_unknown_engine_raises(self):
-        """Unknown engine raises ValueError at configure time."""
+    def test_unknown_string_engine_raises(self):
+        """Unknown engine string raises ValueError."""
         with pytest.raises(ValueError, match="unknown compression_engine"):
             configure({"compression_engine": "magic"})
 
     def test_default_engine_is_llmlingua(self):
-        """Omitting compression_engine defaults to llmlingua (no error)."""
+        """Omitting compression_engine defaults to llmlingua."""
         configure({})
+        import fava_trails.protocols.secom as mod
+        assert mod._ENGINE_CONFIG["type"] == "llmlingua"
+
+    def test_dict_engine_accepted(self):
+        """Dict config with type + constructor args works."""
+        configure({"compression_engine": {
+            "type": "llmlingua",
+            "model_name": "custom/model",
+            "device_map": "cuda",
+        }})
+        import fava_trails.protocols.secom as mod
+        assert mod._ENGINE_CONFIG["type"] == "llmlingua"
+        assert mod._ENGINE_CONFIG["model_name"] == "custom/model"
+        assert mod._ENGINE_CONFIG["device_map"] == "cuda"
+
+    def test_dict_engine_requires_type(self):
+        """Dict config without type raises."""
+        with pytest.raises(ValueError, match="must include 'type'"):
+            configure({"compression_engine": {"model_name": "foo"}})
+
+    def test_dict_engine_unknown_type_raises(self):
+        """Dict config with unknown type raises."""
+        with pytest.raises(ValueError, match="unknown compression_engine type"):
+            configure({"compression_engine": {"type": "magic"}})
+
+    def test_dict_engine_with_compress_args(self):
+        """compress_args are stored for pass-through to compress_prompt()."""
+        configure({"compression_engine": {
+            "type": "llmlingua",
+            "compress_args": {
+                "force_tokens": ["\n", "."],
+                "drop_consecutive": True,
+            },
+        }})
+        import fava_trails.protocols.secom as mod
+        assert mod._ENGINE_CONFIG["compress_args"]["drop_consecutive"] is True
+
+    def test_invalid_type_raises(self):
+        """Non-string, non-dict raises."""
+        with pytest.raises(ValueError, match="must be a string or dict"):
+            configure({"compression_engine": 42})
 
     def test_known_engines_registry(self):
         assert "llmlingua" in KNOWN_ENGINES

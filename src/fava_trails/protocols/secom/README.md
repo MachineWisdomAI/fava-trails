@@ -33,7 +33,10 @@ hooks:
       compression_threshold_chars: 500
       verbosity_warn_chars: 1000
       target_compress_rate: 0.6
-      compression_engine: llmlingua
+      compression_engine:
+        type: llmlingua
+        model_name: microsoft/llmlingua-2-xlm-roberta-large-meetingbank
+        device_map: cpu
 ```
 
 ### Option B: Local Copy (for customization)
@@ -53,7 +56,8 @@ hooks:
       compression_threshold_chars: 500
       verbosity_warn_chars: 1000
       target_compress_rate: 0.6
-      compression_engine: llmlingua
+      compression_engine:
+        type: llmlingua
 ```
 
 ### Where Is `config.yaml`?
@@ -69,11 +73,40 @@ hooks:
 | `compression_threshold_chars` | `int` | `500` | Minimum content length to trigger compression in `before_propose` |
 | `verbosity_warn_chars` | `int` | `1000` | Content length that triggers verbosity advisory in `before_save` |
 | `target_compress_rate` | `float` | `0.6` | Target token retention rate (0.5-0.7 optimal per paper) |
-| `compression_engine` | `str` | `"llmlingua"` | Compression engine. Only `"llmlingua"` is supported. Unknown engines fail loudly at configure time. |
+| `compression_engine` | `str` or `dict` | see below | Compression engine configuration |
+
+### `compression_engine` Config
+
+Can be a string shorthand (`"llmlingua"`) or a full dict:
+
+```yaml
+compression_engine:
+  # Required
+  type: llmlingua              # Engine type (only "llmlingua" supported)
+
+  # PromptCompressor constructor args (all optional, shown with defaults)
+  model_name: microsoft/llmlingua-2-xlm-roberta-large-meetingbank
+  device_map: cpu              # "cpu", "cuda", "cuda:0", etc.
+  use_llmlingua2: true
+  model_config: {}             # Extra HuggingFace model config
+  llmlingua2_config: {}        # LLMLingua-2 specific config
+
+  # Per-call compress_prompt() defaults (all optional)
+  compress_args:
+    force_tokens: ["\n", ".", "?", "!", ",", "#", "-", "*"]
+    force_reserve_digit: false
+    drop_consecutive: false
+    use_context_level_filter: false
+    use_token_level_filter: true
+    chunk_end_tokens: [".", "\n"]
+    target_token: -1           # Override rate with absolute token count
+```
+
+Unknown engine types fail loudly at configure time. See the [LLMLingua docs](https://github.com/microsoft/LLMLingua) for the full list of `PromptCompressor` constructor and `compress_prompt` parameters.
 
 ## Compression Engine: LLMLingua-2
 
-Uses the `microsoft/llmlingua-2-xlm-roberta-large-meetingbank` model (355M params) for **extractive token-level compression**. For each token, the model predicts keep/discard. Key properties:
+Uses **extractive token-level compression**. For each token, the model predicts keep/discard. Key properties:
 
 - **Zero hallucination**: Only original tokens survive. No paraphrasing, no rewriting.
 - **Preserves named entities and identifiers**: Token-level decisions maintain factual anchors.
