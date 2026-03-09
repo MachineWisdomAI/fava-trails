@@ -126,6 +126,14 @@ trust_gate: llm-oneshot                   # llm-oneshot | human (future)
 trust_gate_model: google/gemini-2.5-flash # model for LLM-based review
 openrouter_api_key_env: OPENROUTER_API_KEY # env var name for API key
 
+# Lifecycle hooks (optional, loaded at startup)
+hooks:
+  - module: fava_trails.protocols.secom   # built-in or PyPI module
+    points: [before_propose, before_save, on_recall]
+    order: 20
+    fail_mode: open
+    config: { ... }                       # passed to module's configure()
+
 # Per-trail overrides (optional)
 trails:
   mw/eng/sensitive-project:
@@ -141,6 +149,7 @@ trails:
 | `trust_gate` | string | `llm-oneshot` | Global trust gate policy |
 | `trust_gate_model` | string | `google/gemini-2.5-flash` | Model for LLM-based trust review |
 | `openrouter_api_key_env` | string | `OPENROUTER_API_KEY` | Env var name holding the API key |
+| `hooks` | list | `[]` | Lifecycle hook entries (see [Lifecycle Hooks](#lifecycle-hooks)) |
 
 ### Per-Trail Config
 
@@ -194,32 +203,38 @@ Lifecycle hooks let operators run custom Python code at key points in the though
 
 ### Setup
 
-1. Create a `hooks/` directory in your data repo
-2. Create a `hooks/hooks.yaml` manifest declaring your hooks
-3. Write Python hook files referenced by the manifest
-
-### Manifest (`hooks/hooks.yaml`)
+Add a `hooks:` section to your data repo's `config.yaml`. Each entry declares a hook module, the lifecycle points it handles, and optional configuration:
 
 ```yaml
+# config.yaml (at data repo root)
 hooks:
-  - path: ./quality_gate.py
+  # Built-in protocol (installed as a PyPI extra)
+  - module: fava_trails.protocols.secom
+    points: [before_propose, before_save, on_recall]
+    order: 20
+    fail_mode: open
+    config:
+      compression_threshold_chars: 500
+      target_compress_rate: 0.6
+      compression_engine:
+        type: llmlingua
+
+  # Local hook file (path relative to data repo root)
+  - path: ./hooks/quality_gate.py
     points: [before_save, before_propose]
     order: 10                     # lower = runs first (default: 50)
     fail_mode: open               # open (skip on error) | closed (halt on error)
     config:
       min_confidence: 0.3
 
-  - path: ./metrics.py
-    points: [after_save, after_propose]
+  # PyPI package
+  - module: my_published_package.hooks
+    points: [before_save]
     config:
       endpoint: "${METRICS_URL}/push"   # env var interpolation
-
-  - path: ./recall_ranker.py
-    points: [on_recall]
-
-  - module: my_published_package.hooks   # PyPI package instead of local file
-    points: [before_save]
 ```
+
+Hooks are loaded once at server startup and cached (anti-tampering pattern). Restart the MCP server after changing hook configuration.
 
 ### Hook Contract (v2)
 
@@ -311,6 +326,33 @@ Hooks that need to query trail state receive a `TrailContext` via `event.context
 - **`fail_mode: closed`**: Hook errors/timeouts halt the operation with an exception
 - Import errors with `fail_mode: closed` cause `sys.exit(1)` at startup
 
+### Built-in Protocols
+
+FAVA Trails ships with protocol hook modules that can be enabled via `module:` entries:
+
+| Protocol | Install | Description |
+|----------|---------|-------------|
+| **SECOM** | `pip install fava-trails[secom]` | Extractive compression at promote time via LLMLingua-2 ([docs](../src/fava_trails/protocols/secom/README.md)) |
+
+Example — enable SECOM compression:
+
+```yaml
+# config.yaml
+hooks:
+  - module: fava_trails.protocols.secom
+    points: [before_propose, before_save, on_recall]
+    order: 20
+    fail_mode: open
+    config:
+      compression_threshold_chars: 500
+      verbosity_warn_chars: 1000
+      target_compress_rate: 0.6
+      compression_engine:
+        type: llmlingua
+```
+
+After installing and configuring, restart the MCP server. The first `propose_truth` that triggers compression will download the LLMLingua-2 model (~700MB) from HuggingFace Hub.
+
 ## Pushing to Remote
 
 **NEVER use `git push origin main`** after JJ colocates. In JJ colocated mode:
@@ -331,11 +373,10 @@ jj git push --bookmark main    # push to remote
 
 ```
 FAVA_TRAILS_DATA_REPO/          # Monorepo root (.jj/ + .git/)
-├── config.yaml                 # Global config
+├── config.yaml                 # Global config (includes hooks: section)
 ├── .gitignore
-├── hooks/                      # Lifecycle hooks (optional)
-│   ├── hooks.yaml              # Hook manifest
-│   └── quality_gate.py         # Hook implementation
+├── hooks/                      # Local hook files (optional, for path: entries)
+│   └── quality_gate.py         # Custom hook implementation
 └── trails/
     ├── trust-gate-prompt.md    # Root trust gate prompt
     └── mw/                     # Company scope
