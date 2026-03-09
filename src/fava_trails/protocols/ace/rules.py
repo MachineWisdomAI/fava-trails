@@ -131,7 +131,9 @@ class PlaybookRule:
         if not self.matches(thought):
             return 1.0
 
-        ratio = (self.helpful_count + 1) / (self.helpful_count + self.harmful_count + 2)
+        helpful = max(0, self.helpful_count)
+        harmful = max(0, self.harmful_count)
+        ratio = (helpful + 1) / (helpful + harmful + 2)
         base_score = self.action.get("boost", self.action.get("deprioritize", 1.0))
 
         result = base_score * ratio
@@ -148,11 +150,19 @@ def _parse_rules(raw_thoughts: list[ThoughtRecord]) -> list[PlaybookRule]:
     for thought in raw_thoughts:
         try:
             extra = thought.frontmatter.metadata.extra or {}
+            match = extra.get("match", {})
+            action = extra.get("action", {})
+            if not isinstance(match, dict) or not isinstance(action, dict):
+                logger.warning(
+                    "ACE: skipping rule %s: match/action must be dicts",
+                    thought.thought_id[:8],
+                )
+                continue
             rule = PlaybookRule(
                 name=thought.thought_id[:8],
                 rule_type=extra.get("rule_type", "retrieval_priority"),
-                match=extra.get("match", {}),
-                action=extra.get("action", {}),
+                match=match,
+                action=action,
                 weight=int(extra.get("weight", 0)),
                 helpful_count=int(extra.get("helpful_count", 0)),
                 harmful_count=int(extra.get("harmful_count", 0)),

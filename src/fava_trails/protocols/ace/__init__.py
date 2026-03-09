@@ -128,7 +128,8 @@ async def on_recall(event: OnRecallEvent) -> list[Any] | None:
     # Score each result using ACE-style multiplicative scoring
     scored: list[tuple[Any, float]] = []
     for thought in event.results:
-        score = thought.frontmatter.confidence or 0.5
+        confidence = thought.frontmatter.confidence
+        score = 0.5 if confidence is None else confidence
         for rule in playbook:
             score *= rule.evaluate(thought)
         scored.append((thought, score))

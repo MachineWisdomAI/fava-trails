@@ -292,6 +292,20 @@ class TestPlaybookRule:
         result = rule.evaluate(thought)
         assert result == SCORE_CLAMP_MIN
 
+    def test_evaluate_negative_counters_normalized(self):
+        """Negative helpful/harmful counts are clamped to 0 — no ZeroDivisionError."""
+        rule = _make_rule(
+            match={},
+            action={"boost": 1.5},
+            helpful_count=-1,
+            harmful_count=-1,
+        )
+        thought = _make_thought()
+        # Both normalized to 0: ratio = (0+1)/(0+0+2) = 0.5
+        result = rule.evaluate(thought)
+        expected = max(SCORE_CLAMP_MIN, min(SCORE_CLAMP_MAX, 1.5 * 0.5))
+        assert abs(result - expected) < 1e-9
+
 
 # ---------------------------------------------------------------------------
 # TestParseRules
@@ -360,6 +374,29 @@ class TestParseRules:
         bad1 = _make_thought(thought_id="BAD00001", extra={"weight": {"x": "y"}})
         bad2 = _make_thought(thought_id="BAD00002", extra={"weight": {"x": "y"}})
         rules = _parse_rules([bad1, bad2])
+        assert rules == []
+
+    def test_non_dict_match_skipped(self):
+        """match/action must be dicts; non-dict values are skipped."""
+        bad = _make_thought(
+            thought_id="BADMATCH",
+            extra={"match": "not-a-dict", "action": {"boost": 1.0}},
+        )
+        good = _make_thought(
+            thought_id="GOOD0002",
+            extra={"match": {}, "action": {"boost": 1.0}},
+        )
+        rules = _parse_rules([bad, good])
+        assert len(rules) == 1
+        assert rules[0].source_thought_id == "GOOD0002"
+
+    def test_non_dict_action_skipped(self):
+        """Non-dict action is skipped."""
+        bad = _make_thought(
+            thought_id="BADACTN1",
+            extra={"match": {}, "action": [1, 2, 3]},
+        )
+        rules = _parse_rules([bad])
         assert rules == []
 
 
@@ -437,6 +474,24 @@ class TestOnRecall:
         select = next(a for a in result if isinstance(a, RecallSelect))
         assert select.ordered_ulids[0] == "DEC"
         assert select.reason == "ace_playbook_rerank"
+
+    @pytest.mark.asyncio
+    async def test_confidence_zero_not_replaced(self):
+        """confidence=0.0 is falsy but valid; must not be replaced with 0.5."""
+        _configure()
+        rule = _make_rule(match={}, action={"boost": 1.0}, helpful_count=10)
+        ace._PLAYBOOK_CACHE["trail1"] = [rule]
+        ace._CACHE_TIMESTAMPS["trail1"] = time.monotonic()
+
+        t_zero = _make_thought(thought_id="ZERO", confidence=0.0)
+        t_half = _make_thought(thought_id="HALF", confidence=0.5)
+
+        event = OnRecallEvent(trail_name="trail1", results=[t_zero, t_half])
+        result = await ace.on_recall(event)
+        select = next(a for a in result if isinstance(a, RecallSelect))
+        # confidence=0.0 should score lower than confidence=0.5
+        assert select.ordered_ulids[0] == "HALF"
+        assert select.ordered_ulids[1] == "ZERO"
 
     @pytest.mark.asyncio
     async def test_annotate_includes_rules_applied(self):
