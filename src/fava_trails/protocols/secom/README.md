@@ -119,7 +119,7 @@ Uses **extractive token-level compression**. For each token, the model predicts 
 | `bert-base-multilingual-cased-meetingbank` | 178M | ~700MB | ~100-200ms | **Default** -- fast, good for CPU/laptop |
 | `xlm-roberta-large-meetingbank` | 560M | ~2.2GB | ~400-800ms | Higher quality, needs more RAM/GPU |
 
-Both are prefixed with `microsoft/llmlingua-2-`. Override via `compression_engine.model_name`.
+Both are prefixed with `microsoft/llmlingua-2-`. Override via `compression_engine.model_name`. See the [LLMLingua repo](https://github.com/microsoft/LLMLingua) for the full set of supported models.
 
 Install with:
 ```bash
