@@ -26,7 +26,7 @@ Configure via config.yaml hooks entry or test harness::
           target_compress_rate: 0.6
           compression_engine:
             type: llmlingua
-            model_name: microsoft/llmlingua-2-xlm-roberta-large-meetingbank
+            model_name: microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank
             device_map: cpu
             compress_args:
               force_tokens: ["\\n", ".", "?", "!", ",", "#", "-", "*"]
@@ -55,9 +55,13 @@ logger = logging.getLogger(__name__)
 KNOWN_ENGINES = frozenset({"llmlingua"})
 
 # Default compression_engine config when none is provided.
+# bert-base-multilingual (178M params) is the default — 3x smaller and faster
+# on CPU than xlm-roberta-large (560M).  Both are LLMLingua-2 token classifiers
+# trained on MeetingBank.  Use xlm-roberta-large for higher quality if GPU is
+# available.
 DEFAULT_ENGINE_CONFIG: dict[str, Any] = {
     "type": "llmlingua",
-    "model_name": "microsoft/llmlingua-2-xlm-roberta-large-meetingbank",
+    "model_name": "microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank",
     "device_map": "cpu",
     "use_llmlingua2": True,
 }

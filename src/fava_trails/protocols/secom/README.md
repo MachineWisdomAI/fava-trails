@@ -35,7 +35,7 @@ hooks:
       target_compress_rate: 0.6
       compression_engine:
         type: llmlingua
-        model_name: microsoft/llmlingua-2-xlm-roberta-large-meetingbank
+        model_name: microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank
         device_map: cpu
 ```
 
@@ -85,7 +85,7 @@ compression_engine:
   type: llmlingua              # Engine type (only "llmlingua" supported)
 
   # PromptCompressor constructor args (all optional, shown with defaults)
-  model_name: microsoft/llmlingua-2-xlm-roberta-large-meetingbank
+  model_name: microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank
   device_map: cpu              # "cpu", "cuda", "cuda:0", etc.
   use_llmlingua2: true
   model_config: {}             # Extra HuggingFace model config
@@ -110,8 +110,16 @@ Uses **extractive token-level compression**. For each token, the model predicts 
 
 - **Zero hallucination**: Only original tokens survive. No paraphrasing, no rewriting.
 - **Preserves named entities and identifiers**: Token-level decisions maintain factual anchors.
-- **Speed**: ~200-500ms on CPU per thought.
 - **Optimal rate**: tau = 0.5-0.7 (retain 50-70% of tokens). Below 0.5, critical information loss.
+
+### Available Models
+
+| Model | Params | Disk | CPU Speed | Use Case |
+|-------|--------|------|-----------|----------|
+| `bert-base-multilingual-cased-meetingbank` | 178M | ~700MB | ~100-200ms | **Default** -- fast, good for CPU/laptop |
+| `xlm-roberta-large-meetingbank` | 560M | ~2.2GB | ~400-800ms | Higher quality, needs more RAM/GPU |
+
+Both are prefixed with `microsoft/llmlingua-2-`. Override via `compression_engine.model_name`.
 
 Install with:
 ```bash
