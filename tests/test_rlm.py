@@ -12,21 +12,21 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 
 import fava_trails.protocols.rlm as rlm
 from fava_trails.hook_types import (
     Advise,
-    Annotate,
     AfterSaveEvent,
+    Annotate,
     BeforeSaveEvent,
     OnRecallEvent,
-    Reject,
     RecallSelect,
+    Reject,
 )
 from fava_trails.models import ThoughtFrontmatter, ThoughtMetadata, ThoughtRecord
-
 
 # --- Helpers ---
 
@@ -41,7 +41,7 @@ def _make_thought(
 ) -> ThoughtRecord:
     """Create a ThoughtRecord for testing."""
     meta = ThoughtMetadata(tags=tags or [], extra=extra or {})
-    fm_kwargs: dict = dict(thought_id=thought_id, confidence=confidence, metadata=meta)
+    fm_kwargs: dict = {"thought_id": thought_id, "confidence": confidence, "metadata": meta}
     if created_at is not None:
         fm_kwargs["created_at"] = created_at
     fm = ThoughtFrontmatter(**fm_kwargs)
