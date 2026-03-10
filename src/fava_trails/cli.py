@@ -29,9 +29,9 @@ def _find_jj_bin() -> str | None:
     jj = shutil.which("jj")
     if jj:
         return jj
-    fallback = str(Path.home() / ".local" / "bin" / "jj")
-    if Path(fallback).exists():
-        return fallback
+    fallback = Path.home() / ".local" / "bin" / "jj"
+    if fallback.is_file() and os.access(fallback, os.X_OK):
+        return str(fallback)
     return None
 
 
@@ -780,8 +780,11 @@ def cmd_get(args: argparse.Namespace) -> int:
 # ─── Protocol setup commands ──────────────────────────────────────────────────
 
 
-def _jj_commit_dance(jj_bin: str, data_repo: Path, message: str) -> None:
-    """Run the jj commit dance: describe → new → bookmark set main → git push."""
+def _jj_commit_dance(jj_bin: str, data_repo: Path, message: str) -> bool:
+    """Run the jj commit dance: describe → new → bookmark set main → git push.
+
+    Returns True if all steps succeeded, False if any step failed (bails on first failure).
+    """
     steps = [
         ([jj_bin, "describe", "-m", message], "describe"),
         ([jj_bin, "new", "-m", "(new change)"], "new"),
@@ -792,6 +795,8 @@ def _jj_commit_dance(jj_bin: str, data_repo: Path, message: str) -> None:
         result = subprocess.run(cmd, cwd=str(data_repo), check=False, capture_output=True, text=True)
         if result.returncode != 0:
             print(f"Warning: jj {name} failed: {result.stderr.strip()}", file=sys.stderr)
+            return False
+    return True
 
 
 def _cmd_protocol_setup(args: argparse.Namespace, protocol_name: str, module_path: str, default_entry: dict) -> int:
@@ -837,19 +842,29 @@ def _cmd_protocol_setup(args: argparse.Namespace, protocol_name: str, module_pat
 
     # Warn about comment loss before rewriting YAML
     config_path = data_repo / "config.yaml"
-    config_text = config_path.read_text()
-    has_comments = any(line.strip().startswith("#") for line in config_text.splitlines())
+    try:
+        config_text = config_path.read_text()
+        has_comments = any(line.strip().startswith("#") for line in config_text.splitlines())
+    except OSError as e:
+        print(f"Error reading config.yaml: {e}", file=sys.stderr)
+        return 1
 
     entry = HookEntry(**default_entry)
     config.hooks.append(entry)
-    save_global_config(config)
+    try:
+        save_global_config(config)
+    except OSError as e:
+        print(f"Error writing config.yaml: {e}", file=sys.stderr)
+        return 1
 
-    _jj_commit_dance(jj_bin, data_repo, f"feat: add {protocol_name} hook to config.yaml")
+    jj_ok = _jj_commit_dance(jj_bin, data_repo, f"feat: add {protocol_name} hook to config.yaml")
 
     if has_comments:
         print("Warning: config.yaml had YAML comments — they have been lost during rewrite.")
 
     print(f"{protocol_name} hook added to config.yaml.")
+    if not jj_ok:
+        print("Warning: config.yaml was saved but jj commit/push failed — data repo may have uncommitted changes.", file=sys.stderr)
     print("Hint: restart the MCP server to activate the hook.")
     if protocol_name == "secom":
         print("Hint: run 'fava-trails secom warmup' to pre-download the LLMLingua model.")
@@ -876,7 +891,7 @@ def cmd_rlm_setup(args: argparse.Namespace) -> int:
 
 def cmd_secom_warmup(args: argparse.Namespace) -> int:
     """Pre-download the SECOM LLMLingua model and verify compression works."""
-    import importlib
+    import importlib.util
 
     from .protocols.secom import DEFAULT_HOOK_ENTRY, configure
 
@@ -904,15 +919,12 @@ def cmd_secom_warmup(args: argparse.Namespace) -> int:
         compressed, rate = _compress(sample, 0.6)
         print(f"Compression test: {len(sample)} chars → {len(compressed)} chars (rate={rate:.2f})")
     except Exception as e:
-        print(f"Warning: compression test failed: {e}", file=sys.stderr)
+        print(f"Error: compression test failed: {e}", file=sys.stderr)
+        return 1
 
     # Report HuggingFace cache path
-    try:
-        import os
-        hf_cache = os.environ.get("HF_HOME") or os.environ.get("TRANSFORMERS_CACHE") or str(Path.home() / ".cache" / "huggingface")
-        print(f"HuggingFace cache: {hf_cache}")
-    except Exception:
-        pass
+    hf_cache = os.environ.get("HF_HOME") or os.environ.get("TRANSFORMERS_CACHE") or str(Path.home() / ".cache" / "huggingface")
+    print(f"HuggingFace cache: {hf_cache}")
 
     print("SECOM warmup complete.")
     return 0

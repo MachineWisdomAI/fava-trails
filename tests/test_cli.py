@@ -267,17 +267,8 @@ def test_bootstrap_fails_if_jj_missing(tmp_path):
     target = tmp_path / "data-repo"
     args = _make_args(path=str(target), remote=None)
 
-    fallback = Path.home() / ".local" / "bin" / "jj"
-    real_exists = Path.exists
-
-    def exists_side_effect(self):
-        if self == fallback:
-            return False
-        return real_exists(self)
-
-    with patch("shutil.which", return_value=None):
-        with patch.object(Path, "exists", exists_side_effect):
-            rc = cmd_bootstrap(args)
+    with patch("fava_trails.cli._find_jj_bin", return_value=None):
+        rc = cmd_bootstrap(args)
 
     assert rc == 1
 
@@ -896,6 +887,32 @@ def test_setup_help(cmd_fn):
     assert "--write" in result.stdout
 
 
+@pytest.mark.parametrize("cmd_fn,module_path", [
+    (cmd_secom_setup, "fava_trails.protocols.secom"),
+    (cmd_ace_setup, "fava_trails.protocols.ace"),
+    (cmd_rlm_setup, "fava_trails.protocols.rlm"),
+])
+def test_setup_write_warns_on_jj_failure(tmp_path, monkeypatch, capsys, cmd_fn, module_path):
+    """setup --write warns when jj commit dance fails."""
+    _setup_data_repo(tmp_path, monkeypatch)
+
+    def fake_run_fail(cmd, **kwargs):
+        r = MagicMock()
+        r.returncode = 1
+        r.stdout = ""
+        r.stderr = "jj error"
+        return r
+
+    with patch("fava_trails.cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("subprocess.run", side_effect=fake_run_fail):
+            rc = cmd_fn(_make_setup_args(write=True))
+
+    assert rc == 0  # config was saved, so still success
+    captured = capsys.readouterr()
+    assert "added to config.yaml" in captured.out
+    assert "jj commit/push failed" in captured.err
+
+
 # ─── cmd_secom_warmup ──────────────────────────────────────────────────────────
 
 
@@ -908,6 +925,21 @@ def test_secom_warmup_missing_llmlingua(tmp_path, capsys):
     assert rc == 1
     err = capsys.readouterr().err
     assert "llmlingua" in err
+
+
+def test_secom_warmup_compression_failure(tmp_path, capsys):
+    """secom warmup exits 1 when compression test fails."""
+    fake_spec = MagicMock()
+    args = argparse.Namespace()
+
+    with patch("importlib.util.find_spec", return_value=fake_spec):
+        with patch("fava_trails.protocols.secom._get_compressor", return_value=MagicMock()):
+            with patch("fava_trails.protocols.secom._compress", side_effect=RuntimeError("boom")):
+                rc = cmd_secom_warmup(args)
+
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "compression test failed" in err
 
 
 def test_secom_warmup_success(tmp_path, capsys):
@@ -939,19 +971,23 @@ def test_find_jj_bin_from_path(monkeypatch):
 
 def test_find_jj_bin_fallback(tmp_path, monkeypatch):
     """_find_jj_bin falls back to ~/.local/bin/jj when not on PATH."""
-    fake_jj = tmp_path / "jj"
+    fake_home = tmp_path / "fakehome"
+    local_bin = fake_home / ".local" / "bin"
+    local_bin.mkdir(parents=True)
+    fake_jj = local_bin / "jj"
     fake_jj.write_text("#!/bin/sh")
+    fake_jj.chmod(0o755)
     with patch("shutil.which", return_value=None):
-        with patch("pathlib.Path.home", return_value=tmp_path / ".." / "home"):
-            # Manually test fallback logic
+        with patch("pathlib.Path.home", return_value=fake_home):
             result = _find_jj_bin()
-            # Either None (fallback doesn't exist) or a string path
-            assert result is None or isinstance(result, str)
+            assert result == str(fake_jj)
 
 
-def test_find_jj_bin_not_found(monkeypatch):
+def test_find_jj_bin_not_found(tmp_path, monkeypatch):
     """_find_jj_bin returns None when jj is not found anywhere."""
+    fake_home = tmp_path / "emptyhome"
+    fake_home.mkdir()
     with patch("shutil.which", return_value=None):
-        with patch("pathlib.Path.exists", return_value=False):
+        with patch("pathlib.Path.home", return_value=fake_home):
             result = _find_jj_bin()
             assert result is None
