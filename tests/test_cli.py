@@ -12,19 +12,25 @@ import pytest
 import yaml as _yaml
 
 from fava_trails.cli import (
+    _find_jj_bin,
     _is_env_gitignored,
     _read_env_value,
     _read_project_yaml_scope,
     _update_env_file,
     _write_project_yaml,
+    cmd_ace_setup,
     cmd_bootstrap,
     cmd_doctor,
     cmd_init,
     cmd_install_jj,
+    cmd_rlm_setup,
     cmd_scope,
     cmd_scope_list,
     cmd_scope_set,
+    cmd_secom_setup,
+    cmd_secom_warmup,
 )
+from fava_trails.config import ConfigStore
 
 # ─── _update_env_file ─────────────────────────────────────────────────────────
 
@@ -711,15 +717,6 @@ def test_install_jj_in_help(capsys):
 
 # ─── Protocol setup commands ──────────────────────────────────────────────────
 
-from fava_trails.cli import (
-    _find_jj_bin,
-    cmd_ace_setup,
-    cmd_rlm_setup,
-    cmd_secom_setup,
-    cmd_secom_warmup,
-)
-from fava_trails.config import ConfigStore
-
 
 def _make_setup_args(write: bool = False) -> argparse.Namespace:
     args = argparse.Namespace()
@@ -904,8 +901,6 @@ def test_setup_help(cmd_fn):
 
 def test_secom_warmup_missing_llmlingua(tmp_path, capsys):
     """secom warmup exits 1 when llmlingua is not installed."""
-    import importlib.util
-
     args = argparse.Namespace()
     with patch("importlib.util.find_spec", return_value=None):
         rc = cmd_secom_warmup(args)
@@ -917,8 +912,6 @@ def test_secom_warmup_missing_llmlingua(tmp_path, capsys):
 
 def test_secom_warmup_success(tmp_path, capsys):
     """secom warmup exits 0 when llmlingua loads and compression works."""
-    import types
-
     fake_spec = MagicMock()
     args = argparse.Namespace()
 
