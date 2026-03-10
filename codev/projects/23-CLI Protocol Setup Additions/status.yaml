@@ -1,0 +1,35 @@
+id: '23'
+title: CLI Protocol Setup Additions
+protocol: spir
+phase: implement
+plan_phases:
+  - id: phase_1
+    title: DEFAULT_HOOK_ENTRY constants + _find_jj_bin (~40 LOC)
+    status: in_progress
+  - id: phase_2
+    title: CLI command functions (~120 LOC)
+    status: pending
+  - id: phase_3
+    title: Parser wiring (~40 LOC)
+    status: pending
+  - id: phase_4
+    title: Tests (~120 LOC)
+    status: pending
+  - id: phase_5
+    title: Documentation
+    status: pending
+current_plan_phase: phase_1
+gates:
+  spec-approval:
+    status: approved
+    approved_at: '2026-03-10T12:55:32.968Z'
+  plan-approval:
+    status: approved
+    approved_at: '2026-03-10T12:55:33.039Z'
+  pr:
+    status: pending
+iteration: 1
+build_complete: false
+history: []
+started_at: '2026-03-10T12:55:28.077Z'
+updated_at: '2026-03-10T12:55:54.559Z'
