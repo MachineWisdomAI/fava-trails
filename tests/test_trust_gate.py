@@ -18,7 +18,6 @@ Covers:
 15. Timeout: hung LLM call returns error within 120s — prevents infinite hang
 """
 
-import asyncio
 import json
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch

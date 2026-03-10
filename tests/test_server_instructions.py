@@ -3,6 +3,7 @@
 import json
 
 import pytest
+from mcp.types import TextContent
 
 from fava_trails.server import (
     TOOL_DEFINITIONS,
@@ -11,7 +12,6 @@ from fava_trails.server import (
     server,
     with_tool_timeout,
 )
-from mcp.types import TextContent
 
 
 def _get_tool_desc(name: str) -> str:
