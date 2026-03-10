@@ -208,12 +208,7 @@ async def dispatch_observer(
         result = await _run_observer_hook(hook, copy.deepcopy(event))
         if result is not None:
             for action in result:
-                if isinstance(action, Annotate):
-                    feedback.merge(action)
-                elif isinstance(action, Advise):
-                    feedback.merge(action)
-                elif isinstance(action, Warn):
-                    feedback.merge(action)
+                feedback.merge(action)
 
     if feedback.is_empty():
         return None

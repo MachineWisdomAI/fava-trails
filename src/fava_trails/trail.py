@@ -78,6 +78,17 @@ class TrailManager:
             return None
         return self._feedback_by_task.pop(task, None)
 
+    def _merge_observer_feedback(self, observer_result: PipelineResult | None) -> None:
+        """Merge observer hook feedback into existing pipeline feedback."""
+        if observer_result is None:
+            return
+        existing = self.consume_feedback()
+        if existing is not None:
+            existing.feedback.merge_from(observer_result.feedback)
+            self._set_feedback(existing)
+        else:
+            self._set_feedback(observer_result)
+
     @property
     def config(self) -> TrailConfig:
         if self._config is None:
@@ -212,14 +223,9 @@ class TrailManager:
                 thought=record,
                 namespace=ns,
             )
-            observer_result = await dispatch_observer(self._hooks, after_event)
-            if observer_result is not None:
-                existing = self.consume_feedback()
-                if existing is not None:
-                    existing.feedback.merge_from(observer_result.feedback)
-                    self._set_feedback(existing)
-                else:
-                    self._set_feedback(observer_result)
+            self._merge_observer_feedback(
+                await dispatch_observer(self._hooks, after_event)
+            )
 
         return record
 
@@ -363,14 +369,9 @@ class TrailManager:
                 new_thought=new_record,
                 original_thought=original,
             )
-            observer_result = await dispatch_observer(self._hooks, after_event)
-            if observer_result is not None:
-                existing = self.consume_feedback()
-                if existing is not None:
-                    existing.feedback.merge_from(observer_result.feedback)
-                    self._set_feedback(existing)
-                else:
-                    self._set_feedback(observer_result)
+            self._merge_observer_feedback(
+                await dispatch_observer(self._hooks, after_event)
+            )
 
         return new_record
 
@@ -602,14 +603,9 @@ class TrailManager:
                 thought=record,
                 trust_result=trust_result,
             )
-            observer_result = await dispatch_observer(self._hooks, after_event)
-            if observer_result is not None:
-                existing = self.consume_feedback()
-                if existing is not None:
-                    existing.feedback.merge_from(observer_result.feedback)
-                    self._set_feedback(existing)
-                else:
-                    self._set_feedback(observer_result)
+            self._merge_observer_feedback(
+                await dispatch_observer(self._hooks, after_event)
+            )
 
         return record
 
