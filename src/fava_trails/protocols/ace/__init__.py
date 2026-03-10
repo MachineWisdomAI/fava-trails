@@ -54,6 +54,18 @@ from .rules import PlaybookRule, _parse_rules
 
 logger = logging.getLogger(__name__)
 
+# Default hook entry for `fava-trails ace setup --write`
+DEFAULT_HOOK_ENTRY: dict = {
+    "module": "fava_trails.protocols.ace",
+    "points": ["on_startup", "on_recall", "before_save", "after_save", "after_propose", "after_supersede"],
+    "order": 10,
+    "fail_mode": "open",
+    "config": {
+        "playbook_namespace": "preferences",
+        "telemetry_max_per_scope": 10000,
+    },
+}
+
 # --- Module-level state ---
 
 _CONFIG: dict[str, Any] = {}
