@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
 # Default hook entry for `fava-trails ace setup --write`
 DEFAULT_HOOK_ENTRY: dict = {
     "module": "fava_trails.protocols.ace",
-    "points": ["on_startup", "on_recall", "before_save", "after_save", "after_propose", "after_supersede"],
+    "points": ["on_startup", "on_recall", "on_recall_mix", "before_save", "after_save", "after_propose", "after_supersede"],
     "order": 10,
     "fail_mode": "open",
     "config": {
