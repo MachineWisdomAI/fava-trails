@@ -317,7 +317,8 @@ Hooks that need to query trail state receive a `TrailContext` via `event.context
 | `before_propose` | Before promotion from drafts | Gating (can reject/mutate/redirect) |
 | `after_propose` | After promotion is committed | Observer |
 | `after_supersede` | After supersession is committed | Observer |
-| `on_recall` | During recall search | Gating (can filter/reorder via RecallSelect) |
+| `on_recall` | During single-trail recall search | Gating (can filter/reorder via RecallSelect) |
+| `on_recall_mix` | After cross-trail `recall_multi` merge | Gating (can filter/reorder via RecallSelect) |
 | `on_startup` | Server startup | Startup (separate contract) |
 
 ### Error Handling
