@@ -1,0 +1,22 @@
+id: '18'
+title: ACE Playbook Hooks
+protocol: aspir
+phase: implement
+plan_phases: []
+current_plan_phase: null
+gates:
+  pr:
+    status: pending
+  phase-review-specify-main-iter1:
+    status: approved
+    requested_at: '2026-03-09T22:01:52.018Z'
+    approved_at: '2026-03-09T22:03:28.574Z'
+  phase-review-plan-main-iter1:
+    status: approved
+    requested_at: '2026-03-09T22:10:24.640Z'
+    approved_at: '2026-03-09T22:10:30.692Z'
+iteration: 1
+build_complete: false
+history: []
+started_at: '2026-03-09T22:01:30.232Z'
+updated_at: '2026-03-09T22:10:44.204Z'
