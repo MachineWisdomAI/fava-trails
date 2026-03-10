@@ -418,7 +418,7 @@ class TestPipelineErrors:
 class TestObserverDispatch:
     @pytest.mark.asyncio
     async def test_dispatch_fires_hooks(self):
-        """dispatch_observer fires hooks via create_task."""
+        """dispatch_observer runs hooks inline on caller's task."""
         called = []
 
         async def hook(event):
@@ -428,8 +428,6 @@ class TestObserverDispatch:
         registry = _make_registry(_make_spec("after_save", hook))
         event = AfterSaveEvent(trail_name="t")
         await dispatch_observer(registry, event)
-        # Let tasks run
-        await asyncio.sleep(0.05)
         assert called == ["after_save"]
 
     @pytest.mark.asyncio
@@ -442,7 +440,6 @@ class TestObserverDispatch:
         registry = _make_registry(_make_spec("after_save", hook_bad))
         event = AfterSaveEvent(trail_name="t")
         await dispatch_observer(registry, event)
-        await asyncio.sleep(0.05)
         # No exception raised — just logged
 
     @pytest.mark.asyncio
@@ -451,4 +448,32 @@ class TestObserverDispatch:
         from fava_trails.hook_types import AfterSaveEvent
         registry = _make_registry()
         event = AfterSaveEvent(trail_name="t")
-        await dispatch_observer(registry, event)  # should not raise
+        result = await dispatch_observer(registry, event)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_dispatch_returns_feedback(self):
+        """dispatch_observer collects Annotate/Advise feedback from hooks."""
+        async def hook(event):
+            return [Annotate({"batch_ready": True}), Advise(message="check batch", code="rlm_ready")]
+
+        from fava_trails.hook_types import AfterSaveEvent
+        registry = _make_registry(_make_spec("after_save", hook))
+        event = AfterSaveEvent(trail_name="t")
+        result = await dispatch_observer(registry, event)
+        assert result is not None
+        assert result.feedback.annotations["batch_ready"] is True
+        assert len(result.feedback.advice) == 1
+        assert result.feedback.advice[0]["code"] == "rlm_ready"
+
+    @pytest.mark.asyncio
+    async def test_dispatch_none_return_no_feedback(self):
+        """Hook returning None produces no feedback."""
+        async def hook(event):
+            return None
+
+        from fava_trails.hook_types import AfterSaveEvent
+        registry = _make_registry(_make_spec("after_save", hook))
+        event = AfterSaveEvent(trail_name="t")
+        result = await dispatch_observer(registry, event)
+        assert result is None

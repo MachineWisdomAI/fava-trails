@@ -78,6 +78,17 @@ class TrailManager:
             return None
         return self._feedback_by_task.pop(task, None)
 
+    def _merge_observer_feedback(self, observer_result: PipelineResult | None) -> None:
+        """Merge observer hook feedback into existing pipeline feedback."""
+        if observer_result is None:
+            return
+        existing = self.consume_feedback()
+        if existing is not None:
+            existing.feedback.merge_from(observer_result.feedback)
+            self._set_feedback(existing)
+        else:
+            self._set_feedback(observer_result)
+
     @property
     def config(self) -> TrailConfig:
         if self._config is None:
@@ -205,14 +216,16 @@ class TrailManager:
 
             await self._maybe_gc()
 
-        # after_save hook — fires post-commit (fire-and-forget)
+        # after_save hook — runs inline so feedback reaches the caller
         if self._hooks and self._hooks.has_hooks:
             after_event = AfterSaveEvent(
                 trail_name=self.trail_name,
                 thought=record,
                 namespace=ns,
             )
-            await dispatch_observer(self._hooks, after_event)
+            self._merge_observer_feedback(
+                await dispatch_observer(self._hooks, after_event)
+            )
 
         return record
 
@@ -349,14 +362,16 @@ class TrailManager:
 
             await self._maybe_gc()
 
-        # after_supersede hook — fires post-commit (fire-and-forget)
+        # after_supersede hook — runs inline so feedback reaches the caller
         if self._hooks and self._hooks.has_hooks:
             after_event = AfterSupersedeEvent(
                 trail_name=self.trail_name,
                 new_thought=new_record,
                 original_thought=original,
             )
-            await dispatch_observer(self._hooks, after_event)
+            self._merge_observer_feedback(
+                await dispatch_observer(self._hooks, after_event)
+            )
 
         return new_record
 
@@ -581,14 +596,16 @@ class TrailManager:
                 [str(target_path)],
             )
 
-        # after_propose hook — fires post-commit (fire-and-forget)
+        # after_propose hook — runs inline so feedback reaches the caller
         if self._hooks and self._hooks.has_hooks:
             after_event = AfterProposeEvent(
                 trail_name=self.trail_name,
                 thought=record,
                 trust_result=trust_result,
             )
-            await dispatch_observer(self._hooks, after_event)
+            self._merge_observer_feedback(
+                await dispatch_observer(self._hooks, after_event)
+            )
 
         return record
 

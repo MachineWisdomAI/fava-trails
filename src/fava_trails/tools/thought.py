@@ -30,7 +30,7 @@ def _serialize_thought(record) -> dict[str, Any]:
             {"type": r.type.value, "target_id": r.target_id}
             for r in fm.relationships
         ]
-    if fm.metadata and (fm.metadata.project or fm.metadata.branch or fm.metadata.tags):
+    if fm.metadata and (fm.metadata.project or fm.metadata.branch or fm.metadata.tags or fm.metadata.extra):
         result["metadata"] = {}
         if fm.metadata.project:
             result["metadata"]["project"] = fm.metadata.project
@@ -38,6 +38,8 @@ def _serialize_thought(record) -> dict[str, Any]:
             result["metadata"]["branch"] = fm.metadata.branch
         if fm.metadata.tags:
             result["metadata"]["tags"] = fm.metadata.tags
+        if fm.metadata.extra:
+            result["metadata"]["extra"] = fm.metadata.extra
     return result
 
 
