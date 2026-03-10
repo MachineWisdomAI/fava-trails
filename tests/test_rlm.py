@@ -658,3 +658,44 @@ class TestPipelineIntegration:
         assert result.feedback.accepted
         # Annotations should show mapper count
         assert result.feedback.annotations.get("rlm_mapper_count") == 2
+
+
+# ---------------------------------------------------------------------------
+# TestOnRecallMix
+
+
+class TestOnRecallMix:
+    """on_recall_mix delegates to on_recall with same sorting logic."""
+
+    @pytest.mark.asyncio
+    async def test_on_recall_mix_delegates_to_on_recall(self):
+        """on_recall_mix returns same ordering as on_recall for mapper results."""
+        _configure()
+
+        base_time = datetime(2025, 1, 1, tzinfo=UTC)
+        t_b = _make_thought(
+            thought_id="B", tags=["rlm-mapper"],
+            extra={"mapper_id": "mapper-b"}, created_at=base_time,
+        )
+        t_a = _make_thought(
+            thought_id="A", tags=["rlm-mapper"],
+            extra={"mapper_id": "mapper-a"}, created_at=base_time,
+        )
+
+        event = OnRecallEvent(
+            trail_name="scope1",
+            results=[t_b, t_a],
+            scope={"tags": ["rlm-mapper"]},
+        )
+
+        recall_result = await rlm.on_recall(event)
+        mix_result = await rlm.on_recall_mix(event)
+
+        assert recall_result is not None
+        assert mix_result is not None
+
+        from fava_trails.hook_types import RecallSelect
+        recall_ulids = next(a.ordered_ulids for a in recall_result if isinstance(a, RecallSelect))
+        mix_ulids = next(a.ordered_ulids for a in mix_result if isinstance(a, RecallSelect))
+        assert recall_ulids == mix_ulids
+        assert mix_ulids == ["A", "B"]

@@ -1093,3 +1093,44 @@ class TestPipelineIntegration:
         assert r2 is not None
         # Cache should have exactly one entry for scope1
         assert "scope1" in ace._PLAYBOOK_CACHE
+
+
+# ---------------------------------------------------------------------------
+# TestOnRecallMix
+
+
+class TestOnRecallMix:
+    """on_recall_mix delegates to on_recall with same playbook logic."""
+
+    @pytest.mark.asyncio
+    async def test_on_recall_mix_delegates_to_on_recall(self):
+        """on_recall_mix returns same result as on_recall for identical input."""
+        ace.configure({"playbook_namespace": "preferences"})
+
+        rule_thought = _make_thought(
+            thought_id="RULE",
+            tags=["ace-playbook"],
+            extra={
+                "rule_type": "retrieval_priority",
+                "match": {"tags": ["important"]},
+                "action": {"boost": 1.5},
+            },
+        )
+        mock_context = AsyncMock()
+        mock_context.recall = AsyncMock(return_value=[rule_thought])
+
+        t = _make_thought(thought_id="T1", tags=["important"], confidence=0.5)
+        event = OnRecallEvent(
+            trail_name="scope1",
+            results=[t],
+            context=mock_context,
+        )
+
+        recall_result = await ace.on_recall(event)
+        mix_result = await ace.on_recall_mix(event)
+
+        assert type(recall_result) == type(mix_result)
+        if recall_result is not None and mix_result is not None:
+            recall_ulids = [a.ordered_ulids for a in recall_result if isinstance(a, RecallSelect)]
+            mix_ulids = [a.ordered_ulids for a in mix_result if isinstance(a, RecallSelect)]
+            assert recall_ulids == mix_ulids
