@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, NonNegativeInt, field_validator, model_validator
 from ulid import ULID
 
 
@@ -220,11 +220,29 @@ class GlobalConfig(BaseModel):
     trust_gate_model: str = "google/gemini-2.5-flash"
     # Timeout for the Trust Gate LLM call (asyncio.wait_for guard).
     # Should be well above a normal slow response (e.g. 60-90s) but short enough
-    # to recover from a hung provider before the session times out.
-    trust_gate_timeout_secs: int = 120
+    # to recover from a hung provider before the session times out. 0 = disabled.
+    trust_gate_timeout_secs: NonNegativeInt = 120
     # Timeout for an entire MCP tool call (outermost guard covering all tools).
     # Catches jj hangs, slow syncs, and any other unanticipated blocking.
     # Should be generous — set 0 to disable.
-    tool_timeout_secs: int = 300
+    tool_timeout_secs: NonNegativeInt = 300
     trails: dict[str, TrailConfig] = Field(default_factory=dict)
     hooks: list[HookEntry] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def trust_gate_timeout_within_tool_timeout(self) -> GlobalConfig:
+        """Ensure Trust Gate timeout fires before the outer tool timeout.
+
+        If both are enabled and trust_gate_timeout_secs >= tool_timeout_secs,
+        the outer guard fires first with a generic error, hiding the specific
+        Trust Gate message. Fail early so misconfiguration is obvious.
+        """
+        tg = self.trust_gate_timeout_secs
+        tool = self.tool_timeout_secs
+        if tg > 0 and tool > 0 and tg >= tool:
+            raise ValueError(
+                f"trust_gate_timeout_secs ({tg}) must be less than "
+                f"tool_timeout_secs ({tool}) so the Trust Gate timeout fires "
+                "before the outer tool timeout. Set either to 0 to disable it."
+            )
+        return self

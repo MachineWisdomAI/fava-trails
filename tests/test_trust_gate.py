@@ -715,3 +715,48 @@ async def test_propose_truth_timeout_returns_error(trail_manager, tmp_fava_home)
     assert result["status"] == "error"
     assert "timed out" in result["message"].lower()
     assert record.thought_id[:8] in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_propose_truth_timeout_disabled_when_zero(trail_manager, tmp_fava_home):
+    """trust_gate_timeout_secs=0 disables the wait_for guard — review_thought runs unbounded."""
+    from fava_trails.config import ConfigStore
+    from fava_trails.models import GlobalConfig
+    from fava_trails.tools.navigation import handle_propose_truth
+
+    record = await trail_manager.save_thought(
+        content="A decision with timeout disabled.",
+        agent_id="test-agent",
+        source_type=SourceType.DECISION,
+    )
+
+    # Use a mock cache so no file is written to the jj-tracked trails dir
+    # (writing trust-gate-prompt.md to the repo root triggers cross-trail pollution checks).
+    cache = MagicMock(spec=TrustGatePromptCache)
+    cache.resolve_prompt.return_value = "You are a reviewer."
+
+    # Inject config with trust_gate_timeout=0 (disabled) and tool_timeout=0 (also disabled)
+    cfg = ConfigStore.__new__(ConfigStore)
+    cfg.global_config = GlobalConfig(trust_gate_timeout_secs=0, tool_timeout_secs=0)
+    cfg.data_repo_root = tmp_fava_home
+    cfg.trails_dir = tmp_fava_home / "trails"
+    ConfigStore.override(cfg)
+
+    approve_result = TrustResult(verdict="approve", reasoning="ok", reviewer="llm-oneshot:test")
+
+    with (
+        patch.dict("os.environ", {"OPENROUTER_API_KEY": "or-test-key"}),
+        patch(
+            "fava_trails.tools.navigation.review_thought",
+            new_callable=AsyncMock,
+            return_value=approve_result,
+        ),
+    ):
+        result = await handle_propose_truth(
+            trail_manager,
+            {"thought_id": record.thought_id},
+            prompt_cache=cache,
+        )
+
+    # Should succeed — no timeout fired
+    assert result["status"] == "ok"

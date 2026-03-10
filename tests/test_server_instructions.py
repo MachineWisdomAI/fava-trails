@@ -128,7 +128,7 @@ class TestWithToolTimeout:
         from fava_trails.models import GlobalConfig
 
         config = ConfigStore.__new__(ConfigStore)
-        config.global_config = GlobalConfig(tool_timeout_secs=5)
+        config.global_config = GlobalConfig(tool_timeout_secs=5, trust_gate_timeout_secs=0)
         config.data_repo_root = None
         config.trails_dir = None
         ConfigStore.override(config)
@@ -149,7 +149,7 @@ class TestWithToolTimeout:
         from fava_trails.models import GlobalConfig
 
         config = ConfigStore.__new__(ConfigStore)
-        config.global_config = GlobalConfig(tool_timeout_secs=1)
+        config.global_config = GlobalConfig(tool_timeout_secs=1, trust_gate_timeout_secs=0)
         config.data_repo_root = None
         config.trails_dir = None
         ConfigStore.override(config)

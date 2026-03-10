@@ -155,30 +155,33 @@ async def handle_propose_truth(
             )
 
             tg_timeout = global_config.trust_gate_timeout_secs
-            try:
-                trust_result = await asyncio.wait_for(
-                    review_thought(
-                        record=record,
-                        prompt=prompt,
-                        model=global_config.trust_gate_model,
-                        client=llm_client,
-                        policy=policy,
-                    ),
-                    timeout=float(tg_timeout),
-                )
-            except TimeoutError:
-                logger.error(
-                    "Trust Gate LLM call timed out after %ds for thought %s",
-                    tg_timeout,
-                    thought_id,
-                )
-                return {
-                    "status": "error",
-                    "message": (
-                        f"Trust Gate timed out after {tg_timeout}s reviewing thought {thought_id[:8]}. "
-                        "The LLM provider did not respond. Retry propose_truth to try again."
-                    ),
-                }
+            _review_coro = review_thought(
+                record=record,
+                prompt=prompt,
+                model=global_config.trust_gate_model,
+                client=llm_client,
+                policy=policy,
+            )
+            if tg_timeout > 0:
+                try:
+                    trust_result = await asyncio.wait_for(
+                        _review_coro, timeout=float(tg_timeout)
+                    )
+                except TimeoutError:
+                    logger.error(
+                        "Trust Gate LLM call timed out after %ds for thought %s",
+                        tg_timeout,
+                        thought_id,
+                    )
+                    return {
+                        "status": "error",
+                        "message": (
+                            f"Trust Gate timed out after {tg_timeout}s reviewing thought {thought_id[:8]}. "
+                            "The LLM provider did not respond. Retry propose_truth to try again."
+                        ),
+                    }
+            else:
+                trust_result = await _review_coro
 
         promoted = await trail.propose_truth(thought_id, trust_result=trust_result)
         result = {

@@ -47,17 +47,22 @@ logging.basicConfig(
 # Add rotating file handler so MCP server logs are persisted to disk.
 # Claude Code captures MCP server stderr only in session.jsonl (tool results),
 # not as raw log output — without this, server-side hangs are undiagnosable.
-_log_dir = Path(os.environ.get("FAVA_TRAILS_LOG_DIR", Path.home() / ".fava-trails" / "logs"))
-_log_dir.mkdir(parents=True, exist_ok=True)
-_file_handler = logging.handlers.RotatingFileHandler(
-    _log_dir / "mcp-server.log",
-    maxBytes=5 * 1024 * 1024,  # 5 MB per file
-    backupCount=3,
-)
-_file_handler.setFormatter(
-    logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-)
-logging.getLogger().addHandler(_file_handler)
+# Wrapped in try/except so a restricted filesystem never prevents server startup.
+try:
+    _log_dir = Path(os.environ.get("FAVA_TRAILS_LOG_DIR", Path.home() / ".fava-trails" / "logs"))
+    _log_dir.mkdir(parents=True, exist_ok=True)
+    _file_handler = logging.handlers.RotatingFileHandler(
+        _log_dir / "mcp-server.log",
+        maxBytes=5 * 1024 * 1024,  # 5 MB per file
+        backupCount=3,
+    )
+    _file_handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    )
+    logging.getLogger().addHandler(_file_handler)
+except OSError as _log_err:
+    # Non-fatal: log setup failed (read-only fs, container, etc.) — stderr only.
+    logging.getLogger(__name__).warning("File logging disabled: %s", _log_err)
 
 
 def _build_server_instructions() -> str:
@@ -138,6 +143,17 @@ server = Server("fava-trails", instructions=_build_server_instructions())
 
 # Trail manager cache: trail_name -> TrailManager
 _trail_managers: dict[str, TrailManager] = {}
+# Lock guards first-time trail init so parallel calls for the same new scope
+# don't race to double-initialize the jj trail directory.
+_trail_init_lock: asyncio.Lock | None = None
+
+
+def _get_trail_init_lock() -> asyncio.Lock:
+    """Return the trail init lock, creating it lazily inside the running event loop."""
+    global _trail_init_lock
+    if _trail_init_lock is None:
+        _trail_init_lock = asyncio.Lock()
+    return _trail_init_lock
 
 # Shared backend for monorepo init, GC, push, fetch
 _shared_backend: JjBackend | None = None
@@ -210,15 +226,21 @@ async def _get_trail(trail_name: str | None = None) -> TrailManager:
         )
 
     safe_name = sanitize_scope_path(trail_name)
-    if safe_name not in _trail_managers:
-        repo_root = get_data_repo_root()
-        trail_path = get_trails_dir() / safe_name
-        backend = JjBackend(repo_root=repo_root, trail_path=trail_path)
-        manager = TrailManager(safe_name, vcs=backend, hooks=_hook_registry)
-        # Auto-initialize if trail doesn't exist (detect by thoughts/ dir, not .jj)
-        if not (manager.trail_path / "thoughts").exists():
-            await manager.init()
-        _trail_managers[safe_name] = manager
+    # Fast path: already cached (no lock needed — dict reads are safe in asyncio).
+    if safe_name in _trail_managers:
+        return _trail_managers[safe_name]
+    # Slow path: first call for this scope — serialize to prevent double-init.
+    async with _get_trail_init_lock():
+        # Double-check after acquiring lock (another coroutine may have just finished).
+        if safe_name not in _trail_managers:
+            repo_root = get_data_repo_root()
+            trail_path = get_trails_dir() / safe_name
+            backend = JjBackend(repo_root=repo_root, trail_path=trail_path)
+            manager = TrailManager(safe_name, vcs=backend, hooks=_hook_registry)
+            # Auto-initialize if trail doesn't exist (detect by thoughts/ dir, not .jj)
+            if not (manager.trail_path / "thoughts").exists():
+                await manager.init()
+            _trail_managers[safe_name] = manager
 
     return _trail_managers[safe_name]
 
