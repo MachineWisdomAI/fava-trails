@@ -10,6 +10,7 @@ import asyncio
 import importlib.resources
 import json
 import logging
+import logging.handlers
 import os
 import sys
 from pathlib import Path
@@ -40,6 +41,21 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     stream=sys.stderr,
 )
+
+# Add rotating file handler so MCP server logs are persisted to disk.
+# Claude Code captures MCP server stderr only in session.jsonl (tool results),
+# not as raw log output — without this, server-side hangs are undiagnosable.
+_log_dir = Path(os.environ.get("FAVA_TRAILS_LOG_DIR", Path.home() / ".fava-trails" / "logs"))
+_log_dir.mkdir(parents=True, exist_ok=True)
+_file_handler = logging.handlers.RotatingFileHandler(
+    _log_dir / "mcp-server.log",
+    maxBytes=5 * 1024 * 1024,  # 5 MB per file
+    backupCount=3,
+)
+_file_handler.setFormatter(
+    logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+)
+logging.getLogger().addHandler(_file_handler)
 
 
 def _build_server_instructions() -> str:

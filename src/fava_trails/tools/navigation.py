@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import Any
@@ -153,13 +154,28 @@ async def handle_propose_truth(
                 openrouter_api_key=openrouter_key,
             )
 
-            trust_result = await review_thought(
-                record=record,
-                prompt=prompt,
-                model=global_config.trust_gate_model,
-                client=llm_client,
-                policy=policy,
-            )
+            try:
+                trust_result = await asyncio.wait_for(
+                    review_thought(
+                        record=record,
+                        prompt=prompt,
+                        model=global_config.trust_gate_model,
+                        client=llm_client,
+                        policy=policy,
+                    ),
+                    timeout=120.0,
+                )
+            except TimeoutError:
+                logger.error(
+                    "Trust Gate LLM call timed out after 120s for thought %s", thought_id
+                )
+                return {
+                    "status": "error",
+                    "message": (
+                        f"Trust Gate timed out after 120s reviewing thought {thought_id[:8]}. "
+                        "The LLM provider did not respond. Retry propose_truth to try again."
+                    ),
+                }
 
         promoted = await trail.propose_truth(thought_id, trust_result=trust_result)
         result = {
