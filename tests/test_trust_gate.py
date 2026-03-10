@@ -15,11 +15,12 @@ Covers:
 12. Fail-closed: JSON missing verdict field → error
 13. Prompt injection defense: thought content wrapped in XML tags with escaping
 14. Structured output: OpenRouter called with temp=0 and response_format json_object
+15. Timeout: hung LLM call returns error within 120s — prevents infinite hang
 """
 
 import json
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from any_llm.exceptions import AnyLLMError, ProviderError
@@ -666,3 +667,95 @@ async def test_review_thought_fenced_json_response(sample_thought, mock_llm_clie
     assert result.verdict == "reject"
     assert "CRITICAL" in result.reasoning
     assert result.confidence == 0.88
+
+
+# --- Test 15: Timeout protection ---
+
+
+@pytest.mark.asyncio
+async def test_propose_truth_timeout_returns_error(trail_manager, tmp_fava_home):
+    """handle_propose_truth returns an error dict when Trust Gate LLM call hangs.
+
+    Reproduces the 12-hour hang: asyncio.wait_for(timeout=120) must fire and
+    return a structured error instead of blocking the MCP server indefinitely.
+    """
+    from fava_trails.tools.navigation import handle_propose_truth
+
+    record = await trail_manager.save_thought(
+        content="A decision that will hang during review.",
+        agent_id="test-agent",
+        source_type=SourceType.DECISION,
+    )
+
+    # Build a prompt cache with a root-level prompt so the handler proceeds
+    # to the LLM call before the timeout fires.
+    cache = TrustGatePromptCache()
+    trails_dir = tmp_fava_home / "trails"
+    (trails_dir / "trust-gate-prompt.md").write_text("You are a reviewer.")
+    cache.load_from_trails_dir(trails_dir)
+
+    # Mock review_thought to raise TimeoutError (as asyncio.wait_for would after 120s).
+    # Using AsyncMock ensures the coroutine is properly awaited — no "never awaited" warning.
+    # Also mock the env key lookup so we reach wait_for rather than early-returning on missing key.
+    with (
+        patch.dict("os.environ", {"OPENROUTER_API_KEY": "or-test-key"}),
+        patch(
+            "fava_trails.tools.navigation.review_thought",
+            new_callable=AsyncMock,
+            side_effect=TimeoutError(),
+        ),
+    ):
+        result = await handle_propose_truth(
+            trail_manager,
+            {"thought_id": record.thought_id},
+            prompt_cache=cache,
+        )
+
+    assert result["status"] == "error"
+    assert "timed out" in result["message"].lower()
+    assert record.thought_id[:8] in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_propose_truth_timeout_disabled_when_zero(trail_manager, tmp_fava_home):
+    """trust_gate_timeout_secs=0 disables the wait_for guard — review_thought runs unbounded."""
+    from fava_trails.config import ConfigStore
+    from fava_trails.models import GlobalConfig
+    from fava_trails.tools.navigation import handle_propose_truth
+
+    record = await trail_manager.save_thought(
+        content="A decision with timeout disabled.",
+        agent_id="test-agent",
+        source_type=SourceType.DECISION,
+    )
+
+    # Use a mock cache so no file is written to the jj-tracked trails dir
+    # (writing trust-gate-prompt.md to the repo root triggers cross-trail pollution checks).
+    cache = MagicMock(spec=TrustGatePromptCache)
+    cache.resolve_prompt.return_value = "You are a reviewer."
+
+    # Inject config with trust_gate_timeout=0 (disabled) and tool_timeout=0 (also disabled)
+    cfg = ConfigStore.__new__(ConfigStore)
+    cfg.global_config = GlobalConfig(trust_gate_timeout_secs=0, tool_timeout_secs=0)
+    cfg.data_repo_root = tmp_fava_home
+    cfg.trails_dir = tmp_fava_home / "trails"
+    ConfigStore.override(cfg)
+
+    approve_result = TrustResult(verdict="approve", reasoning="ok", reviewer="llm-oneshot:test")
+
+    with (
+        patch.dict("os.environ", {"OPENROUTER_API_KEY": "or-test-key"}),
+        patch(
+            "fava_trails.tools.navigation.review_thought",
+            new_callable=AsyncMock,
+            return_value=approve_result,
+        ),
+    ):
+        result = await handle_propose_truth(
+            trail_manager,
+            {"thought_id": record.thought_id},
+            prompt_cache=cache,
+        )
+
+    # Should succeed — no timeout fired
+    assert result["status"] == "ok"

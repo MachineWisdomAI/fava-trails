@@ -1,10 +1,16 @@
 """Tests for MCP server instructions field and tool description enhancements."""
 
+import json
+
+import pytest
+from mcp.types import TextContent
+
 from fava_trails.server import (
     TOOL_DEFINITIONS,
     _build_server_instructions,
     _load_usage_guide,
     server,
+    with_tool_timeout,
 )
 
 
@@ -107,3 +113,72 @@ class TestGetUsageGuide:
     def test_tool_count(self):
         """TOOL_DEFINITIONS should have 17 tools (15 original + list_trails alias + get_usage_guide)."""
         assert len(TOOL_DEFINITIONS) == 17
+
+
+class TestWithToolTimeout:
+    """Tests for the @with_tool_timeout decorator."""
+
+    @pytest.mark.asyncio
+    async def test_passes_through_on_success(self):
+        """Decorated handler returns normally when it completes within the timeout."""
+        async def _fast_handler(name, arguments):
+            return [TextContent(type="text", text='{"status":"ok"}')]
+
+        from fava_trails.config import ConfigStore
+        from fava_trails.models import GlobalConfig
+
+        config = ConfigStore.__new__(ConfigStore)
+        config.global_config = GlobalConfig(tool_timeout_secs=5, trust_gate_timeout_secs=0)
+        config.data_repo_root = None
+        config.trails_dir = None
+        ConfigStore.override(config)
+
+        wrapped = with_tool_timeout(_fast_handler)
+        result = await wrapped("save_thought", {})
+        assert result[0].text == '{"status":"ok"}'
+
+    @pytest.mark.asyncio
+    async def test_timeout_returns_error_dict(self):
+        """Decorated handler returns a structured error when the timeout fires."""
+        import asyncio
+
+        async def _hanging_handler(name, arguments):
+            await asyncio.sleep(9999)
+
+        from fava_trails.config import ConfigStore
+        from fava_trails.models import GlobalConfig
+
+        config = ConfigStore.__new__(ConfigStore)
+        config.global_config = GlobalConfig(tool_timeout_secs=1, trust_gate_timeout_secs=0)
+        config.data_repo_root = None
+        config.trails_dir = None
+        ConfigStore.override(config)
+
+        wrapped = with_tool_timeout(_hanging_handler)
+        result = await wrapped("sync", {})
+        payload = json.loads(result[0].text)
+        assert payload["status"] == "error"
+        assert "timed out" in payload["message"].lower()
+        assert "sync" in payload["message"]
+
+    @pytest.mark.asyncio
+    async def test_disabled_when_zero(self):
+        """Timeout is skipped entirely when tool_timeout_secs is 0."""
+        calls = []
+
+        async def _handler(name, arguments):
+            calls.append(name)
+            return [TextContent(type="text", text='{"status":"ok"}')]
+
+        from fava_trails.config import ConfigStore
+        from fava_trails.models import GlobalConfig
+
+        config = ConfigStore.__new__(ConfigStore)
+        config.global_config = GlobalConfig(tool_timeout_secs=0)
+        config.data_repo_root = None
+        config.trails_dir = None
+        ConfigStore.override(config)
+
+        wrapped = with_tool_timeout(_handler)
+        await wrapped("recall", {})
+        assert calls == ["recall"]

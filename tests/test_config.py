@@ -267,3 +267,56 @@ def test_config_store_reads_hooks_from_config_yaml(monkeypatch, tmp_path):
     store = ConfigStore.get()
     assert len(store.global_config.hooks) == 1
     assert store.global_config.hooks[0].path == "./my_hook.py"
+
+
+# --- Timeout config validation ---
+
+def test_global_config_timeout_defaults():
+    """Default timeout values are sane and satisfy the ordering constraint."""
+    config = GlobalConfig()
+    assert config.trust_gate_timeout_secs == 120
+    assert config.tool_timeout_secs == 300
+    assert config.trust_gate_timeout_secs < config.tool_timeout_secs
+
+
+def test_global_config_timeout_validator_rejects_inversion():
+    """trust_gate_timeout_secs >= tool_timeout_secs (both > 0) is rejected."""
+    import pytest
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError, match="must be less than tool_timeout_secs"):
+        GlobalConfig(trust_gate_timeout_secs=300, tool_timeout_secs=120)
+
+
+def test_global_config_timeout_validator_equal_values_rejected():
+    """Equal values are also rejected — inner must fire strictly before outer."""
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError, match="must be less than tool_timeout_secs"):
+        GlobalConfig(trust_gate_timeout_secs=120, tool_timeout_secs=120)
+
+
+def test_global_config_timeout_validator_allows_zero_trust_gate():
+    """trust_gate_timeout_secs=0 disables the inner guard — no ordering constraint."""
+    config = GlobalConfig(trust_gate_timeout_secs=0, tool_timeout_secs=120)
+    assert config.trust_gate_timeout_secs == 0
+
+
+def test_global_config_timeout_validator_allows_zero_tool():
+    """tool_timeout_secs=0 disables the outer guard — no ordering constraint."""
+    config = GlobalConfig(trust_gate_timeout_secs=120, tool_timeout_secs=0)
+    assert config.tool_timeout_secs == 0
+
+
+def test_global_config_timeout_validator_allows_both_zero():
+    """Both disabled is valid (no hang protection, but user asked for it)."""
+    config = GlobalConfig(trust_gate_timeout_secs=0, tool_timeout_secs=0)
+    assert config.trust_gate_timeout_secs == 0
+    assert config.tool_timeout_secs == 0
+
+
+def test_global_config_timeout_rejects_negative():
+    """Negative timeout values are rejected by NonNegativeInt."""
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        GlobalConfig(trust_gate_timeout_secs=-1)
+    with pytest.raises(ValidationError):
+        GlobalConfig(tool_timeout_secs=-1)
