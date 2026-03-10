@@ -300,6 +300,22 @@ class HookFeedback:
         elif isinstance(action, Redirect):
             self.redirected_to = action.namespace
 
+    def merge_from(self, other: HookFeedback) -> None:
+        """Merge another HookFeedback into this one."""
+        if not other.accepted:
+            self.accepted = False
+        if other.mutated:
+            self.mutated = True
+        if other.redirected_to is not None:
+            self.redirected_to = other.redirected_to
+        self.annotations.update(other.annotations)
+        for w in other.warnings:
+            if len(self.warnings) < MAX_WARNINGS:
+                self.warnings.append(w)
+        for a in other.advice:
+            if len(self.advice) < MAX_ADVICE:
+                self.advice.append(a)
+
     def is_empty(self) -> bool:
         """True if no feedback was generated (skip in MCP response)."""
         return (

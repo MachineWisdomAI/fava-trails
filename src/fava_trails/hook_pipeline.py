@@ -190,35 +190,52 @@ def _normalize_actions(raw: Any) -> list:
 async def dispatch_observer(
     registry: HookRegistry,
     event: HookEvent,
-) -> None:
-    """Fire after_* hooks as background tasks (fire-and-forget).
+) -> PipelineResult | None:
+    """Run after_* hooks inline on the caller's task.
 
-    Each hook runs in its own asyncio.Task with exception logging.
+    Runs each hook sequentially with timeout and error handling.
+    Returns a PipelineResult so feedback (Annotate, Advise, etc.)
+    is reachable via consume_feedback() on the same asyncio task.
+
     At-most-once delivery — no retry on failure.
     """
     hooks = registry.get_hooks(event.lifecycle_point)
     if not hooks:
-        return
+        return None
 
+    feedback = HookFeedback()
     for hook in hooks:
-        asyncio.create_task(
-            _run_observer_hook(hook, copy.deepcopy(event)),
-            name=f"hook:{hook.source}:{hook.name}",
-        )
+        result = await _run_observer_hook(hook, copy.deepcopy(event))
+        if result is not None:
+            for action in result:
+                feedback.merge(action)
+
+    if feedback.is_empty():
+        return None
+    return PipelineResult(feedback=feedback)
 
 
-async def _run_observer_hook(hook: HookSpec, event: HookEvent) -> None:
-    """Run a single observer hook with timeout and error handling."""
+async def _run_observer_hook(hook: HookSpec, event: HookEvent) -> list[Any] | None:
+    """Run a single observer hook with timeout and error handling.
+
+    Returns the hook's action list (if any) so dispatch_observer can
+    accumulate feedback on the caller's task.
+    """
     try:
-        await asyncio.wait_for(hook.fn(event), timeout=hook.timeout)
+        result = await asyncio.wait_for(hook.fn(event), timeout=hook.timeout)
+        if result is None:
+            return None
+        return _normalize_actions(result)
     except TimeoutError:
         logger.warning(
             "Observer hook %s:%s timed out after %.1fs",
             hook.source, hook.name, hook.timeout,
         )
+        return None
     except Exception:
         logger.warning(
             "Observer hook %s:%s failed",
             hook.source, hook.name,
             exc_info=True,
         )
+        return None

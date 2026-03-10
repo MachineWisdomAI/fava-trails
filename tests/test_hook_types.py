@@ -371,6 +371,28 @@ class TestHookFeedback:
         d = fb.to_dict()
         assert d["redirected_to"] == "obs"
 
+    def test_merge_from_combines_feedback(self):
+        """merge_from merges another HookFeedback's contents."""
+        fb1 = HookFeedback()
+        fb1.merge(Warn(message="w1", code="W1"))
+        fb1.merge(Annotate(values={"a": 1}))
+
+        fb2 = HookFeedback()
+        fb2.merge(Advise(message="adv", code="A1"))
+        fb2.merge(Annotate(values={"b": 2}))
+
+        fb1.merge_from(fb2)
+        assert len(fb1.warnings) == 1
+        assert len(fb1.advice) == 1
+        assert fb1.annotations == {"a": 1, "b": 2}
+
+    def test_merge_from_rejected_propagates(self):
+        fb1 = HookFeedback()
+        fb2 = HookFeedback()
+        fb2.merge(Reject(reason="bad"))
+        fb1.merge_from(fb2)
+        assert fb1.accepted is False
+
 
 # ─── TrailContext ───
 
