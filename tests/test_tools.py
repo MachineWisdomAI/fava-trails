@@ -737,6 +737,41 @@ async def test_trail_name_required():
 
 
 @pytest.mark.asyncio
+async def test_serialize_thought_includes_metadata_extra():
+    """_serialize_thought should include metadata.extra in MCP responses."""
+    from fava_trails.models import ThoughtFrontmatter, ThoughtMetadata, ThoughtRecord
+    from fava_trails.tools.thought import _serialize_thought
+
+    fm = ThoughtFrontmatter(
+        metadata=ThoughtMetadata(
+            tags=["test"],
+            extra={"quality_score": 0.85, "reviewed": True},
+        ),
+    )
+    record = ThoughtRecord(frontmatter=fm, content="Test content.")
+    result = _serialize_thought(record)
+
+    assert "metadata" in result
+    assert "extra" in result["metadata"]
+    assert result["metadata"]["extra"]["quality_score"] == 0.85
+    assert result["metadata"]["extra"]["reviewed"] is True
+    assert result["metadata"]["tags"] == ["test"]
+
+
+@pytest.mark.asyncio
+async def test_serialize_thought_omits_empty_metadata():
+    """_serialize_thought should omit metadata when all sub-fields are empty."""
+    from fava_trails.models import ThoughtFrontmatter, ThoughtRecord
+    from fava_trails.tools.thought import _serialize_thought
+
+    fm = ThoughtFrontmatter()
+    record = ThoughtRecord(frontmatter=fm, content="Minimal thought.")
+    result = _serialize_thought(record)
+
+    assert "metadata" not in result
+
+
+@pytest.mark.asyncio
 async def test_path_traversal_rejected():
     """Path traversal attempts should be rejected."""
     from fava_trails.config import sanitize_scope_path
