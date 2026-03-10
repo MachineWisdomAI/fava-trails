@@ -172,6 +172,12 @@ class TestPlaybookRule:
         thought = _make_thought(confidence=0.5)
         assert rule.matches(thought) is False
 
+    def test_matches_confidence_lt_zero_is_valid(self):
+        """confidence=0.0 is falsy but valid; must be treated as 0.0, not None."""
+        rule = _make_rule(match={"confidence_lt": 0.1})
+        thought = _make_thought(confidence=0.0)
+        assert rule.matches(thought) is True
+
     def test_matches_tags_include_all_present(self):
         rule = _make_rule(match={"tags_include": ["a", "b"]})
         thought = _make_thought(tags=["a", "b", "c"])
@@ -740,6 +746,27 @@ class TestAfterSave:
         assert entry["tags"] == ["x"]
         assert entry["confidence"] == 0.7
 
+    @pytest.mark.asyncio
+    async def test_telemetry_capped_fifo(self):
+        """Telemetry evicts oldest entries when exceeding cap."""
+        _configure(telemetry_max_per_scope=3)
+        for i in range(5):
+            t = _make_thought(thought_id=f"T{i}")
+            await ace.after_save(AfterSaveEvent(trail_name="trail1", thought=t))
+        entries = ace._SAVE_TELEMETRY["trail1"]
+        assert len(entries) == 3
+        # Oldest (T0, T1) evicted; T2, T3, T4 remain
+        assert entries[0]["thought_id"] == "T2"
+        assert entries[2]["thought_id"] == "T4"
+
+    @pytest.mark.asyncio
+    async def test_telemetry_cap_configurable(self):
+        """Default cap is 10_000; configurable via telemetry_max_per_scope."""
+        _configure()
+        assert ace._TELEMETRY_MAX_PER_SCOPE == 10_000
+        _configure(telemetry_max_per_scope=500)
+        assert ace._TELEMETRY_MAX_PER_SCOPE == 500
+
 
 # ---------------------------------------------------------------------------
 # TestAfterPropose
@@ -841,6 +868,20 @@ class TestAfterSupersede:
         event = AfterSupersedeEvent(trail_name="trail1", new_thought=new, original_thought=original)
         await ace.after_supersede(event)
         assert "trail1" in ace._PLAYBOOK_CACHE
+
+    @pytest.mark.asyncio
+    async def test_supersede_telemetry_capped_fifo(self):
+        """Supersede telemetry evicts oldest entries when exceeding cap."""
+        _configure(telemetry_max_per_scope=2)
+        for i in range(4):
+            original = _make_thought(thought_id=f"OLD{i}", tags=[])
+            new = _make_thought(thought_id=f"NEW{i}", tags=[])
+            event = AfterSupersedeEvent(trail_name="trail1", new_thought=new, original_thought=original)
+            await ace.after_supersede(event)
+        entries = ace._SUPERSEDE_STATS["trail1"]
+        assert len(entries) == 2
+        assert entries[0]["original_id"] == "OLD2"
+        assert entries[1]["original_id"] == "OLD3"
 
 
 # ---------------------------------------------------------------------------

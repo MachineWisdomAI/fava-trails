@@ -86,7 +86,8 @@ class PlaybookRule:
                 return False
 
         if "confidence_lt" in m:
-            if (fm.confidence or 0.0) >= m["confidence_lt"]:
+            confidence = 0.0 if fm.confidence is None else fm.confidence
+            if confidence >= m["confidence_lt"]:
                 return False
 
         thought_tags = set(fm.metadata.tags or [])

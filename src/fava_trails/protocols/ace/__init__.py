@@ -68,8 +68,10 @@ _CACHE_TIMESTAMPS: dict[str, float] = {}
 _CACHE_TTL_SECONDS: float = 300.0
 
 # Telemetry accumulators for the external Reflector
+# Capped per-scope to prevent unbounded memory growth.
 _SAVE_TELEMETRY: dict[str, list[dict[str, Any]]] = {}
 _SUPERSEDE_STATS: dict[str, list[dict[str, Any]]] = {}
+_TELEMETRY_MAX_PER_SCOPE: int = 10_000
 
 
 # --- Configuration ---
@@ -77,8 +79,9 @@ _SUPERSEDE_STATS: dict[str, list[dict[str, Any]]] = {}
 
 def configure(config: dict[str, Any]) -> None:
     """Receive hook config from HookRegistry at load time."""
-    global _CONFIG, _PLAYBOOK_CACHE, _CACHE_TIMESTAMPS
+    global _CONFIG, _TELEMETRY_MAX_PER_SCOPE
     _CONFIG = config
+    _TELEMETRY_MAX_PER_SCOPE = int(config.get("telemetry_max_per_scope", 10_000))
     # Clear cache so new config takes effect immediately
     _PLAYBOOK_CACHE.clear()
     _CACHE_TIMESTAMPS.clear()
@@ -201,13 +204,16 @@ async def after_save(event: AfterSaveEvent) -> None:
         _CACHE_TIMESTAMPS.pop(scope_key, None)
         logger.info("ACE: playbook cache invalidated for %s (after_save)", scope_key)
 
-    # Telemetry accumulation for external Reflector
-    _SAVE_TELEMETRY.setdefault(scope_key, []).append({
+    # Telemetry accumulation for external Reflector (FIFO eviction at cap)
+    bucket = _SAVE_TELEMETRY.setdefault(scope_key, [])
+    bucket.append({
         "thought_id": event.thought.thought_id,
         "source_type": event.thought.frontmatter.source_type.value,
         "tags": list(tags),
         "confidence": event.thought.frontmatter.confidence,
     })
+    if len(bucket) > _TELEMETRY_MAX_PER_SCOPE:
+        del bucket[: len(bucket) - _TELEMETRY_MAX_PER_SCOPE]
     return None
 
 
@@ -246,7 +252,10 @@ async def after_supersede(event: AfterSupersedeEvent) -> None:
         "source_type": event.original_thought.frontmatter.source_type.value,
         "tags": list(event.original_thought.frontmatter.metadata.tags or []),
     }
-    _SUPERSEDE_STATS.setdefault(scope_key, []).append(entry)
+    bucket = _SUPERSEDE_STATS.setdefault(scope_key, [])
+    bucket.append(entry)
+    if len(bucket) > _TELEMETRY_MAX_PER_SCOPE:
+        del bucket[: len(bucket) - _TELEMETRY_MAX_PER_SCOPE]
 
     logger.info(
         "ACE telemetry: %s superseded %s in %s (type=%s)",
