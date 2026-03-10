@@ -1,0 +1,22 @@
+id: '19'
+title: rlm-reference
+protocol: aspir
+phase: implement
+plan_phases: []
+current_plan_phase: null
+gates:
+  pr:
+    status: pending
+  phase-review-specify-main-iter1:
+    status: approved
+    requested_at: '2026-03-09T22:05:09.125Z'
+    approved_at: '2026-03-09T22:05:14.971Z'
+  phase-review-plan-main-iter1:
+    status: approved
+    requested_at: '2026-03-09T22:07:45.597Z'
+    approved_at: '2026-03-09T22:07:52.682Z'
+iteration: 1
+build_complete: false
+history: []
+started_at: '2026-03-09T22:04:45.911Z'
+updated_at: '2026-03-09T22:07:58.955Z'
