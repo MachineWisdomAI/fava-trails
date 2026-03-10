@@ -7,12 +7,14 @@ All tool responses are token-optimized JSON summaries — no raw VCS output.
 from __future__ import annotations
 
 import asyncio
+import functools
 import importlib.resources
 import json
 import logging
 import logging.handlers
 import os
 import sys
+from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import Any
 
@@ -504,6 +506,37 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 ]
 
 
+def with_tool_timeout(
+    fn: Callable[..., Coroutine[Any, Any, list[TextContent]]],
+) -> Callable[..., Coroutine[Any, Any, list[TextContent]]]:
+    """Decorator: wraps an MCP tool handler with a configurable asyncio timeout.
+
+    Reads ``tool_timeout_secs`` from GlobalConfig at call time (not decoration time)
+    so config changes take effect without restarting the server.
+    Set ``tool_timeout_secs: 0`` in config.yaml to disable.
+    """
+    @functools.wraps(fn)
+    async def wrapper(name: str, arguments: dict[str, Any]) -> list[TextContent]:
+        timeout = ConfigStore.get().global_config.tool_timeout_secs
+        if timeout <= 0:
+            return await fn(name, arguments)
+        try:
+            return await asyncio.wait_for(fn(name, arguments), timeout=float(timeout))
+        except TimeoutError:
+            logger.error("Tool '%s' timed out after %ds", name, timeout)
+            result = {
+                "status": "error",
+                "message": (
+                    f"Tool '{name}' timed out after {timeout}s. "
+                    "The operation did not complete. "
+                    "If this is sync, check remote connectivity. "
+                    "For propose_truth, the LLM provider may be unresponsive — retry."
+                ),
+            }
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+    return wrapper
+
+
 @server.list_tools()
 async def handle_list_tools() -> list[Tool]:
     """List all FAVA Trails tools."""
@@ -518,6 +551,7 @@ async def handle_list_tools() -> list[Tool]:
 
 
 @server.call_tool()
+@with_tool_timeout
 async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     """Route tool calls to handlers. Responses are structured JSON (except get_usage_guide which returns markdown)."""
     from .tools.navigation import (

@@ -154,6 +154,7 @@ async def handle_propose_truth(
                 openrouter_api_key=openrouter_key,
             )
 
+            tg_timeout = global_config.trust_gate_timeout_secs
             try:
                 trust_result = await asyncio.wait_for(
                     review_thought(
@@ -163,16 +164,18 @@ async def handle_propose_truth(
                         client=llm_client,
                         policy=policy,
                     ),
-                    timeout=120.0,
+                    timeout=float(tg_timeout),
                 )
             except TimeoutError:
                 logger.error(
-                    "Trust Gate LLM call timed out after 120s for thought %s", thought_id
+                    "Trust Gate LLM call timed out after %ds for thought %s",
+                    tg_timeout,
+                    thought_id,
                 )
                 return {
                     "status": "error",
                     "message": (
-                        f"Trust Gate timed out after 120s reviewing thought {thought_id[:8]}. "
+                        f"Trust Gate timed out after {tg_timeout}s reviewing thought {thought_id[:8]}. "
                         "The LLM provider did not respond. Retry propose_truth to try again."
                     ),
                 }

@@ -218,5 +218,13 @@ class GlobalConfig(BaseModel):
     trust_gate: str = "llm-oneshot"  # llm-oneshot | human (future)
     openrouter_api_key_env: str = "OPENROUTER_API_KEY"
     trust_gate_model: str = "google/gemini-2.5-flash"
+    # Timeout for the Trust Gate LLM call (asyncio.wait_for guard).
+    # Should be well above a normal slow response (e.g. 60-90s) but short enough
+    # to recover from a hung provider before the session times out.
+    trust_gate_timeout_secs: int = 120
+    # Timeout for an entire MCP tool call (outermost guard covering all tools).
+    # Catches jj hangs, slow syncs, and any other unanticipated blocking.
+    # Should be generous — set 0 to disable.
+    tool_timeout_secs: int = 300
     trails: dict[str, TrailConfig] = Field(default_factory=dict)
     hooks: list[HookEntry] = Field(default_factory=list)
