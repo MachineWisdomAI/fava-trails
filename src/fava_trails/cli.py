@@ -18,8 +18,22 @@ from pathlib import Path
 
 import yaml
 
-from .config import get_data_repo_root, get_trails_dir, load_global_config, sanitize_scope_path
-from .models import ThoughtRecord
+from .config import get_data_repo_root, get_trails_dir, load_global_config, sanitize_scope_path, save_global_config
+from .models import HookEntry, ThoughtRecord
+
+# ─── JJ binary helper ─────────────────────────────────────────────────────────
+
+
+def _find_jj_bin() -> str | None:
+    """Find jj binary: PATH first, then ~/.local/bin/jj fallback. Returns None if not found."""
+    jj = shutil.which("jj")
+    if jj:
+        return jj
+    fallback = Path.home() / ".local" / "bin" / "jj"
+    if fallback.is_file() and os.access(fallback, os.X_OK):
+        return str(fallback)
+    return None
+
 
 # ─── .env helpers ────────────────────────────────────────────────────────────
 
@@ -211,12 +225,10 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     target = Path(args.path).expanduser().resolve()
 
     # Validate JJ is available
-    jj_bin = shutil.which("jj")
+    jj_bin = _find_jj_bin()
     if not jj_bin:
-        jj_bin = str(Path.home() / ".local" / "bin" / "jj")
-        if not Path(jj_bin).exists():
-            print("Error: jj not found. Install with: fava-trails install-jj\n  Or manually: https://jj-vcs.github.io/jj/", file=sys.stderr)
-            return 1
+        print("Error: jj not found. Install with: fava-trails install-jj\n  Or manually: https://jj-vcs.github.io/jj/", file=sys.stderr)
+        return 1
 
     # Create directory
     target.mkdir(parents=True, exist_ok=True)
@@ -318,12 +330,10 @@ def cmd_clone(args: argparse.Namespace) -> int:
     target = Path(args.path).expanduser().resolve()
 
     # Validate JJ is available
-    jj_bin = shutil.which("jj")
+    jj_bin = _find_jj_bin()
     if not jj_bin:
-        jj_bin = str(Path.home() / ".local" / "bin" / "jj")
-        if not Path(jj_bin).exists():
-            print("Error: jj not found. Install with: fava-trails install-jj\n  Or manually: https://jj-vcs.github.io/jj/", file=sys.stderr)
-            return 1
+        print("Error: jj not found. Install with: fava-trails install-jj\n  Or manually: https://jj-vcs.github.io/jj/", file=sys.stderr)
+        return 1
 
     # Check target doesn't already exist
     if target.exists():
@@ -767,6 +777,159 @@ def cmd_get(args: argparse.Namespace) -> int:
     return 1
 
 
+# ─── Protocol setup commands ──────────────────────────────────────────────────
+
+
+def _jj_commit_dance(jj_bin: str, data_repo: Path, message: str) -> bool:
+    """Run the jj commit dance: describe → new → bookmark set main → git push.
+
+    Returns True if all steps succeeded, False if any step failed (bails on first failure).
+    """
+    steps = [
+        ([jj_bin, "describe", "-m", message], "describe"),
+        ([jj_bin, "new", "-m", "(new change)"], "new"),
+        ([jj_bin, "bookmark", "set", "main", "-r", "@-"], "bookmark set"),
+        ([jj_bin, "git", "push", "-b", "main"], "git push"),
+    ]
+    for cmd, name in steps:
+        result = subprocess.run(cmd, cwd=str(data_repo), check=False, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"Warning: jj {name} failed: {result.stderr.strip()}", file=sys.stderr)
+            return False
+    return True
+
+
+def _cmd_protocol_setup(args: argparse.Namespace, protocol_name: str, module_path: str, default_entry: dict) -> int:
+    """Generic protocol setup: print YAML block or write to config.yaml with jj dance."""
+    # 1. Validate data repo exists
+    try:
+        data_repo = get_data_repo_root()
+        if not data_repo.exists() or not (data_repo / "config.yaml").exists():
+            print(f"Error: data repo not found at {data_repo}. Run: fava-trails bootstrap <path>", file=sys.stderr)
+            return 1
+    except (OSError, ValueError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    # 2. Check idempotency (module match) — only relevant for --write
+    write = getattr(args, "write", False)
+    if write:
+        try:
+            config = load_global_config()
+        except (OSError, ValueError) as e:
+            print(f"Error loading config: {e}", file=sys.stderr)
+            return 1
+        for hook in config.hooks:
+            if hook.module == module_path:
+                print(f"{protocol_name} hook already configured (module: {module_path}). No changes made.")
+                return 0
+
+    # 3. Print YAML block
+    yaml_block = yaml.dump({"hooks": [default_entry]}, default_flow_style=False, sort_keys=False)
+    print(f"# {protocol_name} default hook config:")
+    print(yaml_block)
+
+    if not write:
+        print("Add this to your config.yaml hooks section, or run:")
+        print(f"  fava-trails {protocol_name.lower()} setup --write")
+        return 0
+
+    # 4. --write mode: find jj, create HookEntry, append, save, jj dance
+    jj_bin = _find_jj_bin()
+    if not jj_bin:
+        print("Error: jj not found. Install with: fava-trails install-jj", file=sys.stderr)
+        return 1
+
+    # Warn about comment loss before rewriting YAML
+    config_path = data_repo / "config.yaml"
+    try:
+        config_text = config_path.read_text()
+        has_comments = any(line.strip().startswith("#") for line in config_text.splitlines())
+    except OSError as e:
+        print(f"Error reading config.yaml: {e}", file=sys.stderr)
+        return 1
+
+    entry = HookEntry(**default_entry)
+    config.hooks.append(entry)
+    try:
+        save_global_config(config)
+    except OSError as e:
+        print(f"Error writing config.yaml: {e}", file=sys.stderr)
+        return 1
+
+    jj_ok = _jj_commit_dance(jj_bin, data_repo, f"feat: add {protocol_name} hook to config.yaml")
+
+    if has_comments:
+        print("Warning: config.yaml had YAML comments — they have been lost during rewrite.")
+
+    print(f"{protocol_name} hook added to config.yaml.")
+    if not jj_ok:
+        print("Warning: config.yaml was saved but jj commit/push failed — data repo may have uncommitted changes.", file=sys.stderr)
+    print("Hint: restart the MCP server to activate the hook.")
+    if protocol_name == "secom":
+        print("Hint: run 'fava-trails secom warmup' to pre-download the LLMLingua model.")
+    return 0
+
+
+def cmd_secom_setup(args: argparse.Namespace) -> int:
+    """Print or write SECOM hook config to config.yaml."""
+    from .protocols.secom import DEFAULT_HOOK_ENTRY
+    return _cmd_protocol_setup(args, "secom", "fava_trails.protocols.secom", DEFAULT_HOOK_ENTRY)
+
+
+def cmd_ace_setup(args: argparse.Namespace) -> int:
+    """Print or write ACE hook config to config.yaml."""
+    from .protocols.ace import DEFAULT_HOOK_ENTRY
+    return _cmd_protocol_setup(args, "ace", "fava_trails.protocols.ace", DEFAULT_HOOK_ENTRY)
+
+
+def cmd_rlm_setup(args: argparse.Namespace) -> int:
+    """Print or write RLM hook config to config.yaml."""
+    from .protocols.rlm import DEFAULT_HOOK_ENTRY
+    return _cmd_protocol_setup(args, "rlm", "fava_trails.protocols.rlm", DEFAULT_HOOK_ENTRY)
+
+
+def cmd_secom_warmup(args: argparse.Namespace) -> int:
+    """Pre-download the SECOM LLMLingua model and verify compression works."""
+    import importlib.util
+
+    from .protocols.secom import DEFAULT_HOOK_ENTRY, configure
+
+    # Configure SECOM with defaults so _get_compressor() uses them
+    configure(DEFAULT_HOOK_ENTRY["config"])
+
+    # Check llmlingua is importable
+    if importlib.util.find_spec("llmlingua") is None:
+        print("Error: llmlingua not installed. Install with: pip install fava-trails[secom]", file=sys.stderr)
+        return 1
+
+    print("Loading LLMLingua model (may download on first run)...")
+    try:
+        from .protocols.secom import _get_compressor
+        _get_compressor()
+    except Exception as e:
+        print(f"Error: failed to load compressor: {e}", file=sys.stderr)
+        return 1
+
+    # Test compression with a short sample
+    print("Testing compression...")
+    try:
+        from .protocols.secom import _compress
+        sample = "The quick brown fox jumps over the lazy dog. " * 20
+        compressed, rate = _compress(sample, 0.6)
+        print(f"Compression test: {len(sample)} chars → {len(compressed)} chars (rate={rate:.2f})")
+    except Exception as e:
+        print(f"Error: compression test failed: {e}", file=sys.stderr)
+        return 1
+
+    # Report HuggingFace cache path
+    hf_cache = os.environ.get("HF_HOME") or os.environ.get("TRANSFORMERS_CACHE") or str(Path.home() / ".cache" / "huggingface")
+    print(f"HuggingFace cache: {hf_cache}")
+
+    print("SECOM warmup complete.")
+    return 0
+
+
 # ─── Argument parser ──────────────────────────────────────────────────────────
 
 
@@ -858,6 +1021,39 @@ def build_parser() -> argparse.ArgumentParser:
         help="Include YAML frontmatter in output",
     )
     p_get.set_defaults(func=cmd_get)
+
+    # secom
+    p_secom = subparsers.add_parser("secom", help="SECOM compression protocol commands")
+    secom_sub = p_secom.add_subparsers(dest="secom_command", metavar="<subcommand>")
+
+    p_secom_setup = secom_sub.add_parser("setup", help="Print or write SECOM hook config to config.yaml")
+    p_secom_setup.add_argument("--write", action="store_true", help="Write config to config.yaml and commit with jj")
+    p_secom_setup.set_defaults(func=cmd_secom_setup)
+
+    p_secom_warmup = secom_sub.add_parser("warmup", help="Pre-download the SECOM model and verify compression")
+    p_secom_warmup.set_defaults(func=cmd_secom_warmup)
+
+    p_secom.set_defaults(func=lambda args: (p_secom.print_help(), 0)[1])
+
+    # ace
+    p_ace = subparsers.add_parser("ace", help="ACE playbook protocol commands")
+    ace_sub = p_ace.add_subparsers(dest="ace_command", metavar="<subcommand>")
+
+    p_ace_setup = ace_sub.add_parser("setup", help="Print or write ACE hook config to config.yaml")
+    p_ace_setup.add_argument("--write", action="store_true", help="Write config to config.yaml and commit with jj")
+    p_ace_setup.set_defaults(func=cmd_ace_setup)
+
+    p_ace.set_defaults(func=lambda args: (p_ace.print_help(), 0)[1])
+
+    # rlm
+    p_rlm = subparsers.add_parser("rlm", help="RLM MapReduce protocol commands")
+    rlm_sub = p_rlm.add_subparsers(dest="rlm_command", metavar="<subcommand>")
+
+    p_rlm_setup = rlm_sub.add_parser("setup", help="Print or write RLM hook config to config.yaml")
+    p_rlm_setup.add_argument("--write", action="store_true", help="Write config to config.yaml and commit with jj")
+    p_rlm_setup.set_defaults(func=cmd_rlm_setup)
+
+    p_rlm.set_defaults(func=lambda args: (p_rlm.print_help(), 0)[1])
 
     return parser
 

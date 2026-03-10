@@ -252,6 +252,75 @@ The `before_save` hook warns when structured content is detected without `secom-
 
 See [protocols/secom/README.md](src/fava_trails/protocols/secom/README.md) for full config reference, model options, and the `secom-skip` opt-out. See [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md#lifecycle-hooks) for the general hooks system.
 
+**Quick setup via CLI:**
+
+```bash
+# Print default config (copy-paste into config.yaml)
+fava-trails secom setup
+
+# Write config directly + commit with jj
+fava-trails secom setup --write
+
+# Pre-download model to avoid first-use delay
+fava-trails secom warmup
+```
+
+### ACE — Agentic Context Engine
+
+Playbook-driven reranking and anti-pattern detection, based on [Stanford/SambaNova ACE (arXiv:2510.04618)](https://arxiv.org/abs/2510.04618). Applies multiplicative scoring using rules stored in the `preferences/` namespace.
+
+```bash
+pip install fava-trails  # included in base install
+```
+
+Add to your data repo's `config.yaml`:
+
+```yaml
+hooks:
+  - module: fava_trails.protocols.ace
+    points: [on_startup, on_recall, before_save, after_save, after_propose, after_supersede]
+    order: 10
+    fail_mode: open
+    config:
+      playbook_namespace: preferences
+      telemetry_max_per_scope: 10000
+```
+
+**Quick setup via CLI:**
+
+```bash
+fava-trails ace setup           # print default config
+fava-trails ace setup --write   # write + jj commit
+```
+
+### RLM — MapReduce Orchestration
+
+Lifecycle hooks for [MIT RLM (arXiv:2512.24601)](https://arxiv.org/abs/2512.24601) MapReduce workflows. Validates mapper outputs, tracks batch progress, and sorts results deterministically for reducer consumption.
+
+```bash
+pip install fava-trails  # included in base install
+```
+
+Add to your data repo's `config.yaml`:
+
+```yaml
+hooks:
+  - module: fava_trails.protocols.rlm
+    points: [before_save, after_save, on_recall]
+    order: 15
+    fail_mode: closed
+    config:
+      expected_mappers: 5
+      min_mapper_output_chars: 20
+```
+
+**Quick setup via CLI:**
+
+```bash
+fava-trails rlm setup           # print default config
+fava-trails rlm setup --write   # write + jj commit
+```
+
 ## Development
 
 ```bash

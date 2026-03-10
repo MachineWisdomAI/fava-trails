@@ -52,6 +52,20 @@ from fava_trails.hook_types import (
 
 logger = logging.getLogger(__name__)
 
+# Default hook entry for `fava-trails secom setup --write`
+DEFAULT_HOOK_ENTRY: dict = {
+    "module": "fava_trails.protocols.secom",
+    "points": ["before_propose", "before_save", "on_recall"],
+    "order": 20,
+    "fail_mode": "open",
+    "config": {
+        "compression_threshold_chars": 500,
+        "verbosity_warn_chars": 1000,
+        "target_compress_rate": 0.6,
+        "compression_engine": {"type": "llmlingua"},
+    },
+}
+
 # Known compression engine types.
 KNOWN_ENGINES = frozenset({"llmlingua"})
 

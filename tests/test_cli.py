@@ -2,25 +2,35 @@
 
 from __future__ import annotations
 
+import argparse
 import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+import yaml as _yaml
+
 from fava_trails.cli import (
+    _find_jj_bin,
     _is_env_gitignored,
     _read_env_value,
     _read_project_yaml_scope,
     _update_env_file,
     _write_project_yaml,
+    cmd_ace_setup,
     cmd_bootstrap,
     cmd_doctor,
     cmd_init,
     cmd_install_jj,
+    cmd_rlm_setup,
     cmd_scope,
     cmd_scope_list,
     cmd_scope_set,
+    cmd_secom_setup,
+    cmd_secom_warmup,
 )
+from fava_trails.config import ConfigStore
 
 # ─── _update_env_file ─────────────────────────────────────────────────────────
 
@@ -257,17 +267,8 @@ def test_bootstrap_fails_if_jj_missing(tmp_path):
     target = tmp_path / "data-repo"
     args = _make_args(path=str(target), remote=None)
 
-    fallback = Path.home() / ".local" / "bin" / "jj"
-    real_exists = Path.exists
-
-    def exists_side_effect(self):
-        if self == fallback:
-            return False
-        return real_exists(self)
-
-    with patch("shutil.which", return_value=None):
-        with patch.object(Path, "exists", exists_side_effect):
-            rc = cmd_bootstrap(args)
+    with patch("fava_trails.cli._find_jj_bin", return_value=None):
+        rc = cmd_bootstrap(args)
 
     assert rc == 1
 
@@ -703,3 +704,290 @@ def test_install_jj_in_help(capsys):
         text=True,
     )
     assert "install-jj" in result.stdout
+
+
+# ─── Protocol setup commands ──────────────────────────────────────────────────
+
+
+def _make_setup_args(write: bool = False) -> argparse.Namespace:
+    args = argparse.Namespace()
+    args.write = write
+    return args
+
+
+def _setup_data_repo(tmp_path: Path, monkeypatch) -> Path:
+    """Create a valid data repo and point FAVA_TRAILS_DATA_REPO at it."""
+    data_repo = _make_valid_data_repo(tmp_path)
+    monkeypatch.setenv("FAVA_TRAILS_DATA_REPO", str(data_repo))
+    ConfigStore.reset()
+    return data_repo
+
+
+@pytest.mark.parametrize("cmd_fn,protocol_name,module_path", [
+    (cmd_secom_setup, "secom", "fava_trails.protocols.secom"),
+    (cmd_ace_setup, "ace", "fava_trails.protocols.ace"),
+    (cmd_rlm_setup, "rlm", "fava_trails.protocols.rlm"),
+])
+def test_setup_prints_yaml(tmp_path, monkeypatch, capsys, cmd_fn, protocol_name, module_path):
+    """setup (no --write) prints YAML block with correct module."""
+    _setup_data_repo(tmp_path, monkeypatch)
+    rc = cmd_fn(_make_setup_args(write=False))
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert module_path in out
+    assert "--write" in out
+
+
+@pytest.mark.parametrize("cmd_fn,protocol_name,module_path", [
+    (cmd_secom_setup, "secom", "fava_trails.protocols.secom"),
+    (cmd_ace_setup, "ace", "fava_trails.protocols.ace"),
+    (cmd_rlm_setup, "rlm", "fava_trails.protocols.rlm"),
+])
+def test_setup_write_adds_hook(tmp_path, monkeypatch, capsys, cmd_fn, protocol_name, module_path):
+    """setup --write appends hook entry to config.yaml and runs jj dance."""
+    data_repo = _setup_data_repo(tmp_path, monkeypatch)
+
+    jj_calls = []
+
+    def fake_run(cmd, **kwargs):
+        jj_calls.append(cmd)
+        r = MagicMock()
+        r.returncode = 0
+        r.stdout = ""
+        r.stderr = ""
+        return r
+
+    with patch("fava_trails.cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("subprocess.run", side_effect=fake_run):
+            rc = cmd_fn(_make_setup_args(write=True))
+
+    assert rc == 0
+    # Config file should now include the hook module
+    config_text = (data_repo / "config.yaml").read_text()
+    assert module_path in config_text
+    # jj dance should have been called: describe, new, bookmark set, git push
+    assert len(jj_calls) == 4
+    out = capsys.readouterr().out
+    assert "added to config.yaml" in out
+
+
+@pytest.mark.parametrize("cmd_fn,module_path", [
+    (cmd_secom_setup, "fava_trails.protocols.secom"),
+    (cmd_ace_setup, "fava_trails.protocols.ace"),
+    (cmd_rlm_setup, "fava_trails.protocols.rlm"),
+])
+def test_setup_write_idempotent(tmp_path, monkeypatch, capsys, cmd_fn, module_path):
+    """setup --write is idempotent: running twice does not duplicate hooks."""
+    _setup_data_repo(tmp_path, monkeypatch)
+
+    def fake_run(cmd, **kwargs):
+        r = MagicMock()
+        r.returncode = 0
+        r.stdout = ""
+        r.stderr = ""
+        return r
+
+    with patch("fava_trails.cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("subprocess.run", side_effect=fake_run):
+            rc1 = cmd_fn(_make_setup_args(write=True))
+            rc2 = cmd_fn(_make_setup_args(write=True))
+
+    assert rc1 == 0
+    assert rc2 == 0
+    out = capsys.readouterr().out
+    # Second run should say already configured
+    assert "already configured" in out
+
+
+@pytest.mark.parametrize("cmd_fn,module_path", [
+    (cmd_secom_setup, "fava_trails.protocols.secom"),
+    (cmd_ace_setup, "fava_trails.protocols.ace"),
+    (cmd_rlm_setup, "fava_trails.protocols.rlm"),
+])
+def test_setup_write_preserves_existing_hooks(tmp_path, monkeypatch, capsys, cmd_fn, module_path):
+    """setup --write preserves existing hooks in config.yaml."""
+    data_repo = _setup_data_repo(tmp_path, monkeypatch)
+    # Pre-populate config with an unrelated hook
+    existing_config = {
+        "trails_dir": "trails",
+        "hooks": [
+            {"module": "fava_trails.protocols.other", "points": ["on_recall"], "order": 99, "fail_mode": "open"}
+        ],
+    }
+    (data_repo / "config.yaml").write_text(_yaml.dump(existing_config))
+    ConfigStore.reset()
+
+    def fake_run(cmd, **kwargs):
+        r = MagicMock()
+        r.returncode = 0
+        r.stdout = ""
+        r.stderr = ""
+        return r
+
+    with patch("fava_trails.cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("subprocess.run", side_effect=fake_run):
+            rc = cmd_fn(_make_setup_args(write=True))
+
+    assert rc == 0
+    config_text = (data_repo / "config.yaml").read_text()
+    assert "fava_trails.protocols.other" in config_text
+    assert module_path in config_text
+
+
+@pytest.mark.parametrize("cmd_fn,module_path", [
+    (cmd_secom_setup, "fava_trails.protocols.secom"),
+    (cmd_ace_setup, "fava_trails.protocols.ace"),
+    (cmd_rlm_setup, "fava_trails.protocols.rlm"),
+])
+def test_setup_write_warns_about_comments(tmp_path, monkeypatch, capsys, cmd_fn, module_path):
+    """setup --write warns when config.yaml contains comments."""
+    data_repo = _setup_data_repo(tmp_path, monkeypatch)
+    (data_repo / "config.yaml").write_text("# my custom comment\ntrails_dir: trails\n")
+    ConfigStore.reset()
+
+    def fake_run(cmd, **kwargs):
+        r = MagicMock()
+        r.returncode = 0
+        r.stdout = ""
+        r.stderr = ""
+        return r
+
+    with patch("fava_trails.cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("subprocess.run", side_effect=fake_run):
+            cmd_fn(_make_setup_args(write=True))
+
+    out = capsys.readouterr().out
+    assert "comment" in out.lower() or "Warning" in out
+
+
+@pytest.mark.parametrize("cmd_fn", [cmd_secom_setup, cmd_ace_setup, cmd_rlm_setup])
+def test_setup_write_fails_without_jj(tmp_path, monkeypatch, capsys, cmd_fn):
+    """setup --write exits 1 when jj is not found."""
+    _setup_data_repo(tmp_path, monkeypatch)
+
+    with patch("fava_trails.cli._find_jj_bin", return_value=None):
+        rc = cmd_fn(_make_setup_args(write=True))
+
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "jj" in err.lower()
+
+
+@pytest.mark.parametrize("cmd_fn", [cmd_secom_setup, cmd_ace_setup, cmd_rlm_setup])
+def test_setup_help(cmd_fn):
+    """setup --help exits 0 for each protocol."""
+    proto = cmd_fn.__name__.split("_")[1]  # secom / ace / rlm
+    result = subprocess.run(
+        [sys.executable, "-m", "fava_trails.cli", proto, "setup", "--help"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+    assert "--write" in result.stdout
+
+
+@pytest.mark.parametrize("cmd_fn,module_path", [
+    (cmd_secom_setup, "fava_trails.protocols.secom"),
+    (cmd_ace_setup, "fava_trails.protocols.ace"),
+    (cmd_rlm_setup, "fava_trails.protocols.rlm"),
+])
+def test_setup_write_warns_on_jj_failure(tmp_path, monkeypatch, capsys, cmd_fn, module_path):
+    """setup --write warns when jj commit dance fails."""
+    _setup_data_repo(tmp_path, monkeypatch)
+
+    def fake_run_fail(cmd, **kwargs):
+        r = MagicMock()
+        r.returncode = 1
+        r.stdout = ""
+        r.stderr = "jj error"
+        return r
+
+    with patch("fava_trails.cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("subprocess.run", side_effect=fake_run_fail):
+            rc = cmd_fn(_make_setup_args(write=True))
+
+    assert rc == 0  # config was saved, so still success
+    captured = capsys.readouterr()
+    assert "added to config.yaml" in captured.out
+    assert "jj commit/push failed" in captured.err
+
+
+# ─── cmd_secom_warmup ──────────────────────────────────────────────────────────
+
+
+def test_secom_warmup_missing_llmlingua(tmp_path, capsys):
+    """secom warmup exits 1 when llmlingua is not installed."""
+    args = argparse.Namespace()
+    with patch("importlib.util.find_spec", return_value=None):
+        rc = cmd_secom_warmup(args)
+
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "llmlingua" in err
+
+
+def test_secom_warmup_compression_failure(tmp_path, capsys):
+    """secom warmup exits 1 when compression test fails."""
+    fake_spec = MagicMock()
+    args = argparse.Namespace()
+
+    with patch("importlib.util.find_spec", return_value=fake_spec):
+        with patch("fava_trails.protocols.secom._get_compressor", return_value=MagicMock()):
+            with patch("fava_trails.protocols.secom._compress", side_effect=RuntimeError("boom")):
+                rc = cmd_secom_warmup(args)
+
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "compression test failed" in err
+
+
+def test_secom_warmup_success(tmp_path, capsys):
+    """secom warmup exits 0 when llmlingua loads and compression works."""
+    fake_spec = MagicMock()
+    args = argparse.Namespace()
+
+    mock_compressor = MagicMock()
+    mock_compressor.compress_prompt.return_value = {"compressed_prompt": "compressed text"}
+
+    with patch("importlib.util.find_spec", return_value=fake_spec):
+        with patch("fava_trails.protocols.secom._get_compressor", return_value=mock_compressor):
+            with patch("fava_trails.protocols.secom._compress", return_value=("short", 0.5)):
+                rc = cmd_secom_warmup(args)
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "warmup complete" in out.lower() or "complete" in out
+
+
+# ─── _find_jj_bin ─────────────────────────────────────────────────────────────
+
+
+def test_find_jj_bin_from_path(monkeypatch):
+    """_find_jj_bin returns PATH result when jj is on PATH."""
+    with patch("shutil.which", return_value="/usr/bin/jj"):
+        assert _find_jj_bin() == "/usr/bin/jj"
+
+
+def test_find_jj_bin_fallback(tmp_path, monkeypatch):
+    """_find_jj_bin falls back to ~/.local/bin/jj when not on PATH."""
+    fake_home = tmp_path / "fakehome"
+    local_bin = fake_home / ".local" / "bin"
+    local_bin.mkdir(parents=True)
+    fake_jj = local_bin / "jj"
+    fake_jj.write_text("#!/bin/sh")
+    fake_jj.chmod(0o755)
+    with patch("shutil.which", return_value=None):
+        with patch("pathlib.Path.home", return_value=fake_home):
+            result = _find_jj_bin()
+            assert result == str(fake_jj)
+
+
+def test_find_jj_bin_not_found(tmp_path, monkeypatch):
+    """_find_jj_bin returns None when jj is not found anywhere."""
+    fake_home = tmp_path / "emptyhome"
+    fake_home.mkdir()
+    with patch("shutil.which", return_value=None):
+        with patch("pathlib.Path.home", return_value=fake_home):
+            result = _find_jj_bin()
+            assert result is None

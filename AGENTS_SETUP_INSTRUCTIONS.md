@@ -334,8 +334,24 @@ FAVA Trails ships with protocol hook modules that can be enabled via `module:` e
 | Protocol | Install | Description |
 |----------|---------|-------------|
 | **SECOM** | `pip install fava-trails[secom]` | Extractive compression at promote time via LLMLingua-2 ([docs](../src/fava_trails/protocols/secom/README.md)) |
+| **ACE** | included | Playbook-driven reranking and anti-pattern detection (Stanford/SambaNova ACE) |
+| **RLM** | included | MapReduce orchestration hooks for batch workflows (MIT RLM) |
 
-Example — enable SECOM compression:
+**Quickest way to add a protocol** — use the CLI setup command:
+
+```bash
+# Print default config (copy-paste into config.yaml)
+fava-trails secom setup
+fava-trails ace setup
+fava-trails rlm setup
+
+# Or write directly to config.yaml + jj commit in one step
+fava-trails secom setup --write
+fava-trails ace setup --write
+fava-trails rlm setup --write
+```
+
+**SECOM** — enable extractive compression:
 
 ```yaml
 # config.yaml
@@ -352,7 +368,37 @@ hooks:
         type: llmlingua
 ```
 
-After installing and configuring, restart the MCP server. The first `propose_truth` that triggers compression will download the LLMLingua-2 model (~700MB) from HuggingFace Hub.
+After installing and configuring, restart the MCP server. The first `propose_truth` that triggers compression will download the LLMLingua-2 model (~700MB) from HuggingFace Hub. Pre-download with:
+
+```bash
+fava-trails secom warmup
+```
+
+**ACE** — enable playbook-driven reranking:
+
+```yaml
+hooks:
+  - module: fava_trails.protocols.ace
+    points: [on_startup, on_recall, before_save, after_save, after_propose, after_supersede]
+    order: 10
+    fail_mode: open
+    config:
+      playbook_namespace: preferences
+      telemetry_max_per_scope: 10000
+```
+
+**RLM** — enable MapReduce orchestration:
+
+```yaml
+hooks:
+  - module: fava_trails.protocols.rlm
+    points: [before_save, after_save, on_recall]
+    order: 15
+    fail_mode: closed
+    config:
+      expected_mappers: 5
+      min_mapper_output_chars: 20
+```
 
 ## Pushing to Remote
 
