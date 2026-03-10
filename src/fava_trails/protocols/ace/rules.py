@@ -112,6 +112,16 @@ class PlaybookRule:
                 # Defensive: if age check fails, default to matching (non-blocking)
                 pass
 
+        unknown = m.keys() - self._MATCH_KEYS
+        if unknown:
+            logger.warning(
+                "ACE rule %s: unknown match key(s) %s — "
+                "valid keys are %s (did you mean 'tags_include' or 'tags_exclude'?)",
+                self.name,
+                sorted(unknown),
+                sorted(self._MATCH_KEYS),
+            )
+
         return True
 
     def evaluate(self, thought: ThoughtRecord) -> float:

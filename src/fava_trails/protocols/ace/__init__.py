@@ -140,10 +140,27 @@ async def on_recall(event: OnRecallEvent) -> list[Any] | None:
     # Stable sort: primary by score, secondary by thought_id (deterministic tiebreak)
     scored.sort(key=lambda x: (x[1], x[0].thought_id), reverse=True)
     ordered_ulids = [t.thought_id for t, _ in scored]
+    original_order = [t.thought_id for t in event.results]
+    order_changed = ordered_ulids != original_order
+
+    if not order_changed:
+        # Order unchanged: RecallSelect would be a no-op and doesn't contribute to
+        # hook_feedback. Return only Annotate so the caller still sees feedback.
+        return [
+            Annotate({
+                "recall_policy": "ace_rerank_v1",
+                "rules_applied": len(playbook),
+                "order_changed": False,
+            }),
+        ]
 
     return [
         RecallSelect(ordered_ulids=ordered_ulids, reason="ace_playbook_rerank"),
-        Annotate({"recall_policy": "ace_rerank_v1", "rules_applied": len(playbook)}),
+        Annotate({
+            "recall_policy": "ace_rerank_v1",
+            "rules_applied": len(playbook),
+            "order_changed": True,
+        }),
     ]
 
 

@@ -225,6 +225,33 @@ class TestPlaybookRule:
         thought = _make_thought(source_type="decision", confidence=0.8)
         assert rule.matches(thought) is False
 
+    def test_matches_unknown_key_logs_warning(self, caplog):
+        """Unknown match key (e.g. 'tags' instead of 'tags_include') logs a warning."""
+        import logging
+        rule = _make_rule(match={"tags": ["important"]})
+        thought = _make_thought(tags=["important"])
+        with caplog.at_level(logging.WARNING, logger="fava_trails.protocols.ace.rules"):
+            result = rule.matches(thought)
+        assert result is True  # unknown key is not a filter, rule still matches
+        assert any("unknown match key" in r.message for r in caplog.records)
+        assert any("tags" in r.message for r in caplog.records)
+
+    def test_matches_unknown_key_does_not_filter(self):
+        """Unknown match key does not accidentally filter out thoughts."""
+        rule = _make_rule(match={"tags": ["important"]})
+        thought_without_tag = _make_thought(tags=[])
+        # 'tags' is unknown — it should NOT filter, rule still returns True
+        assert rule.matches(thought_without_tag) is True
+
+    def test_matches_unknown_key_suggestion_includes_tags_include(self, caplog):
+        """Warning message hints at 'tags_include' and 'tags_exclude'."""
+        import logging
+        rule = _make_rule(match={"tags": ["x"]})
+        thought = _make_thought()
+        with caplog.at_level(logging.WARNING, logger="fava_trails.protocols.ace.rules"):
+            rule.matches(thought)
+        assert any("tags_include" in r.message for r in caplog.records)
+
     # --- evaluate() ---
 
     def test_evaluate_anti_pattern_always_neutral(self):
@@ -572,20 +599,47 @@ class TestOnRecall:
 
     @pytest.mark.asyncio
     async def test_deterministic_tiebreak_by_ulid(self):
-        """Equal-scored thoughts are sorted by thought_id (deterministic)."""
+        """Equal-scored thoughts produce deterministic tiebreak (no RecallSelect when unchanged)."""
         _configure()
-        # Empty playbook → all thoughts get confidence as score
+        # Both thoughts have same confidence and same rule score → same order as input [B_ID, A_ID]
         ace._PLAYBOOK_CACHE["trail1"] = [_make_rule(match={}, action={"boost": 1.0})]
         ace._CACHE_TIMESTAMPS["trail1"] = time.monotonic()
 
         t_b = _make_thought(thought_id="B_ID", confidence=0.5)
         t_a = _make_thought(thought_id="A_ID", confidence=0.5)
 
+        # Input order is [B_ID, A_ID]; scoring produces same order → no RecallSelect
         event = OnRecallEvent(trail_name="trail1", results=[t_b, t_a])
         result = await ace.on_recall(event)
+        assert result is not None
+        assert not any(isinstance(a, RecallSelect) for a in result)
+        annotate = next(a for a in result if isinstance(a, Annotate))
+        assert annotate.values["order_changed"] is False
+
+    @pytest.mark.asyncio
+    async def test_order_changed_includes_recall_select(self):
+        """When scoring changes the order, RecallSelect is included with order_changed=True."""
+        _configure()
+        rule = _make_rule(
+            match={"source_type": "decision"},
+            action={"boost": 2.0},
+            helpful_count=9,
+            harmful_count=1,
+        )
+        ace._PLAYBOOK_CACHE["trail1"] = [rule]
+        ace._CACHE_TIMESTAMPS["trail1"] = time.monotonic()
+
+        t_obs = _make_thought(thought_id="OBS", source_type="observation", confidence=0.8)
+        t_dec = _make_thought(thought_id="DEC", source_type="decision", confidence=0.5)
+
+        # Input: [OBS, DEC] → scoring moves DEC first → order changed
+        event = OnRecallEvent(trail_name="trail1", results=[t_obs, t_dec])
+        result = await ace.on_recall(event)
+        assert result is not None
         select = next(a for a in result if isinstance(a, RecallSelect))
-        # Reversed sort: higher ULID first
-        assert select.ordered_ulids[0] == "B_ID"
+        assert select.ordered_ulids[0] == "DEC"
+        annotate = next(a for a in result if isinstance(a, Annotate))
+        assert annotate.values["order_changed"] is True
 
 
 # ---------------------------------------------------------------------------
