@@ -199,7 +199,7 @@ Prompt files are cached in memory at server startup and never re-read during a s
 
 ## Lifecycle Hooks
 
-Lifecycle hooks let operators run custom Python code at key points in the thought lifecycle: before/after save, before/after promote, after supersede, on recall, and at server startup.
+Lifecycle hooks let operators run custom Python code at key points in the thought lifecycle: before/after save, before/after promote, after supersede, on recall, on recall mix (cross-trail), and at server startup.
 
 ### Setup
 
@@ -264,7 +264,7 @@ async def before_save(event):
 | `Warn(message, code)` | Surface concern in response | all |
 | `Advise(message, code, target)` | Guidance for agent | all |
 | `Annotate(values={...})` | Attach metadata | all |
-| `RecallSelect(ordered_ulids=[...])` | Filter/reorder recall results | on_recall |
+| `RecallSelect(ordered_ulids=[...])` | Filter/reorder recall results | on_recall, on_recall_mix |
 
 Hooks can return a single action, `None` (treated as `Proceed`), or a list of actions.
 

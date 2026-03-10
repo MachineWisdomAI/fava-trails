@@ -911,3 +911,89 @@ async def test_recall_multi_single_trail_skips_mix(nested_trail_managers, tmp_pa
     pipeline = company.consume_feedback()
     if pipeline is not None:
         assert not pipeline.feedback.annotations.get("mix_fired")
+
+
+@pytest.mark.asyncio
+async def test_recall_multi_duplicate_managers_skip_mix(nested_trail_managers, tmp_path):
+    """on_recall_mix does NOT fire when the same trail appears multiple times."""
+    hooks_dir = tmp_path / "hooks"
+    hooks_dir.mkdir()
+
+    company = nested_trail_managers["company"]
+    registry = _make_hook_registry_with_on_recall_mix(hooks_dir)
+    company._hooks = registry
+
+    await company.save_thought(content="Dup test", agent_id="test")
+
+    await recall_multi(trail_managers=[company, company], query="")
+
+    pipeline = company.consume_feedback()
+    if pipeline is not None:
+        assert not pipeline.feedback.annotations.get("mix_fired")
+
+
+@pytest.mark.asyncio
+async def test_recall_multi_on_recall_mix_empty_results(nested_trail_managers, tmp_path):
+    """on_recall_mix fires but handles empty merged results gracefully."""
+    hooks_dir = tmp_path / "hooks"
+    hooks_dir.mkdir()
+
+    company = nested_trail_managers["company"]
+    team = nested_trail_managers["team"]
+
+    registry = _make_hook_registry_with_on_recall_mix(hooks_dir)
+    company._hooks = registry
+
+    # No thoughts saved — empty results
+    results = await recall_multi(
+        trail_managers=[company, team],
+        query="nonexistent",
+        limit=50,
+    )
+
+    assert results == []
+
+
+@pytest.mark.asyncio
+async def test_recall_multi_on_recall_mix_preserves_on_recall_feedback(
+    nested_trail_managers, tmp_path
+):
+    """on_recall_mix merges with existing on_recall feedback (no overwrite)."""
+    import textwrap
+
+    from fava_trails.hook_manifest import HookRegistry
+    from fava_trails.models import HookEntry
+
+    hooks_dir = tmp_path / "hooks"
+    hooks_dir.mkdir()
+
+    # Hook that provides both on_recall (annotates) and on_recall_mix (annotates differently)
+    code = textwrap.dedent("""
+        from fava_trails.hook_types import Annotate
+        async def on_recall(event):
+            return [Annotate({"per_trail": True})]
+        async def on_recall_mix(event):
+            return [Annotate({"cross_trail": True})]
+    """)
+    hook_file = hooks_dir / "both_hooks.py"
+    hook_file.write_text(code)
+
+    registry = HookRegistry()
+    entry = HookEntry(path="./both_hooks.py", points=["on_recall", "on_recall_mix"])
+    registry.load_from_entries([entry], base_dir=hooks_dir)
+
+    company = nested_trail_managers["company"]
+    team = nested_trail_managers["team"]
+    company._hooks = registry
+
+    await company.save_thought(content="Feedback test", agent_id="test")
+    await team.save_thought(content="Feedback test 2", agent_id="test")
+
+    await recall_multi(trail_managers=[company, team], query="", limit=50)
+
+    pipeline = company.consume_feedback()
+    assert pipeline is not None
+    # on_recall_mix annotation is present
+    assert pipeline.feedback.annotations.get("cross_trail") is True
+    # on_recall annotation was merged in (not overwritten)
+    assert pipeline.feedback.annotations.get("per_trail") is True
