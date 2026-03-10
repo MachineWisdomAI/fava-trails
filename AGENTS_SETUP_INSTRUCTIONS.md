@@ -33,7 +33,7 @@ The Trust Gate reviews thoughts before promotion using an LLM. By default, FAVA 
 
 The default model (`google/gemini-2.5-flash`) costs ~$0.001 per review.
 
-**Other providers:** FAVA Trails uses [any-llm-sdk](https://github.com/marekstephens/any-llm-sdk) for unified LLM access, enabling support for additional providers (Anthropic, OpenAI, Bedrock, etc.). Configuration for provider selection will be available in future versions via `config.yaml`.
+**Other providers:** FAVA Trails uses [any-llm-sdk](https://github.com/mozilla-ai/any-llm) for unified LLM access, enabling support for additional providers (Anthropic, OpenAI, Bedrock, etc.). Configuration for provider selection will be available in future versions via `config.yaml`.
 
 ## Creating the Data Repo
 
