@@ -2,7 +2,7 @@
 
 Extractive token-level compression at promote time for information density, based on:
 
-> Microsoft ICLR 2025 "On Memory Construction and Retrieval for Personalized Conversational Agents" (arXiv:2502.05589)
+> Tsinghua University and Microsoft, ICLR 2025 "On Memory Construction and Retrieval for Personalized Conversational Agents" (arXiv:2502.05589)
 > Reference implementation: [microsoft/SeCom](https://github.com/microsoft/SeCom)
 
 ## WORM Architecture (Write-Once-Read-Many)
@@ -108,7 +108,7 @@ Unknown engine types fail loudly at configure time. See the [LLMLingua docs](htt
 
 Uses **extractive token-level compression**. For each token, the model predicts keep/discard. Key properties:
 
-- **Zero hallucination**: Only original tokens survive. No paraphrasing, no rewriting.
+- **Purely extractive**: Only original tokens survive. No paraphrasing, no rewriting, no new tokens generated.
 - **Preserves named entities and identifiers**: Token-level decisions maintain factual anchors.
 - **Optimal rate**: tau = 0.5-0.7 (retain 50-70% of tokens). Below 0.5, critical information loss.
 

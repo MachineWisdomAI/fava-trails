@@ -3,15 +3,16 @@
 Each protocol is a standalone hook module implementing a specific
 context engineering pattern from the research literature:
 
-- ace: Agentic Context Engine (Curator Pattern) -- playbook-driven
+- ace: Agentic Context Engineering (Curator Pattern) -- playbook-driven
   recall reranking and quality enforcement
 - secom: SECOM Compression (WORM Pattern) -- extractive compression
   at promote time for information density
 - rlm: RLM MapReduce (Orchestration Pattern) -- parallel mapper
   validation, progress tracking, and deterministic reducer retrieval
 
-Protocols are independent. Users pick ONE via their config.yaml hooks
-section. They are not designed to run simultaneously.
+Protocols are composable. Each ships with a staggered default order
+(ace=10, rlm=15, secom=20) so they execute in a defined sequence when
+combined. Enable any combination via config.yaml hooks section.
 
 Usage::
 

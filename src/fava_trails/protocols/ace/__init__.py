@@ -1,8 +1,8 @@
 """ACE Playbook Hooks (Curator Pattern).
 
-Implements FAVA Trails' adaptation of the ACE (Agentic Context Engine) Curator
+Implements FAVA Trails' adaptation of the ACE (Agentic Context Engineering) Curator
 pattern, based on:
-  Stanford/SambaNova arXiv:2510.04618 (ICLR 2026)
+  Stanford, UC Berkeley, and SambaNova arXiv:2510.04618 (ICLR 2026)
   ACL 2025 Reflective Memory Management
 
 Seven lifecycle hooks provide:
