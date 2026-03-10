@@ -120,7 +120,7 @@ For Claude Desktop on Windows (accessing WSL):
 }
 ```
 
-> The Trust Gate uses [OpenRouter](https://openrouter.ai/) to review thoughts before promotion. Get a free API key at [openrouter.ai/keys](https://openrouter.ai/keys). The default model (`google/gemini-2.5-flash`) costs ~$0.001 per review.
+> **The Trust Gate uses LLM verification:** Thoughts are reviewed before promotion to ensure they're coherent and safe. By default, FAVA Trails uses [OpenRouter](https://openrouter.ai/) to access 100+ models from Anthropic, OpenAI, Google, Qwen, and others. Get a free API key at [openrouter.ai/keys](https://openrouter.ai/keys). The default model (`google/gemini-2.5-flash`) costs ~$0.001 per review. Multi-provider support via [any-llm-sdk](https://github.com/marekstephens/any-llm-sdk) enables switching to other providers by modifying `config.yaml`.
 
 ### Use it
 
@@ -201,7 +201,9 @@ Environment variables:
 | `FAVA_TRAILS_DIR` | Server | Override trails directory location (absolute path) | `$FAVA_TRAILS_DATA_REPO/trails` |
 | `FAVA_TRAILS_SCOPE_HINT` | Server | Broad scope hint baked into tool descriptions | *(none)* |
 | `FAVA_TRAILS_SCOPE` | Agent | Project-specific scope from `.env` file | *(none)* |
-| `OPENROUTER_API_KEY` | Server | API key for Trust Gate LLM reviews ([get one](https://openrouter.ai/keys)) | *(none — required for `propose_truth`)* |
+| `OPENROUTER_API_KEY` | Server | API key for Trust Gate LLM reviews via [OpenRouter](https://openrouter.ai/keys) | *(none — required for `propose_truth`)* |
+
+**LLM Provider:** FAVA Trails uses [any-llm-sdk](https://github.com/marekstephens/any-llm-sdk) for unified LLM access. OpenRouter is the default provider (recommended for simplicity — single API key, 100+ models). Additional providers (Anthropic, OpenAI, Bedrock, etc.) can be configured in `config.yaml` for future versions.
 
 The server reads `$FAVA_TRAILS_DATA_REPO/config.yaml` for global settings. Minimal `config.yaml`:
 

@@ -20,9 +20,11 @@ pip install fava-trails
 git clone https://github.com/MachineWisdomAI/fava-trails.git && cd fava-trails && uv sync
 ```
 
-### OpenRouter API Key (for Trust Gate)
+### LLM Configuration (for Trust Gate)
 
-The Trust Gate reviews thoughts before promotion using an LLM via [OpenRouter](https://openrouter.ai/).
+The Trust Gate reviews thoughts before promotion using an LLM. By default, FAVA Trails uses [OpenRouter](https://openrouter.ai/) for unified access to 100+ models.
+
+**OpenRouter (default, recommended):**
 
 1. Create a free account at https://openrouter.ai/
 2. Generate an API key at https://openrouter.ai/keys
@@ -30,6 +32,8 @@ The Trust Gate reviews thoughts before promotion using an LLM via [OpenRouter](h
    (in your MCP client config `env` block, or in your shell profile)
 
 The default model (`google/gemini-2.5-flash`) costs ~$0.001 per review.
+
+**Other providers:** FAVA Trails uses [any-llm-sdk](https://github.com/marekstephens/any-llm-sdk) for unified LLM access, enabling support for additional providers (Anthropic, OpenAI, Bedrock, etc.). Configuration for provider selection will be available in future versions via `config.yaml`.
 
 ## Creating the Data Repo
 
@@ -148,7 +152,7 @@ trails:
 | `push_strategy` | string | `manual` | `immediate` auto-pushes after writes; `manual` requires explicit sync |
 | `trust_gate` | string | `llm-oneshot` | Global trust gate policy |
 | `trust_gate_model` | string | `google/gemini-2.5-flash` | Model for LLM-based trust review |
-| `openrouter_api_key_env` | string | `OPENROUTER_API_KEY` | Env var name holding the API key |
+| `openrouter_api_key_env` | string | `OPENROUTER_API_KEY` | Env var name holding the API key for OpenRouter (default provider) |
 | `hooks` | list | `[]` | Lifecycle hook entries (see [Lifecycle Hooks](#lifecycle-hooks)) |
 
 ### Per-Trail Config

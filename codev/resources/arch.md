@@ -4,8 +4,12 @@
 
 ### Provider Routing
 
-All LLM API calls route via **OpenRouter** using `any-llm-sdk`. The `provider="openrouter"`
-argument is passed explicitly to every `acompletion()` call. There is no direct-API path.
+All LLM API calls route via **OpenRouter** (default provider) using `any-llm-sdk`. The `provider="openrouter"`
+argument is passed explicitly to every `acompletion()` call.
+
+**Multi-provider support:** any-llm-sdk enables support for additional providers (Anthropic, OpenAI, Bedrock, etc.).
+The current implementation hardcodes `provider="openrouter"`, but future versions will support provider selection
+via `config.yaml` to enable switching between providers. There is currently no direct-API path.
 
 ```python
 response = await any_llm.acompletion(
@@ -57,5 +61,8 @@ client_args={"timeout": timeout}  # default: 60.0 seconds
 
 ## Configuration (`src/fava_trails/models.py`)
 
-`GlobalConfig` has a single `openrouter_api_key_env` field (default: `"OPENROUTER_API_KEY"`).
+`GlobalConfig` has a single `openrouter_api_key_env` field (default: `"OPENROUTER_API_KEY"`) for OpenRouter API key configuration.
+
+**Future extensibility:** To support additional LLM providers, a `llm_provider` field and provider-specific configuration will be added to `GlobalConfig`. This will enable runtime provider selection via `config.yaml` while maintaining backward compatibility with existing OpenRouter setups.
+
 The previous `openai_api_key_env` field was removed in Spec 17.
