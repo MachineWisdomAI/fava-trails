@@ -223,7 +223,7 @@ FAVA Trails supports optional **lifecycle protocols** — hook modules that run 
 
 ### SECOM — Compression at Promote Time
 
-Extractive token-level compression via [LLMLingua-2](https://github.com/microsoft/LLMLingua), based on [Microsoft's ICLR 2025 SECOM paper](https://arxiv.org/abs/2502.05589). Thoughts are compressed once at promote time (WORM pattern), reducing storage and boosting recall density. Zero hallucination — only original tokens survive.
+Extractive token-level compression via [LLMLingua-2](https://github.com/microsoft/LLMLingua), based on the [SECOM paper](https://arxiv.org/abs/2502.05589) (Tsinghua University and Microsoft, ICLR 2025). Thoughts are compressed once at promote time (WORM pattern), reducing storage and boosting recall density. Purely extractive — only original tokens survive, no paraphrasing or rewriting.
 
 ```bash
 pip install fava-trails[secom]
@@ -267,9 +267,9 @@ fava-trails secom setup --write
 fava-trails secom warmup
 ```
 
-### ACE — Agentic Context Engine
+### ACE — Agentic Context Engineering
 
-Playbook-driven reranking and anti-pattern detection, based on [Stanford/SambaNova ACE (arXiv:2510.04618)](https://arxiv.org/abs/2510.04618). Applies multiplicative scoring using rules stored in the `preferences/` namespace.
+Playbook-driven reranking and anti-pattern detection, based on [ACE (arXiv:2510.04618)](https://arxiv.org/abs/2510.04618) (Stanford, UC Berkeley, and SambaNova, ICLR 2026). Applies multiplicative scoring using rules stored in the `preferences/` namespace.
 
 ```bash
 pip install fava-trails  # included in base install

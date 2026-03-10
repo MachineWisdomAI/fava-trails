@@ -1,6 +1,6 @@
 # ACE Playbook Hooks (Curator Pattern)
 
-FAVA Trails' reference implementation of the [ACE (Agentic Context Engine)](https://arxiv.org/abs/2510.04618) Curator pattern (Stanford/SambaNova, ICLR 2026). ACE treats agent context as an evolving **playbook** of structured rules that grow and refine through feedback loops.
+FAVA Trails' reference implementation of the [ACE (Agentic Context Engineering)](https://arxiv.org/abs/2510.04618) Curator pattern (Stanford, UC Berkeley, and SambaNova, ICLR 2026). ACE treats agent context as an evolving **playbook** of structured rules that grow and refine through feedback loops.
 
 ## Architecture: FAVA Trails as the Curator
 
@@ -188,6 +188,6 @@ propose_truth(trail_name="my-trail", thought_id="<ULID>")
 
 ## Literature
 
-- Stanford/SambaNova [arXiv:2510.04618](https://arxiv.org/abs/2510.04618) (ICLR 2026)
+- Stanford, UC Berkeley, and SambaNova [arXiv:2510.04618](https://arxiv.org/abs/2510.04618) (ICLR 2026)
 - ACL 2025 Reflective Memory Management
-- Reference implementations: [ace-agent/ace](https://github.com/ace-agent/ace) (Apache-2.0), [kayba-ai/agentic-context-engine](https://github.com/kayba-ai/agentic-context-engine) (MIT)
+- Official implementation: [ace-agent/ace](https://github.com/ace-agent/ace) (Apache-2.0)

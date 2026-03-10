@@ -22,7 +22,7 @@ git clone https://github.com/MachineWisdomAI/fava-trails.git && cd fava-trails &
 
 ### LLM Configuration (for Trust Gate)
 
-The Trust Gate reviews thoughts before promotion using an LLM. By default, FAVA Trails uses [OpenRouter](https://openrouter.ai/) for unified access to 100+ models.
+The Trust Gate reviews thoughts before promotion using an LLM. By default, FAVA Trails uses [OpenRouter](https://openrouter.ai/) for unified access to 300–500+ models.
 
 **OpenRouter (default, recommended):**
 
@@ -338,7 +338,7 @@ FAVA Trails ships with protocol hook modules that can be enabled via `module:` e
 | Protocol | Install | Description |
 |----------|---------|-------------|
 | **SECOM** | `pip install fava-trails[secom]` | Extractive compression at promote time via LLMLingua-2 ([docs](../src/fava_trails/protocols/secom/README.md)) |
-| **ACE** | included | Playbook-driven reranking and anti-pattern detection (Stanford/SambaNova ACE) |
+| **ACE** | included | Playbook-driven reranking and anti-pattern detection (Stanford, UC Berkeley, and SambaNova ACE) |
 | **RLM** | included | MapReduce orchestration hooks for batch workflows (MIT RLM) |
 
 **Quickest way to add a protocol** — use the CLI setup command:

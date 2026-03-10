@@ -1,8 +1,8 @@
 """SECOM Compression Hooks (WORM Pattern).
 
 Implements the SECOM (SEgmentation + COMpression) pattern from:
-  Microsoft ICLR 2025 "On Memory Construction and Retrieval for
-  Personalized Conversational Agents" (arXiv:2502.05589)
+  Tsinghua University and Microsoft, ICLR 2025 "On Memory Construction and
+  Retrieval for Personalized Conversational Agents" (arXiv:2502.05589)
 
 Three lifecycle hooks:
   - before_propose: Inline extractive compression via Mutate(ThoughtPatch)
