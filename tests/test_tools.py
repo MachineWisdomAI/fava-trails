@@ -784,3 +784,216 @@ async def test_path_traversal_rejected():
 
     with pytest.raises(ValueError, match="Path traversal"):
         sanitize_scope_path("mw\\eng")
+
+
+# ─── on_recall_mix hook ───
+
+
+def _make_hook_registry_with_on_recall_mix(hooks_dir, reorder=None):
+    """Build a HookRegistry with an on_recall_mix hook.
+
+    reorder: if provided, a list of thought_ids to return as the new order.
+    """
+    import textwrap
+
+    from fava_trails.hook_manifest import HookRegistry
+    from fava_trails.models import HookEntry
+
+    if reorder is not None:
+        ids_repr = repr(reorder)
+        code = f"""
+            from fava_trails.hook_types import RecallSelect, Annotate
+            async def on_recall_mix(event):
+                ordered = {ids_repr}
+                # Return only IDs that are in the results
+                result_ids = {{t.thought_id for t in event.results}}
+                filtered = [uid for uid in ordered if uid in result_ids]
+                if filtered:
+                    return [RecallSelect(ordered_ulids=filtered, reason="test_reorder"), Annotate({{"mix_fired": True}})]
+                return None
+        """
+    else:
+        code = """
+            from fava_trails.hook_types import Annotate
+            async def on_recall_mix(event):
+                return [Annotate({"mix_fired": True, "count": len(event.results)})]
+        """
+
+    hook_file = hooks_dir / "mix_hook.py"
+    hook_file.write_text(textwrap.dedent(code))
+
+    registry = HookRegistry()
+    entry = HookEntry(path="./mix_hook.py", points=["on_recall_mix"])
+    registry.load_from_entries([entry], base_dir=hooks_dir)
+    return registry
+
+
+@pytest.mark.asyncio
+async def test_recall_multi_fires_on_recall_mix(nested_trail_managers, tmp_path):
+    """on_recall_mix hook fires when recall_multi searches multiple trails."""
+    hooks_dir = tmp_path / "hooks"
+    hooks_dir.mkdir()
+
+    company = nested_trail_managers["company"]
+    team = nested_trail_managers["team"]
+
+    # Attach hook registry to primary trail (company)
+    registry = _make_hook_registry_with_on_recall_mix(hooks_dir)
+    company._hooks = registry
+
+    await company.save_thought(content="Company standard A", agent_id="test")
+    await team.save_thought(content="Team convention B", agent_id="test")
+
+    results = await recall_multi(
+        trail_managers=[company, team],
+        query="",
+        limit=50,
+    )
+
+    pipeline = company.consume_feedback()
+    assert pipeline is not None
+    assert pipeline.feedback.annotations.get("mix_fired") is True
+    assert len(results) >= 2
+
+
+@pytest.mark.asyncio
+async def test_recall_multi_on_recall_mix_reorders(nested_trail_managers, tmp_path):
+    """on_recall_mix RecallSelect reorders the merged result list."""
+    hooks_dir = tmp_path / "hooks"
+    hooks_dir.mkdir()
+
+    company = nested_trail_managers["company"]
+    team = nested_trail_managers["team"]
+
+    r1 = await company.save_thought(content="First thought", agent_id="test")
+    r2 = await team.save_thought(content="Second thought", agent_id="test")
+
+    # Register hook that puts r2 before r1
+    registry = _make_hook_registry_with_on_recall_mix(hooks_dir, reorder=[r2.thought_id, r1.thought_id])
+    company._hooks = registry
+
+    results = await recall_multi(
+        trail_managers=[company, team],
+        query="",
+        limit=50,
+    )
+
+    ids = [r[0].thought_id for r in results]
+    assert ids.index(r2.thought_id) < ids.index(r1.thought_id)
+
+
+@pytest.mark.asyncio
+async def test_recall_multi_no_on_recall_mix_hooks(nested_trail_managers):
+    """recall_multi works fine when no on_recall_mix hooks are registered."""
+    company = nested_trail_managers["company"]
+    team = nested_trail_managers["team"]
+
+    await company.save_thought(content="Standard C", agent_id="test")
+    results = await recall_multi(trail_managers=[company, team], query="")
+    assert any(r[0].content == "Standard C" for r in results)
+
+
+@pytest.mark.asyncio
+async def test_recall_multi_single_trail_skips_mix(nested_trail_managers, tmp_path):
+    """on_recall_mix does NOT fire when only a single trail is searched."""
+    hooks_dir = tmp_path / "hooks"
+    hooks_dir.mkdir()
+
+    company = nested_trail_managers["company"]
+    registry = _make_hook_registry_with_on_recall_mix(hooks_dir)
+    company._hooks = registry
+
+    await company.save_thought(content="Solo thought", agent_id="test")
+
+    await recall_multi(trail_managers=[company], query="")
+
+    # Feedback should NOT have mix_fired (on_recall_mix skipped for single trail)
+    pipeline = company.consume_feedback()
+    if pipeline is not None:
+        assert not pipeline.feedback.annotations.get("mix_fired")
+
+
+@pytest.mark.asyncio
+async def test_recall_multi_duplicate_managers_skip_mix(nested_trail_managers, tmp_path):
+    """on_recall_mix does NOT fire when the same trail appears multiple times."""
+    hooks_dir = tmp_path / "hooks"
+    hooks_dir.mkdir()
+
+    company = nested_trail_managers["company"]
+    registry = _make_hook_registry_with_on_recall_mix(hooks_dir)
+    company._hooks = registry
+
+    await company.save_thought(content="Dup test", agent_id="test")
+
+    await recall_multi(trail_managers=[company, company], query="")
+
+    pipeline = company.consume_feedback()
+    if pipeline is not None:
+        assert not pipeline.feedback.annotations.get("mix_fired")
+
+
+@pytest.mark.asyncio
+async def test_recall_multi_on_recall_mix_empty_results(nested_trail_managers, tmp_path):
+    """on_recall_mix fires but handles empty merged results gracefully."""
+    hooks_dir = tmp_path / "hooks"
+    hooks_dir.mkdir()
+
+    company = nested_trail_managers["company"]
+    team = nested_trail_managers["team"]
+
+    registry = _make_hook_registry_with_on_recall_mix(hooks_dir)
+    company._hooks = registry
+
+    # No thoughts saved — empty results
+    results = await recall_multi(
+        trail_managers=[company, team],
+        query="nonexistent",
+        limit=50,
+    )
+
+    assert results == []
+
+
+@pytest.mark.asyncio
+async def test_recall_multi_on_recall_mix_preserves_on_recall_feedback(
+    nested_trail_managers, tmp_path
+):
+    """on_recall_mix merges with existing on_recall feedback (no overwrite)."""
+    import textwrap
+
+    from fava_trails.hook_manifest import HookRegistry
+    from fava_trails.models import HookEntry
+
+    hooks_dir = tmp_path / "hooks"
+    hooks_dir.mkdir()
+
+    # Hook that provides both on_recall (annotates) and on_recall_mix (annotates differently)
+    code = textwrap.dedent("""
+        from fava_trails.hook_types import Annotate
+        async def on_recall(event):
+            return [Annotate({"per_trail": True})]
+        async def on_recall_mix(event):
+            return [Annotate({"cross_trail": True})]
+    """)
+    hook_file = hooks_dir / "both_hooks.py"
+    hook_file.write_text(code)
+
+    registry = HookRegistry()
+    entry = HookEntry(path="./both_hooks.py", points=["on_recall", "on_recall_mix"])
+    registry.load_from_entries([entry], base_dir=hooks_dir)
+
+    company = nested_trail_managers["company"]
+    team = nested_trail_managers["team"]
+    company._hooks = registry
+
+    await company.save_thought(content="Feedback test", agent_id="test")
+    await team.save_thought(content="Feedback test 2", agent_id="test")
+
+    await recall_multi(trail_managers=[company, team], query="", limit=50)
+
+    pipeline = company.consume_feedback()
+    assert pipeline is not None
+    # on_recall_mix annotation is present
+    assert pipeline.feedback.annotations.get("cross_trail") is True
+    # on_recall annotation was merged in (not overwritten)
+    assert pipeline.feedback.annotations.get("per_trail") is True

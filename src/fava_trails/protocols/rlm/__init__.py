@@ -4,16 +4,17 @@ Based on MIT RLM (arXiv:2512.24601): Recursive Language Models — root LLM
 decomposes large inputs via code, worker LLMs extract, root reduces results.
 Reference: https://alexzhang13.github.io/rlm/
 
-Three lifecycle hooks:
-  - before_save: Validate mapper outputs (mapper_id required, min content length)
-  - after_save:  Track batch progress, signal "REDUCE READY" when all mappers done
-  - on_recall:   Sort mapper results deterministically for reducer consumption
+Four lifecycle hooks:
+  - before_save:    Validate mapper outputs (mapper_id required, min content length)
+  - after_save:     Track batch progress, signal "REDUCE READY" when all mappers done
+  - on_recall:      Sort mapper results deterministically for reducer consumption
+  - on_recall_mix:  Same deterministic sort applied to cross-trail merged results
 
 Configure via config.yaml hooks entry or test harness::
 
     hooks:
       - module: fava_trails.protocols.rlm
-        points: [before_save, after_save, on_recall]
+        points: [before_save, after_save, on_recall, on_recall_mix]
         order: 15
         fail_mode: closed
         config:
@@ -251,3 +252,13 @@ async def on_recall(event: OnRecallEvent) -> list[Any] | None:
             "rlm_total_count": len(ordered),
         }),
     ]
+
+
+async def on_recall_mix(event: OnRecallEvent) -> list[Any] | None:
+    """Apply deterministic mapper ordering to cross-trail merged results.
+
+    Delegates to on_recall so the same sort logic applies to both single-trail
+    and multi-trail (recall_multi) result sets. Useful when mappers span
+    multiple trails in a distributed MapReduce pipeline.
+    """
+    return await on_recall(event)

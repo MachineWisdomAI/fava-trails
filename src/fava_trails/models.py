@@ -136,6 +136,7 @@ KNOWN_HOOKS = frozenset({
     "after_propose",
     "after_supersede",
     "on_recall",
+    "on_recall_mix",
     "on_startup",
 })
 
