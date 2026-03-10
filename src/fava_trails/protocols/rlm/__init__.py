@@ -38,6 +38,18 @@ from fava_trails.hook_types import (
 
 logger = logging.getLogger(__name__)
 
+# Default hook entry for `fava-trails rlm setup --write`
+DEFAULT_HOOK_ENTRY: dict = {
+    "module": "fava_trails.protocols.rlm",
+    "points": ["before_save", "after_save", "on_recall"],
+    "order": 15,
+    "fail_mode": "closed",
+    "config": {
+        "expected_mappers": 5,
+        "min_mapper_output_chars": 20,
+    },
+}
+
 # Module-level state.  Reset on configure().
 _CONFIG: dict[str, Any] = {}
 # scope (trail_name) -> {batch_id -> set(mapper_ids)}
