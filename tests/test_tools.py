@@ -831,9 +831,6 @@ def _make_hook_registry_with_on_recall_mix(hooks_dir, reorder=None):
 @pytest.mark.asyncio
 async def test_recall_multi_fires_on_recall_mix(nested_trail_managers, tmp_path):
     """on_recall_mix hook fires when recall_multi searches multiple trails."""
-    from fava_trails.trail import TrailManager
-    from fava_trails.vcs.jj_backend import JjBackend
-
     hooks_dir = tmp_path / "hooks"
     hooks_dir.mkdir()
 
@@ -862,8 +859,6 @@ async def test_recall_multi_fires_on_recall_mix(nested_trail_managers, tmp_path)
 @pytest.mark.asyncio
 async def test_recall_multi_on_recall_mix_reorders(nested_trail_managers, tmp_path):
     """on_recall_mix RecallSelect reorders the merged result list."""
-    from fava_trails.trail import TrailManager
-
     hooks_dir = tmp_path / "hooks"
     hooks_dir.mkdir()
 

@@ -1129,7 +1129,7 @@ class TestOnRecallMix:
         recall_result = await ace.on_recall(event)
         mix_result = await ace.on_recall_mix(event)
 
-        assert type(recall_result) == type(mix_result)
+        assert type(recall_result) is type(mix_result)
         if recall_result is not None and mix_result is not None:
             recall_ulids = [a.ordered_ulids for a in recall_result if isinstance(a, RecallSelect)]
             mix_ulids = [a.ordered_ulids for a in mix_result if isinstance(a, RecallSelect)]
