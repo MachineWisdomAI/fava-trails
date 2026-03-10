@@ -784,7 +784,7 @@ def _jj_commit_dance(jj_bin: str, data_repo: Path, message: str) -> None:
     """Run the jj commit dance: describe → new → bookmark set main → git push."""
     steps = [
         ([jj_bin, "describe", "-m", message], "describe"),
-        ([jj_bin, "new"], "new"),
+        ([jj_bin, "new", "-m", "(new change)"], "new"),
         ([jj_bin, "bookmark", "set", "main", "-r", "@-"], "bookmark set"),
         ([jj_bin, "git", "push", "-b", "main"], "git push"),
     ]
@@ -851,6 +851,8 @@ def _cmd_protocol_setup(args: argparse.Namespace, protocol_name: str, module_pat
 
     print(f"{protocol_name} hook added to config.yaml.")
     print("Hint: restart the MCP server to activate the hook.")
+    if protocol_name == "secom":
+        print("Hint: run 'fava-trails secom warmup' to pre-download the LLMLingua model.")
     return 0
 
 

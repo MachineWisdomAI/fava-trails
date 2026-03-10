@@ -718,12 +718,21 @@ from fava_trails.cli import (
     cmd_secom_setup,
     cmd_secom_warmup,
 )
+from fava_trails.config import ConfigStore
 
 
 def _make_setup_args(write: bool = False) -> argparse.Namespace:
     args = argparse.Namespace()
     args.write = write
     return args
+
+
+def _setup_data_repo(tmp_path: Path, monkeypatch) -> Path:
+    """Create a valid data repo and point FAVA_TRAILS_DATA_REPO at it."""
+    data_repo = _make_valid_data_repo(tmp_path)
+    monkeypatch.setenv("FAVA_TRAILS_DATA_REPO", str(data_repo))
+    ConfigStore.reset()
+    return data_repo
 
 
 @pytest.mark.parametrize("cmd_fn,protocol_name,module_path", [
@@ -733,9 +742,8 @@ def _make_setup_args(write: bool = False) -> argparse.Namespace:
 ])
 def test_setup_prints_yaml(tmp_path, monkeypatch, capsys, cmd_fn, protocol_name, module_path):
     """setup (no --write) prints YAML block with correct module."""
-    data_repo = _make_valid_data_repo(tmp_path)
-    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
-        rc = cmd_fn(_make_setup_args(write=False))
+    _setup_data_repo(tmp_path, monkeypatch)
+    rc = cmd_fn(_make_setup_args(write=False))
 
     assert rc == 0
     out = capsys.readouterr().out
@@ -750,7 +758,7 @@ def test_setup_prints_yaml(tmp_path, monkeypatch, capsys, cmd_fn, protocol_name,
 ])
 def test_setup_write_adds_hook(tmp_path, monkeypatch, capsys, cmd_fn, protocol_name, module_path):
     """setup --write appends hook entry to config.yaml and runs jj dance."""
-    data_repo = _make_valid_data_repo(tmp_path)
+    data_repo = _setup_data_repo(tmp_path, monkeypatch)
 
     jj_calls = []
 
@@ -762,10 +770,9 @@ def test_setup_write_adds_hook(tmp_path, monkeypatch, capsys, cmd_fn, protocol_n
         r.stderr = ""
         return r
 
-    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
-        with patch("fava_trails.cli._find_jj_bin", return_value="/usr/bin/jj"):
-            with patch("subprocess.run", side_effect=fake_run):
-                rc = cmd_fn(_make_setup_args(write=True))
+    with patch("fava_trails.cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("subprocess.run", side_effect=fake_run):
+            rc = cmd_fn(_make_setup_args(write=True))
 
     assert rc == 0
     # Config file should now include the hook module
@@ -784,7 +791,7 @@ def test_setup_write_adds_hook(tmp_path, monkeypatch, capsys, cmd_fn, protocol_n
 ])
 def test_setup_write_idempotent(tmp_path, monkeypatch, capsys, cmd_fn, module_path):
     """setup --write is idempotent: running twice does not duplicate hooks."""
-    data_repo = _make_valid_data_repo(tmp_path)
+    _setup_data_repo(tmp_path, monkeypatch)
 
     def fake_run(cmd, **kwargs):
         r = MagicMock()
@@ -793,11 +800,10 @@ def test_setup_write_idempotent(tmp_path, monkeypatch, capsys, cmd_fn, module_pa
         r.stderr = ""
         return r
 
-    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
-        with patch("fava_trails.cli._find_jj_bin", return_value="/usr/bin/jj"):
-            with patch("subprocess.run", side_effect=fake_run):
-                rc1 = cmd_fn(_make_setup_args(write=True))
-                rc2 = cmd_fn(_make_setup_args(write=True))
+    with patch("fava_trails.cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("subprocess.run", side_effect=fake_run):
+            rc1 = cmd_fn(_make_setup_args(write=True))
+            rc2 = cmd_fn(_make_setup_args(write=True))
 
     assert rc1 == 0
     assert rc2 == 0
@@ -811,9 +817,9 @@ def test_setup_write_idempotent(tmp_path, monkeypatch, capsys, cmd_fn, module_pa
     (cmd_ace_setup, "fava_trails.protocols.ace"),
     (cmd_rlm_setup, "fava_trails.protocols.rlm"),
 ])
-def test_setup_write_preserves_existing_hooks(tmp_path, capsys, cmd_fn, module_path):
+def test_setup_write_preserves_existing_hooks(tmp_path, monkeypatch, capsys, cmd_fn, module_path):
     """setup --write preserves existing hooks in config.yaml."""
-    data_repo = _make_valid_data_repo(tmp_path)
+    data_repo = _setup_data_repo(tmp_path, monkeypatch)
     # Pre-populate config with an unrelated hook
     existing_config = {
         "trails_dir": "trails",
@@ -822,6 +828,7 @@ def test_setup_write_preserves_existing_hooks(tmp_path, capsys, cmd_fn, module_p
         ],
     }
     (data_repo / "config.yaml").write_text(_yaml.dump(existing_config))
+    ConfigStore.reset()
 
     def fake_run(cmd, **kwargs):
         r = MagicMock()
@@ -830,10 +837,9 @@ def test_setup_write_preserves_existing_hooks(tmp_path, capsys, cmd_fn, module_p
         r.stderr = ""
         return r
 
-    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
-        with patch("fava_trails.cli._find_jj_bin", return_value="/usr/bin/jj"):
-            with patch("subprocess.run", side_effect=fake_run):
-                rc = cmd_fn(_make_setup_args(write=True))
+    with patch("fava_trails.cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("subprocess.run", side_effect=fake_run):
+            rc = cmd_fn(_make_setup_args(write=True))
 
     assert rc == 0
     config_text = (data_repo / "config.yaml").read_text()
@@ -846,10 +852,11 @@ def test_setup_write_preserves_existing_hooks(tmp_path, capsys, cmd_fn, module_p
     (cmd_ace_setup, "fava_trails.protocols.ace"),
     (cmd_rlm_setup, "fava_trails.protocols.rlm"),
 ])
-def test_setup_write_warns_about_comments(tmp_path, capsys, cmd_fn, module_path):
+def test_setup_write_warns_about_comments(tmp_path, monkeypatch, capsys, cmd_fn, module_path):
     """setup --write warns when config.yaml contains comments."""
-    data_repo = _make_valid_data_repo(tmp_path)
+    data_repo = _setup_data_repo(tmp_path, monkeypatch)
     (data_repo / "config.yaml").write_text("# my custom comment\ntrails_dir: trails\n")
+    ConfigStore.reset()
 
     def fake_run(cmd, **kwargs):
         r = MagicMock()
@@ -858,23 +865,21 @@ def test_setup_write_warns_about_comments(tmp_path, capsys, cmd_fn, module_path)
         r.stderr = ""
         return r
 
-    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
-        with patch("fava_trails.cli._find_jj_bin", return_value="/usr/bin/jj"):
-            with patch("subprocess.run", side_effect=fake_run):
-                cmd_fn(_make_setup_args(write=True))
+    with patch("fava_trails.cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("subprocess.run", side_effect=fake_run):
+            cmd_fn(_make_setup_args(write=True))
 
     out = capsys.readouterr().out
     assert "comment" in out.lower() or "Warning" in out
 
 
 @pytest.mark.parametrize("cmd_fn", [cmd_secom_setup, cmd_ace_setup, cmd_rlm_setup])
-def test_setup_write_fails_without_jj(tmp_path, capsys, cmd_fn):
+def test_setup_write_fails_without_jj(tmp_path, monkeypatch, capsys, cmd_fn):
     """setup --write exits 1 when jj is not found."""
-    data_repo = _make_valid_data_repo(tmp_path)
+    _setup_data_repo(tmp_path, monkeypatch)
 
-    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
-        with patch("fava_trails.cli._find_jj_bin", return_value=None):
-            rc = cmd_fn(_make_setup_args(write=True))
+    with patch("fava_trails.cli._find_jj_bin", return_value=None):
+        rc = cmd_fn(_make_setup_args(write=True))
 
     assert rc == 1
     err = capsys.readouterr().err

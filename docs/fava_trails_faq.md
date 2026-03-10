@@ -45,7 +45,28 @@ For example, the built-in [SECOM protocol](../src/fava_trails/protocols/secom/RE
 
 Install with `pip install fava-trails[secom]` and add a `hooks:` entry to your data repo's `config.yaml`. See the [Protocols section](../README.md#protocols) for quick start.
 
+**Quick setup**: Use the CLI to avoid manual config editing:
+
+```bash
+fava-trails secom setup --write    # writes config.yaml + jj commit
+fava-trails secom warmup           # pre-downloads model (~700MB)
+fava-trails ace setup --write      # ACE playbook hooks
+fava-trails rlm setup --write      # RLM MapReduce hooks
+```
+
 **Known limitation**: SECOM's extractive token-level compression operates at the token level and has no notion of syntactic structure. JSON objects, YAML blocks, and fenced code blocks can be silently destroyed at promote time. Use the `secom-skip` tag to opt out of compression for any thought containing structured data — the `before_save` hook will warn you when it detects structured content without this tag.
+
+### Why does the first `propose_truth` take several minutes with SECOM enabled?
+
+SECOM uses LLMLingua-2 (a ~700MB BERT-based token classifier from HuggingFace Hub) for extractive compression. The first call triggers a model download that can take 2–5 minutes depending on connection speed — subsequent calls use the cached model and complete in milliseconds.
+
+To pre-download the model before agents encounter it:
+
+```bash
+fava-trails secom warmup
+```
+
+This downloads the model, runs a test compression, and reports the HuggingFace cache path. The warmup only needs to run once per machine. If you're deploying to a fresh environment (Docker, CI), run it during image build to avoid first-use latency in production.
 
 ---
 
