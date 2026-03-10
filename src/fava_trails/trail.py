@@ -696,6 +696,8 @@ async def recall_multi(
     """Search across multiple scopes. Returns (thought, source_trail_name) tuples.
 
     Results deduplicated by thought_id. Each result tagged with its source trail name.
+    After merging, fires on_recall_mix hook on the primary trail (trail_managers[0])
+    so ACE and other reranking hooks can act on the full cross-trail result set.
     """
     seen_ids: set[str] = set()
     results: list[tuple[ThoughtRecord, str]] = []
@@ -711,4 +713,28 @@ async def recall_multi(
             if r.thought_id not in seen_ids:
                 seen_ids.add(r.thought_id)
                 results.append((r, tm.trail_name))
+
+    # on_recall_mix: fire AFTER merging, only when multiple trails were searched.
+    # Single-trail recalls are already handled by on_recall inside tm.recall().
+    primary = trail_managers[0] if trail_managers else None
+    if primary and len(trail_managers) > 1 and primary._hooks and primary._hooks.has_hooks:
+        mix_event = OnRecallEvent(
+            lifecycle_point="on_recall_mix",
+            trail_name=primary.trail_name,
+            results=[r for r, _ in results],
+            query=query,
+            namespace=namespace,
+            scope=scope,
+            context=TrailContext(primary),
+        )
+        pipeline_result = await run_pipeline(primary._hooks, mix_event)
+        primary._set_feedback(pipeline_result)
+        if pipeline_result.recall_selection is not None:
+            # Reorder/filter the (ThoughtRecord, trail_name) tuples by hook-specified ULID order
+            ulid_order = {uid: i for i, uid in enumerate(pipeline_result.recall_selection)}
+            results = sorted(
+                [pair for pair in results if pair[0].thought_id in ulid_order],
+                key=lambda pair: ulid_order[pair[0].thought_id],
+            )
+
     return results[:limit]
