@@ -245,6 +245,34 @@ class TestBeforePropose:
         assert result is None
 
     @pytest.mark.asyncio
+    async def test_secom_skip_tag_bypasses_compression(self):
+        """Thoughts tagged secom-skip are not compressed."""
+        _configure(compression_threshold_chars=10)
+        thought = _make_thought(
+            content="A" * 1000,
+            tags=["secom-skip"],
+        )
+        event = BeforeProposeEvent(trail_name="t", thought=thought)
+        result = await secom.before_propose(event)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_structured_data_warning_logged(self, caplog):
+        """Compressing content with structured data emits a WARNING log."""
+        import logging
+        _configure(compression_threshold_chars=10)
+        content = "Plan:\n```json\n{\"phases\": []}\n```\n" + "x" * 200
+
+        with patch("fava_trails.protocols.secom._compress", side_effect=_mock_compress):
+            thought = _make_thought(content=content)
+            event = BeforeProposeEvent(trail_name="t", thought=thought)
+            with caplog.at_level(logging.WARNING, logger="fava_trails.protocols.secom"):
+                result = await secom.before_propose(event)
+
+        assert result is not None
+        assert any("structured data" in r.message for r in caplog.records if r.levelno == logging.WARNING)
+
+    @pytest.mark.asyncio
     async def test_preserves_existing_tags(self):
         """Compression adds secom-compressed without removing existing tags."""
         _configure(compression_threshold_chars=10)
@@ -294,6 +322,41 @@ class TestBeforeSave:
         event = BeforeSaveEvent(trail_name="t")
         result = await secom.before_save(event)
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_structured_data_fenced_code_block_advises(self):
+        """Content with fenced code block triggers structured data advisory."""
+        _configure(verbosity_warn_chars=10000)
+        content = "Some thought.\n```json\n{\"key\": \"value\"}\n```\n"
+        thought = _make_thought(content=content)
+        event = BeforeSaveEvent(trail_name="t", thought=thought)
+        result = await secom.before_save(event)
+        assert result is not None
+        codes = [a.code for a in result if isinstance(a, Advise)]
+        assert "secom_structured_data_advisory" in codes
+
+    @pytest.mark.asyncio
+    async def test_structured_data_json_block_advises(self):
+        """Content with a JSON-like line triggers structured data advisory."""
+        _configure(verbosity_warn_chars=10000)
+        content = "Plan:\n{\n  \"phases\": [\"a\", \"b\"]\n}\n"
+        thought = _make_thought(content=content)
+        event = BeforeSaveEvent(trail_name="t", thought=thought)
+        result = await secom.before_save(event)
+        assert result is not None
+        codes = [a.code for a in result if isinstance(a, Advise)]
+        assert "secom_structured_data_advisory" in codes
+
+    @pytest.mark.asyncio
+    async def test_structured_data_advisory_suppressed_with_secom_skip(self):
+        """secom-skip tag suppresses structured data advisory."""
+        _configure(verbosity_warn_chars=10000)
+        content = "Some thought.\n```json\n{\"key\": \"value\"}\n```\n"
+        thought = _make_thought(content=content, tags=["secom-skip"])
+        event = BeforeSaveEvent(trail_name="t", thought=thought)
+        result = await secom.before_save(event)
+        codes = [a.code for a in result if isinstance(a, Advise)] if result else []
+        assert "secom_structured_data_advisory" not in codes
 
 
 # --- on_recall Hook ---
