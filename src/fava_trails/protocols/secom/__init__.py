@@ -36,6 +36,7 @@ Configure via config.yaml hooks entry or test harness::
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from fava_trails.hook_types import (
@@ -158,6 +159,23 @@ def _compress(text: str, target_rate: float) -> tuple[str, float]:
     return compressed, actual_rate
 
 
+# --- Structured Data Detection ---
+
+
+def _has_structured_data(content: str) -> bool:
+    """Return True if content appears to contain structured data.
+
+    Heuristics (any one triggers):
+    - Fenced code block (``` ... ```)
+    - JSON-like block: line starting with { or [
+    """
+    if re.search(r"^```", content, re.MULTILINE):
+        return True
+    if re.search(r"^\s*[{\[]", content, re.MULTILINE):
+        return True
+    return False
+
+
 # --- Lifecycle Hooks ---
 
 
@@ -177,13 +195,20 @@ async def before_propose(event: BeforeProposeEvent) -> list[Any] | None:
     if len(content.strip()) < threshold:
         return None
 
-    # Don't re-compress
+    # Explicit opt-out or already compressed
     tags = event.thought.frontmatter.metadata.tags or []
-    if "secom-compressed" in tags:
+    if "secom-skip" in tags or "secom-compressed" in tags:
         return None
 
     target_rate = _CONFIG.get("target_compress_rate", 0.6)
     engine_type = _ENGINE_CONFIG.get("type", "llmlingua")
+
+    if _has_structured_data(content):
+        logger.warning(
+            "SECOM: compressing content with detected structured data "
+            "(JSON/YAML/code block) — syntactic validity may be lost. "
+            "Add 'secom-skip' tag to preserve structure."
+        )
 
     try:
         compressed, actual_rate = _compress(content, target_rate)
@@ -220,27 +245,38 @@ async def before_propose(event: BeforeProposeEvent) -> list[Any] | None:
 
 
 async def before_save(event: BeforeSaveEvent) -> list[Any] | None:
-    """Advise on verbose thoughts with front-loading guidance."""
+    """Advise on verbose thoughts and structured content that may be harmed by compression."""
     if not event.thought:
         return None
 
     content = event.thought.content
+    tags = event.thought.frontmatter.metadata.tags or []
+    actions: list[Any] = []
+
     warn_chars = _CONFIG.get("verbosity_warn_chars", 1000)
+    if len(content.strip()) >= warn_chars:
+        threshold = _CONFIG.get("compression_threshold_chars", 500)
+        actions.append(Advise(
+            message=(
+                f"Thought is {len(content)} chars. Content above {threshold} chars "
+                f"will be compressed at promote time (SECOM \u03c4={_CONFIG.get('target_compress_rate', 0.6)}). "
+                "Consider front-loading key facts and identifiers -- extractive compression "
+                "preserves tokens in order, so leading content survives at higher rates."
+            ),
+            code="secom_verbosity_advisory",
+        ))
 
-    if len(content.strip()) < warn_chars:
-        return None
+    if "secom-skip" not in tags and _has_structured_data(content):
+        actions.append(Advise(
+            message=(
+                "Content appears to contain structured data (JSON/YAML/code block). "
+                "SECOM's extractive compression may destroy syntactic validity at promote time. "
+                "Add the 'secom-skip' tag to opt out of compression for this thought."
+            ),
+            code="secom_structured_data_advisory",
+        ))
 
-    threshold = _CONFIG.get("compression_threshold_chars", 500)
-
-    return [Advise(
-        message=(
-            f"Thought is {len(content)} chars. Content above {threshold} chars "
-            f"will be compressed at promote time (SECOM \u03c4={_CONFIG.get('target_compress_rate', 0.6)}). "
-            "Consider front-loading key facts and identifiers -- extractive compression "
-            "preserves tokens in order, so leading content survives at higher rates."
-        ),
-        code="secom_verbosity_advisory",
-    )]
+    return actions or None
 
 
 async def on_recall(event: OnRecallEvent) -> list[Any] | None:
