@@ -7,11 +7,14 @@ All tool responses are token-optimized JSON summaries — no raw VCS output.
 from __future__ import annotations
 
 import asyncio
+import functools
 import importlib.resources
 import json
 import logging
+import logging.handlers
 import os
 import sys
+from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +43,26 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     stream=sys.stderr,
 )
+
+# Add rotating file handler so MCP server logs are persisted to disk.
+# Claude Code captures MCP server stderr only in session.jsonl (tool results),
+# not as raw log output — without this, server-side hangs are undiagnosable.
+# Wrapped in try/except so a restricted filesystem never prevents server startup.
+try:
+    _log_dir = Path(os.environ.get("FAVA_TRAILS_LOG_DIR", Path.home() / ".fava-trails" / "logs"))
+    _log_dir.mkdir(parents=True, exist_ok=True)
+    _file_handler = logging.handlers.RotatingFileHandler(
+        _log_dir / "mcp-server.log",
+        maxBytes=5 * 1024 * 1024,  # 5 MB per file
+        backupCount=3,
+    )
+    _file_handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    )
+    logging.getLogger().addHandler(_file_handler)
+except OSError as _log_err:
+    # Non-fatal: log setup failed (read-only fs, container, etc.) — stderr only.
+    logging.getLogger(__name__).warning("File logging disabled: %s", _log_err)
 
 
 def _build_server_instructions() -> str:
@@ -120,6 +143,17 @@ server = Server("fava-trails", instructions=_build_server_instructions())
 
 # Trail manager cache: trail_name -> TrailManager
 _trail_managers: dict[str, TrailManager] = {}
+# Lock guards first-time trail init so parallel calls for the same new scope
+# don't race to double-initialize the jj trail directory.
+_trail_init_lock: asyncio.Lock | None = None
+
+
+def _get_trail_init_lock() -> asyncio.Lock:
+    """Return the trail init lock, creating it lazily inside the running event loop."""
+    global _trail_init_lock
+    if _trail_init_lock is None:
+        _trail_init_lock = asyncio.Lock()
+    return _trail_init_lock
 
 # Shared backend for monorepo init, GC, push, fetch
 _shared_backend: JjBackend | None = None
@@ -192,15 +226,21 @@ async def _get_trail(trail_name: str | None = None) -> TrailManager:
         )
 
     safe_name = sanitize_scope_path(trail_name)
-    if safe_name not in _trail_managers:
-        repo_root = get_data_repo_root()
-        trail_path = get_trails_dir() / safe_name
-        backend = JjBackend(repo_root=repo_root, trail_path=trail_path)
-        manager = TrailManager(safe_name, vcs=backend, hooks=_hook_registry)
-        # Auto-initialize if trail doesn't exist (detect by thoughts/ dir, not .jj)
-        if not (manager.trail_path / "thoughts").exists():
-            await manager.init()
-        _trail_managers[safe_name] = manager
+    # Fast path: already cached (no lock needed — dict reads are safe in asyncio).
+    if safe_name in _trail_managers:
+        return _trail_managers[safe_name]
+    # Slow path: first call for this scope — serialize to prevent double-init.
+    async with _get_trail_init_lock():
+        # Double-check after acquiring lock (another coroutine may have just finished).
+        if safe_name not in _trail_managers:
+            repo_root = get_data_repo_root()
+            trail_path = get_trails_dir() / safe_name
+            backend = JjBackend(repo_root=repo_root, trail_path=trail_path)
+            manager = TrailManager(safe_name, vcs=backend, hooks=_hook_registry)
+            # Auto-initialize if trail doesn't exist (detect by thoughts/ dir, not .jj)
+            if not (manager.trail_path / "thoughts").exists():
+                await manager.init()
+            _trail_managers[safe_name] = manager
 
     return _trail_managers[safe_name]
 
@@ -488,6 +528,37 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 ]
 
 
+def with_tool_timeout(
+    fn: Callable[..., Coroutine[Any, Any, list[TextContent]]],
+) -> Callable[..., Coroutine[Any, Any, list[TextContent]]]:
+    """Decorator: wraps an MCP tool handler with a configurable asyncio timeout.
+
+    Reads ``tool_timeout_secs`` from GlobalConfig at call time (not decoration time)
+    so config changes take effect without restarting the server.
+    Set ``tool_timeout_secs: 0`` in config.yaml to disable.
+    """
+    @functools.wraps(fn)
+    async def wrapper(name: str, arguments: dict[str, Any]) -> list[TextContent]:
+        timeout = ConfigStore.get().global_config.tool_timeout_secs
+        if timeout <= 0:
+            return await fn(name, arguments)
+        try:
+            return await asyncio.wait_for(fn(name, arguments), timeout=float(timeout))
+        except TimeoutError:
+            logger.error("Tool '%s' timed out after %ds", name, timeout)
+            result = {
+                "status": "error",
+                "message": (
+                    f"Tool '{name}' timed out after {timeout}s. "
+                    "The operation did not complete. "
+                    "If this is sync, check remote connectivity. "
+                    "For propose_truth, the LLM provider may be unresponsive — retry."
+                ),
+            }
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+    return wrapper
+
+
 @server.list_tools()
 async def handle_list_tools() -> list[Tool]:
     """List all FAVA Trails tools."""
@@ -502,6 +573,7 @@ async def handle_list_tools() -> list[Tool]:
 
 
 @server.call_tool()
+@with_tool_timeout
 async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     """Route tool calls to handlers. Responses are structured JSON (except get_usage_guide which returns markdown)."""
     from .tools.navigation import (

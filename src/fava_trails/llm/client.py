@@ -7,6 +7,7 @@ import os
 from dataclasses import dataclass
 
 import any_llm
+import httpx
 
 from ._retry import async_retry
 from .registry import get_registry
@@ -78,12 +79,21 @@ class LLMClient:
             kwargs["max_tokens"] = max_output_tokens
 
         async def _do_call() -> LLMResponse:
+            # Use explicit httpx.Timeout phases to ensure all timeout types are set.
+            # A scalar timeout only sets the total/read timeout; connect and pool
+            # timeouts may default to None (infinite), leaving a hang vector.
+            httpx_timeout = httpx.Timeout(
+                connect=10.0,
+                read=timeout,
+                write=timeout,
+                pool=10.0,
+            )
             response = await any_llm.acompletion(
                 model=resolved_model,
                 provider="openrouter",
                 messages=messages,
                 api_key=self._openrouter_api_key,
-                client_args={"timeout": timeout},
+                client_args={"timeout": httpx_timeout},
                 **kwargs,
             )
             choice = response.choices[0] if response.choices else None
