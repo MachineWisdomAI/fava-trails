@@ -237,6 +237,7 @@ ACTION_VALIDITY: dict[str, set[type]] = {
     "after_propose": {Warn, Advise, Annotate},
     "after_supersede": {Warn, Advise, Annotate},
     "on_recall": {Proceed, Warn, Advise, Annotate, RecallSelect},
+    "on_recall_mix": {Proceed, Warn, Advise, Annotate, RecallSelect},
 }
 
 
