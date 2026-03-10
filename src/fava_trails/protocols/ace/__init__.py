@@ -103,8 +103,14 @@ async def on_recall(event: OnRecallEvent) -> list[Any] | None:
     """Apply playbook rules to rerank recall results.
 
     Lazy-loads rules from preferences/ (or configured namespace) with a
-    5-minute TTL. Uses multiplicative ACE-style scoring. Returns RecallSelect
-    for provenance safety — can only reorder existing results, never inject.
+    5-minute TTL. Uses multiplicative ACE-style scoring.
+
+    Returns:
+      - [RecallSelect, Annotate(order_changed=True)] when scoring changes the order.
+      - [Annotate(order_changed=False)] when scoring produces no change — RecallSelect
+        is omitted because it has no handler in HookFeedback.merge() and would be a
+        no-op; Annotate still surfaces feedback to the caller.
+      - None when there are no results or no playbook rules.
     """
     if not event.results:
         return None
@@ -140,10 +146,27 @@ async def on_recall(event: OnRecallEvent) -> list[Any] | None:
     # Stable sort: primary by score, secondary by thought_id (deterministic tiebreak)
     scored.sort(key=lambda x: (x[1], x[0].thought_id), reverse=True)
     ordered_ulids = [t.thought_id for t, _ in scored]
+    original_order = [t.thought_id for t in event.results]
+    order_changed = ordered_ulids != original_order
+
+    if not order_changed:
+        # Order unchanged: RecallSelect would be a no-op and doesn't contribute to
+        # hook_feedback. Return only Annotate so the caller still sees feedback.
+        return [
+            Annotate({
+                "recall_policy": "ace_rerank_v1",
+                "rules_applied": len(playbook),
+                "order_changed": False,
+            }),
+        ]
 
     return [
         RecallSelect(ordered_ulids=ordered_ulids, reason="ace_playbook_rerank"),
-        Annotate({"recall_policy": "ace_rerank_v1", "rules_applied": len(playbook)}),
+        Annotate({
+            "recall_policy": "ace_rerank_v1",
+            "rules_applied": len(playbook),
+            "order_changed": True,
+        }),
     ]
 
 

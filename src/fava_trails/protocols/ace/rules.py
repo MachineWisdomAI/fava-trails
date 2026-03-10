@@ -67,6 +67,9 @@ class PlaybookRule:
         repr=False,
         compare=False,
     )
+    # Warn-once flag: unknown match keys are logged at most once per rule instance
+    # to avoid flooding logs when matches() is called repeatedly during recall.
+    _warned_unknown_keys: bool = field(default=False, init=False, repr=False, compare=False)
 
     def matches(self, thought: ThoughtRecord) -> bool:
         """Return True if ALL match criteria are satisfied (AND logic).
@@ -77,9 +80,26 @@ class PlaybookRule:
           tags_include:   list[str] — thought must have ALL these tags
           tags_exclude:   list[str] — thought must have NONE of these tags
           age_lt_days:    float — thought must have been created within N days
+
+        Unknown keys are logged as a WARNING (once per rule instance) and
+        otherwise ignored — they do not prevent a match.
         """
         fm = thought.frontmatter
         m = self.match
+
+        # Validate for unknown keys first, before any early-return branch, so
+        # the warning fires regardless of which known criterion fails.
+        if not self._warned_unknown_keys:
+            unknown = m.keys() - self._MATCH_KEYS
+            if unknown:
+                logger.warning(
+                    "ACE rule %s: unknown match key(s) %s — "
+                    "valid keys are %s (did you mean 'tags_include' or 'tags_exclude'?)",
+                    self.name,
+                    sorted(str(k) for k in unknown),
+                    sorted(self._MATCH_KEYS),
+                )
+                self._warned_unknown_keys = True
 
         if "source_type" in m:
             if fm.source_type.value != m["source_type"]:
