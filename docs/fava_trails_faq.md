@@ -45,6 +45,8 @@ For example, the built-in [SECOM protocol](../src/fava_trails/protocols/secom/RE
 
 Install with `pip install fava-trails[secom]` and add a `hooks:` entry to your data repo's `config.yaml`. See the [Protocols section](../README.md#protocols) for quick start.
 
+**Known limitation**: SECOM's extractive token-level compression operates at the token level and has no notion of syntactic structure. JSON objects, YAML blocks, and fenced code blocks can be silently destroyed at promote time. Use the `secom-skip` tag to opt out of compression for any thought containing structured data — the `before_save` hook will warn you when it detects structured content without this tag.
+
 ---
 
 ## The Architecture

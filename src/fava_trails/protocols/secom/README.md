@@ -127,15 +127,43 @@ pip install fava-trails[secom]
 # or: uv add fava-trails[secom]
 ```
 
+## Structured Data
+
+SECOM's token-level compression has no notion of syntactic validity — JSON objects, YAML blocks, and fenced code blocks may be silently destroyed at promote time.
+
+### Opt Out with `secom-skip`
+
+Tag any thought with `secom-skip` to bypass compression entirely:
+
+```python
+save_thought(
+    trail_name="my/scope",
+    content='{"phases": ["build", "test"]}',
+    metadata={"tags": ["secom-skip"]},
+)
+```
+
+`secom-skip` means "do not compress this." It is semantically distinct from `secom-compressed` (which means "already compressed").
+
+### Advisory on Save
+
+When `before_save` detects structured content (fenced code blocks or JSON-like lines) and `secom-skip` is absent, it issues an `Advise` action with code `secom_structured_data_advisory`, suggesting you add the tag before promoting.
+
+### Operator Warning on Compress
+
+If compression proceeds on content that appears structured, `before_propose` logs a `WARNING` so operators can investigate unexpected data corruption.
+
 ## Hooks
 
 ### `before_propose` -- Inline Compression
 
-Compresses content via `Mutate(ThoughtPatch)` before promotion. Adds `secom-compressed` tag and compression metadata to `extra`. Skips if content is below threshold or already compressed. Fails open on errors.
+Compresses content via `Mutate(ThoughtPatch)` before promotion. Adds `secom-compressed` tag and compression metadata to `extra`. Skips if content is below threshold, already tagged `secom-compressed`, or explicitly tagged `secom-skip`. Logs a `WARNING` when compressing content with detected structured data. Fails open on errors.
 
 ### `before_save` -- Verbosity Advisor
 
-Issues an `Advise` when saved content exceeds `verbosity_warn_chars`, suggesting front-loading key facts since extractive compression preserves tokens in order.
+Issues `Advise` actions when:
+- Saved content exceeds `verbosity_warn_chars` (code: `secom_verbosity_advisory`) — suggests front-loading key facts
+- Content contains structured data (JSON/YAML/code blocks) and `secom-skip` is absent (code: `secom_structured_data_advisory`) — suggests adding the `secom-skip` tag
 
 ### `on_recall` -- Density-Aware Scoring
 
