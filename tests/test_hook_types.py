@@ -267,7 +267,7 @@ class TestActionValidity:
 
     def test_all_lifecycle_points_covered(self):
         """Every lifecycle point in the matrix has at least one valid action."""
-        expected = {"before_save", "after_save", "before_propose", "after_propose", "after_supersede", "on_recall"}
+        expected = {"before_save", "after_save", "before_propose", "after_propose", "after_supersede", "on_recall", "on_recall_mix"}
         assert set(ACTION_VALIDITY.keys()) == expected
 
 

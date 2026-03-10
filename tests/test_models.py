@@ -160,7 +160,7 @@ def test_hook_entry_invalid_fail_mode():
 
 def test_known_hooks_contains_expected():
     expected = {"before_save", "after_save", "before_propose", "after_propose",
-                "after_supersede", "on_recall", "on_startup"}
+                "after_supersede", "on_recall", "on_recall_mix", "on_startup"}
     assert KNOWN_HOOKS == expected
 
 

@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUTS: dict[str, float] = {
     "on_recall": 2.0,
+    "on_recall_mix": 2.0,
     "before_save": 5.0,
     "after_save": 5.0,
     "before_propose": 5.0,

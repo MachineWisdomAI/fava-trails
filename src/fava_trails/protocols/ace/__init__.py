@@ -5,9 +5,10 @@ pattern, based on:
   Stanford/SambaNova arXiv:2510.04618 (ICLR 2026)
   ACL 2025 Reflective Memory Management
 
-Six lifecycle hooks provide:
+Seven lifecycle hooks provide:
   - on_startup:     Lazy cache warmup signal
   - on_recall:      Playbook-driven reranking via RecallSelect
+  - on_recall_mix:  Same reranking applied to cross-trail merged results
   - before_save:    Anti-pattern Warn + brevity-bias Advise
   - after_save:     Cache invalidation + Reflector telemetry accumulation
   - after_propose:  Cache invalidation when a rule enters preferences/
@@ -23,7 +24,7 @@ Configure via config.yaml hooks entry or test harness::
 
     hooks:
       - module: fava_trails.protocols.ace
-        points: [on_startup, on_recall, before_save, after_save, after_propose, after_supersede]
+        points: [on_startup, on_recall, on_recall_mix, before_save, after_save, after_propose, after_supersede]
         order: 10
         fail_mode: open
         config:
@@ -308,3 +309,13 @@ async def after_supersede(event: AfterSupersedeEvent) -> None:
         _CACHE_TIMESTAMPS.pop(scope_key, None)
         logger.info("ACE: playbook cache invalidated for %s (after_supersede)", scope_key)
     return None
+
+
+async def on_recall_mix(event: OnRecallEvent) -> list[Any] | None:
+    """Apply ACE playbook reranking to cross-trail merged results.
+
+    Delegates to on_recall so the same playbook rules apply to both single-trail
+    and multi-trail (recall_multi) result sets. The primary trail provides the
+    playbook rules via its preferences/ namespace.
+    """
+    return await on_recall(event)
