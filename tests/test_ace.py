@@ -549,7 +549,7 @@ class TestOnRecall:
         """Cache older than TTL triggers a fresh context.recall."""
         _configure()
         ace._PLAYBOOK_CACHE["trail1"] = []
-        ace._CACHE_TIMESTAMPS["trail1"] = 0.0  # Very old timestamp
+        ace._CACHE_TIMESTAMPS["trail1"] = time.monotonic() - ace._CACHE_TTL_SECONDS - 1  # Definitely expired
 
         mock_context = AsyncMock()
         mock_context.recall = AsyncMock(return_value=[])
