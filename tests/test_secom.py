@@ -7,6 +7,7 @@ requiring the llmlingua package in the test environment.
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -259,7 +260,6 @@ class TestBeforePropose:
     @pytest.mark.asyncio
     async def test_structured_data_warning_logged(self, caplog):
         """Compressing content with structured data emits a WARNING log."""
-        import logging
         _configure(compression_threshold_chars=10)
         content = "Plan:\n```json\n{\"phases\": []}\n```\n" + "x" * 200
 
@@ -356,6 +356,33 @@ class TestBeforeSave:
         event = BeforeSaveEvent(trail_name="t", thought=thought)
         result = await secom.before_save(event)
         codes = [a.code for a in result if isinstance(a, Advise)] if result else []
+        assert "secom_structured_data_advisory" not in codes
+
+    @pytest.mark.asyncio
+    async def test_both_advisories_triggered(self):
+        """Content with verbosity and structured data triggers both advisories."""
+        _configure(verbosity_warn_chars=50, compression_threshold_chars=30)
+        content = "A" * 100 + "\n```json\n{\"key\": \"value\"}\n```"
+        thought = _make_thought(content=content)
+        event = BeforeSaveEvent(trail_name="t", thought=thought)
+        result = await secom.before_save(event)
+        assert result is not None
+        assert len(result) == 2
+        codes = [a.code for a in result if isinstance(a, Advise)]
+        assert "secom_verbosity_advisory" in codes
+        assert "secom_structured_data_advisory" in codes
+
+    @pytest.mark.asyncio
+    async def test_secom_skip_does_not_suppress_verbosity_advisory(self):
+        """secom-skip suppresses only structured data advisory, not verbosity advisory."""
+        _configure(verbosity_warn_chars=50, compression_threshold_chars=30)
+        content = "A" * 100 + "\n```json\n{\"key\": \"value\"}\n```"
+        thought = _make_thought(content=content, tags=["secom-skip"])
+        event = BeforeSaveEvent(trail_name="t", thought=thought)
+        result = await secom.before_save(event)
+        assert result is not None
+        codes = [a.code for a in result if isinstance(a, Advise)]
+        assert "secom_verbosity_advisory" in codes
         assert "secom_structured_data_advisory" not in codes
 
 

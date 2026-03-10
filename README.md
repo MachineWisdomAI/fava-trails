@@ -242,7 +242,15 @@ hooks:
         type: llmlingua
 ```
 
-See [protocols/secom/README.md](src/fava_trails/protocols/secom/README.md) for full config reference and model options. See [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md#lifecycle-hooks) for the general hooks system.
+**Structured data**: SECOM's token-level compression has no notion of syntactic validity — JSON objects, YAML blocks, and fenced code blocks may be silently destroyed at promote time. Tag thoughts with `secom-skip` to opt out:
+
+```python
+save_thought(trail_name="my/scope", content='{"phases": [...]}', metadata={"tags": ["secom-skip"]})
+```
+
+The `before_save` hook warns when structured content is detected without `secom-skip`.
+
+See [protocols/secom/README.md](src/fava_trails/protocols/secom/README.md) for full config reference, model options, and the `secom-skip` opt-out. See [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md#lifecycle-hooks) for the general hooks system.
 
 ## Development
 
