@@ -252,6 +252,29 @@ class TestPlaybookRule:
             rule.matches(thought)
         assert any("tags_include" in r.message for r in caplog.records)
 
+    def test_matches_unknown_key_fires_before_early_return(self, caplog):
+        """Warning is emitted even when a known criterion causes an early False return."""
+        import logging
+        # source_type mismatch → would return False before reaching old check position
+        rule = _make_rule(match={"source_type": "decision", "tags": ["x"]})
+        thought = _make_thought(source_type="observation")  # fails source_type check
+        with caplog.at_level(logging.WARNING, logger="fava_trails.protocols.ace.rules"):
+            result = rule.matches(thought)
+        assert result is False  # still False (known criterion failed)
+        assert any("unknown match key" in r.message for r in caplog.records)
+
+    def test_matches_unknown_key_warns_once_not_per_call(self, caplog):
+        """Unknown-key warning fires only once per rule instance, not on every call."""
+        import logging
+        rule = _make_rule(match={"tags": ["x"]})
+        thought = _make_thought()
+        with caplog.at_level(logging.WARNING, logger="fava_trails.protocols.ace.rules"):
+            rule.matches(thought)
+            rule.matches(thought)
+            rule.matches(thought)
+        warnings = [r for r in caplog.records if "unknown match key" in r.message]
+        assert len(warnings) == 1
+
     # --- evaluate() ---
 
     def test_evaluate_anti_pattern_always_neutral(self):

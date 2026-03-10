@@ -103,8 +103,14 @@ async def on_recall(event: OnRecallEvent) -> list[Any] | None:
     """Apply playbook rules to rerank recall results.
 
     Lazy-loads rules from preferences/ (or configured namespace) with a
-    5-minute TTL. Uses multiplicative ACE-style scoring. Returns RecallSelect
-    for provenance safety — can only reorder existing results, never inject.
+    5-minute TTL. Uses multiplicative ACE-style scoring.
+
+    Returns:
+      - [RecallSelect, Annotate(order_changed=True)] when scoring changes the order.
+      - [Annotate(order_changed=False)] when scoring produces no change — RecallSelect
+        is omitted because it has no handler in HookFeedback.merge() and would be a
+        no-op; Annotate still surfaces feedback to the caller.
+      - None when there are no results or no playbook rules.
     """
     if not event.results:
         return None
