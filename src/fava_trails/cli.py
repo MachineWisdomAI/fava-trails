@@ -535,17 +535,17 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         any_failed = True
 
     # Check 3: OpenRouter API key?
-    api_key_env = "OPENROUTER_API_KEY"
+    env_var_name = "OPENROUTER_API_KEY"  # noqa: S105 — env var name, not a secret
     try:
         global_config = load_global_config()
-        api_key_env = global_config.openrouter_api_key_env
+        env_var_name = global_config.openrouter_api_key_env
     except (OSError, ValueError):
         pass  # Use default env var name if config can't be loaded
-    if os.environ.get(api_key_env):
-        print(f"OpenRouter:   {api_key_env} is set")
+    if os.environ.get(env_var_name):
+        print(f"OpenRouter:   {env_var_name} is set")
     else:
-        print(f"OpenRouter:   NOT SET ({api_key_env})")
-        print(f"  Fix: export {api_key_env}=sk-or-v1-...")
+        print(f"OpenRouter:   NOT SET ({env_var_name})")
+        print(f"  Fix: export {env_var_name}=sk-or-v1-...")
         print("  Get a key: https://openrouter.ai/keys")
         any_failed = True
 
@@ -1075,14 +1075,14 @@ def main(argv: list[str] | None = None) -> None:
         if not data_repo_ok:
             n = len(hints) + 1
             hints.append(f"  {n}. Set up data repo:   fava-trails bootstrap <path>")
-        api_key_env = "OPENROUTER_API_KEY"
+        env_var_name = "OPENROUTER_API_KEY"  # noqa: S105 — env var name, not a secret
         try:
-            api_key_env = load_global_config().openrouter_api_key_env
+            env_var_name = load_global_config().openrouter_api_key_env
         except (OSError, ValueError):
             pass
-        if not os.environ.get(api_key_env):
+        if not os.environ.get(env_var_name):
             n = len(hints) + 1
-            hints.append(f"  {n}. Set OpenRouter key:  export {api_key_env}=sk-or-v1-...")
+            hints.append(f"  {n}. Set OpenRouter key:  export {env_var_name}=sk-or-v1-...")
         if hints:
             print("\nQuick start:")
             print("\n".join(hints))
