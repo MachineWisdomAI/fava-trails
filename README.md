@@ -2,7 +2,7 @@
 [![License](https://img.shields.io/github/license/MachineWisdomAI/fava-trails)](LICENSE)
 [![Tests](https://img.shields.io/github/actions/workflow/status/MachineWisdomAI/fava-trails/test.yml?label=tests)](https://github.com/MachineWisdomAI/fava-trails/actions)
 [![Python](https://img.shields.io/pypi/pyversions/fava-trails)](https://pypi.org/project/fava-trails/)
-[![Hits](https://hits.sh/github.com/MachineWisdomAI/fava-trails.svg?label=views)](https://hits.sh/github.com/MachineWisdomAI/fava-trails/)
+[![Views](https://raw.githubusercontent.com/MachineWisdomAI/fava-trails/traffic/traffic-fava-trails/views.svg)](https://github.com/MachineWisdomAI/fava-trails)
 
 # FAVA Trails
 
