@@ -1,0 +1,62 @@
+[
+  {
+    "path": "/MachineWisdomAI/fava-trails",
+    "title": "MachineWisdomAI/fava-trails: 🫛👣 FAVA Trails — versioned, auditable memory for...",
+    "count": 159,
+    "uniques": 83
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pulls",
+    "title": "Pull requests · MachineWisdomAI/fava-trails",
+    "count": 24,
+    "uniques": 2
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pull/10",
+    "title": "feat: Add get CLI subcommand for programmatic artifact retrieval by timeleft-...",
+    "count": 16,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/releases",
+    "title": "Releases · MachineWisdomAI/fava-trails",
+    "count": 16,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/releases/new",
+    "title": "New release · MachineWisdomAI/fava-trails",
+    "count": 7,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pull/15",
+    "title": "feat: add SECOM compression hooks (protocols/secom) by timeleft-- · Pull Requ...",
+    "count": 6,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pull/8",
+    "title": "feat(llm): Extract LLM client library with multi-provider support by timeleft...",
+    "count": 6,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/blob/main/AGENTS.md",
+    "title": "fava-trails/AGENTS.md at main · MachineWisdomAI/fava-trails · GitHub",
+    "count": 5,
+    "uniques": 4
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/actions",
+    "title": "Workflow runs · MachineWisdomAI/fava-trails",
+    "count": 5,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pull/15/changes",
+    "title": "feat: add SECOM compression hooks (protocols/secom) by timeleft-- · Pull Requ...",
+    "count": 5,
+    "uniques": 1
+  }
+]
