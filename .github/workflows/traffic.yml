@@ -2,7 +2,7 @@ name: Traffic
 
 on:
   schedule:
-    - cron: "0 23 * * *"
+    - cron: "59 7 * * *"
   workflow_dispatch:
 
 permissions:
