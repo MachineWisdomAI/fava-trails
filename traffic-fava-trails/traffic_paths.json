@@ -2,8 +2,8 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "MachineWisdomAI/fava-trails: 🫛👣 FAVA Trails — versioned, auditable memory for...",
-    "count": 159,
-    "uniques": 83
+    "count": 124,
+    "uniques": 58
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pulls",
@@ -12,21 +12,21 @@
     "uniques": 2
   },
   {
+    "path": "/MachineWisdomAI/fava-trails/releases",
+    "title": "Releases · MachineWisdomAI/fava-trails",
+    "count": 17,
+    "uniques": 1
+  },
+  {
     "path": "/MachineWisdomAI/fava-trails/pull/10",
     "title": "feat: Add get CLI subcommand for programmatic artifact retrieval by timeleft-...",
     "count": 16,
     "uniques": 1
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/releases",
-    "title": "Releases · MachineWisdomAI/fava-trails",
-    "count": 16,
-    "uniques": 1
-  },
-  {
     "path": "/MachineWisdomAI/fava-trails/releases/new",
     "title": "New release · MachineWisdomAI/fava-trails",
-    "count": 7,
+    "count": 11,
     "uniques": 1
   },
   {
