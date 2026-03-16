@@ -2,8 +2,8 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "MachineWisdomAI/fava-trails: 🫛👣 FAVA Trails — versioned, auditable memory for...",
-    "count": 124,
-    "uniques": 58
+    "count": 110,
+    "uniques": 48
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pulls",
@@ -42,12 +42,6 @@
     "uniques": 1
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/AGENTS.md",
-    "title": "fava-trails/AGENTS.md at main · MachineWisdomAI/fava-trails · GitHub",
-    "count": 5,
-    "uniques": 4
-  },
-  {
     "path": "/MachineWisdomAI/fava-trails/actions",
     "title": "Workflow runs · MachineWisdomAI/fava-trails",
     "count": 5,
@@ -58,5 +52,11 @@
     "title": "feat: add SECOM compression hooks (protocols/secom) by timeleft-- · Pull Requ...",
     "count": 5,
     "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/blob/main/AGENTS.md",
+    "title": "fava-trails/AGENTS.md at main · MachineWisdomAI/fava-trails · GitHub",
+    "count": 4,
+    "uniques": 3
   }
 ]
