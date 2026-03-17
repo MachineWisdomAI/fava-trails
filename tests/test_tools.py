@@ -1066,6 +1066,7 @@ async def test_prefix_match_ambiguous_raises(trail_manager):
 
     err = exc_info.value
     assert err.prefix == shared_prefix
+    assert err.total_matches == 2
     assert len(err.candidates) == 2
     candidate_ids = {c["thought_id"] for c in err.candidates}
     assert r1.thought_id in candidate_ids
