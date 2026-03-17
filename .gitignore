@@ -40,6 +40,9 @@ codev/roles/
 codev/specs/
 af-config.json
 .architect-role.md
+.builder-prompt.txt
+.builder-role.md
+.builder-start.sh
 .builders/
 *.codev-new
 
