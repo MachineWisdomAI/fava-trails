@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..models import SourceType
+from ..trail import AmbiguousThoughtID
 
 
 def _serialize_thought(record) -> dict[str, Any]:
@@ -91,7 +92,11 @@ async def handle_get_thought(trail, arguments: dict) -> dict[str, Any]:
     if not thought_id:
         return {"status": "error", "message": "thought_id is required"}
 
-    record = await trail.get_thought(thought_id)
+    try:
+        record = await trail.get_thought(thought_id)
+    except AmbiguousThoughtID as e:
+        return {"status": "error", "message": str(e), "candidates": e.candidates}
+
     if record is None:
         return {"status": "error", "message": f"Thought {thought_id} not found"}
 
@@ -119,6 +124,8 @@ async def handle_update_thought(trail, arguments: dict) -> dict[str, Any]:
 
     try:
         record = await trail.update_thought(thought_id, new_content)
+    except AmbiguousThoughtID as e:
+        return {"status": "error", "message": str(e), "candidates": e.candidates}
     except ValueError as e:
         return {"status": "error", "message": str(e)}
 
@@ -155,6 +162,8 @@ async def handle_supersede(trail, arguments: dict, target_trail=None) -> dict[st
             confidence=arguments.get("confidence"),
             target_trail=target_trail,
         )
+    except AmbiguousThoughtID as e:
+        return {"status": "error", "message": str(e), "candidates": e.candidates}
     except ValueError as e:
         return {"status": "error", "message": str(e)}
 

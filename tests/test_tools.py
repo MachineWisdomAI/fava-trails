@@ -3,7 +3,7 @@
 import pytest
 
 from fava_trails.models import SourceType
-from fava_trails.trail import recall_multi
+from fava_trails.trail import AmbiguousThoughtID, recall_multi
 
 
 @pytest.mark.asyncio
@@ -997,3 +997,154 @@ async def test_recall_multi_on_recall_mix_preserves_on_recall_feedback(
     assert pipeline.feedback.annotations.get("cross_trail") is True
     # on_recall annotation was merged in (not overwritten)
     assert pipeline.feedback.annotations.get("per_trail") is True
+
+
+# --- Prefix matching for shortened thought IDs (Issue #32) ---
+
+
+@pytest.mark.asyncio
+async def test_prefix_match_unique_resolves(trail_manager):
+    """A shortened prefix that uniquely matches one thought should resolve correctly."""
+    record = await trail_manager.save_thought(
+        content="Unique thought for prefix test.",
+        agent_id="test-agent",
+    )
+    full_id = record.thought_id
+    prefix = full_id[:8]
+
+    # Retrieve by prefix
+    retrieved = await trail_manager.get_thought(prefix)
+    assert retrieved is not None
+    assert retrieved.thought_id == full_id
+
+
+@pytest.mark.asyncio
+async def test_prefix_match_exact_full_id_still_works(trail_manager):
+    """Full ULID exact match continues to work as before."""
+    record = await trail_manager.save_thought(
+        content="Full ID lookup test.",
+        agent_id="test-agent",
+    )
+    retrieved = await trail_manager.get_thought(record.thought_id)
+    assert retrieved is not None
+    assert retrieved.thought_id == record.thought_id
+
+
+@pytest.mark.asyncio
+async def test_prefix_match_no_match_returns_none(trail_manager):
+    """A prefix that matches no thoughts should return None."""
+    result = await trail_manager.get_thought("ZZZZZZZZZ")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_prefix_match_ambiguous_raises(trail_manager):
+    """A prefix matching multiple thoughts should raise AmbiguousThoughtID."""
+    # Save two thoughts; we'll manually rename files to share a prefix
+    r1 = await trail_manager.save_thought(content="Thought A.", agent_id="test")
+    r2 = await trail_manager.save_thought(content="Thought B.", agent_id="test")
+
+    # Manually rename r2's file so it shares r1's prefix
+    path1 = trail_manager._find_thought_path(r1.thought_id)
+    path2 = trail_manager._find_thought_path(r2.thought_id)
+    assert path1 is not None and path2 is not None
+
+    # Rename r2 to share first 8 chars with r1
+    shared_prefix = r1.thought_id[:8]
+    new_id = shared_prefix + "ZZZZZZZZZZZZZZZZZZ"  # same prefix, different suffix
+    new_path = path2.parent / f"{new_id}.md"
+
+    # Rewrite frontmatter to match new ID
+    from fava_trails.models import ThoughtRecord
+    loaded = ThoughtRecord.from_markdown(path2.read_text())
+    loaded.frontmatter.thought_id = new_id
+    new_path.write_text(loaded.to_markdown())
+    path2.unlink()
+
+    with pytest.raises(AmbiguousThoughtID) as exc_info:
+        await trail_manager.get_thought(shared_prefix)
+
+    err = exc_info.value
+    assert err.prefix == shared_prefix
+    assert err.total_matches == 2
+    assert len(err.candidates) == 2
+    candidate_ids = {c["thought_id"] for c in err.candidates}
+    assert r1.thought_id in candidate_ids
+    assert new_id in candidate_ids
+
+
+@pytest.mark.asyncio
+async def test_prefix_match_propose_truth(trail_manager):
+    """propose_truth should work with a shortened prefix ID."""
+    record = await trail_manager.save_thought(
+        content="Draft to be promoted.",
+        agent_id="test-agent",
+        source_type=SourceType.DECISION,
+    )
+    prefix = record.thought_id[:8]
+
+    promoted = await trail_manager.propose_truth(prefix)
+    assert promoted.thought_id == record.thought_id
+    assert promoted.frontmatter.validation_status.value == "proposed"
+
+
+@pytest.mark.asyncio
+async def test_prefix_match_update_thought(trail_manager):
+    """update_thought should work with a shortened prefix ID."""
+    record = await trail_manager.save_thought(
+        content="Original content.",
+        agent_id="test-agent",
+    )
+    prefix = record.thought_id[:8]
+
+    updated = await trail_manager.update_thought(prefix, "Updated content.")
+    assert updated.thought_id == record.thought_id
+    assert updated.content == "Updated content."
+
+
+@pytest.mark.asyncio
+async def test_prefix_match_supersede(trail_manager):
+    """supersede should work with a shortened prefix ID."""
+    record = await trail_manager.save_thought(
+        content="Original decision.",
+        agent_id="test-agent",
+        namespace="decisions",
+    )
+    prefix = record.thought_id[:8]
+
+    new_record = await trail_manager.supersede(
+        original_id=prefix,
+        new_content="Revised decision.",
+        reason="Updated based on review",
+        agent_id="test-agent",
+    )
+    assert new_record.thought_id != record.thought_id
+
+    # Original is now superseded
+    original = await trail_manager.get_thought(record.thought_id)
+    assert original.is_superseded
+
+
+@pytest.mark.asyncio
+async def test_prefix_match_tool_handler_ambiguous_returns_error(trail_manager):
+    """handle_get_thought returns structured error with candidates on ambiguous prefix."""
+    from fava_trails.tools.thought import handle_get_thought
+
+    r1 = await trail_manager.save_thought(content="Thought A.", agent_id="test")
+    r2 = await trail_manager.save_thought(content="Thought B.", agent_id="test")
+
+    path2 = trail_manager._find_thought_path(r2.thought_id)
+    shared_prefix = r1.thought_id[:8]
+    new_id = shared_prefix + "ZZZZZZZZZZZZZZZZZZ"
+    new_path = path2.parent / f"{new_id}.md"
+
+    from fava_trails.models import ThoughtRecord
+    loaded = ThoughtRecord.from_markdown(path2.read_text())
+    loaded.frontmatter.thought_id = new_id
+    new_path.write_text(loaded.to_markdown())
+    path2.unlink()
+
+    result = await handle_get_thought(trail_manager, {"thought_id": shared_prefix})
+    assert result["status"] == "error"
+    assert "candidates" in result
+    assert len(result["candidates"]) == 2

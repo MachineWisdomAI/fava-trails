@@ -8,6 +8,7 @@ import os
 from typing import Any
 
 from ..config import ConfigStore, get_trails_dir, get_trust_gate_policy
+from ..trail import AmbiguousThoughtID
 from ..trust_gate import TrustGateConfigError, TrustGatePromptCache, review_thought
 
 logger = logging.getLogger(__name__)
@@ -205,6 +206,8 @@ async def handle_propose_truth(
 
         return result
 
+    except AmbiguousThoughtID as e:
+        return {"status": "error", "message": str(e), "candidates": e.candidates}
     except NotImplementedError as e:
         return {"status": "error", "message": str(e)}
     except ValueError as e:

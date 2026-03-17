@@ -40,6 +40,22 @@ from .vcs.base import RebaseResult, VcsBackend, VcsChange, VcsConflict, VcsDiff,
 
 logger = logging.getLogger(__name__)
 
+
+class AmbiguousThoughtID(Exception):
+    """Raised when a shortened thought ID prefix matches more than one thought file."""
+
+    def __init__(self, prefix: str, candidates: list[dict], total_matches: int) -> None:
+        self.prefix = prefix
+        self.candidates = candidates  # up to 5 entries: {thought_id, namespace, source_type, created_at, content_preview}
+        self.total_matches = total_matches
+        shown = len(candidates)
+        detail = f"showing {shown} of {total_matches}" if total_matches > shown else f"{total_matches} matches"
+        super().__init__(
+            f"Prefix '{prefix}' is ambiguous — {detail}. "
+            "Provide a longer prefix or the full ULID."
+        )
+
+
 # Namespace subdirectories created on trail init
 NAMESPACE_DIRS = [
     "thoughts/decisions",
@@ -102,10 +118,44 @@ class TrailManager:
         return self._thoughts_dir(namespace) / f"{thought_id}.md"
 
     def _find_thought_path(self, thought_id: str) -> Path | None:
-        """Find a thought file by ULID across all namespaces. Returns None if not found."""
+        """Find a thought file by ULID across all namespaces.
+
+        Single-pass traversal: collects exact match and prefix matches together.
+        - Exact match (full ULID): returns immediately on first hit.
+        - Unique prefix match: returns the single matching path.
+        - Ambiguous prefix match: raises AmbiguousThoughtID (capped at 5 candidates,
+          total_matches count included so callers can report "showing 5 of N").
+        - No match: returns None.
+        """
+        is_prefix = len(thought_id) < 26  # ULIDs are 26 chars
+        prefix_matches: list[Path] = []
+
         for p in self.trail_path.glob("thoughts/**/*.md"):
             if p.stem == thought_id:
-                return p
+                return p  # exact match — fast path
+            if is_prefix and p.stem.startswith(thought_id):
+                prefix_matches.append(p)
+
+        if len(prefix_matches) == 1:
+            return prefix_matches[0]
+        if len(prefix_matches) > 1:
+            total = len(prefix_matches)
+            candidates = []
+            for p in prefix_matches[:5]:
+                try:
+                    record = ThoughtRecord.from_markdown(p.read_text())
+                    fm = record.frontmatter
+                    candidates.append({
+                        "thought_id": fm.thought_id,
+                        "namespace": self._get_namespace_from_path(p),
+                        "source_type": fm.source_type.value,
+                        "created_at": fm.created_at.isoformat() if fm.created_at else None,
+                        "content_preview": record.content[:100] + ("..." if len(record.content) > 100 else ""),
+                    })
+                except Exception:
+                    candidates.append({"thought_id": p.stem, "namespace": self._get_namespace_from_path(p)})
+            raise AmbiguousThoughtID(thought_id, candidates, total_matches=total)
+
         return None
 
     def _get_namespace_from_path(self, path: Path) -> str:
