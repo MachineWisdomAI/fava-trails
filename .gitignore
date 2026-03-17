@@ -27,9 +27,21 @@ Thumbs.db
 .env
 .secrets
 
-# Agent Farm (machine-local state)
+# Codev (transient state — protocols and resources are committed)
 .agent-farm/
+.consult/
+codev/branches/
+codev/maintain/
+codev/consult-types/
+codev/plans/
+codev/projects/
+codev/reviews/
+codev/roles/
+codev/specs/
+af-config.json
+.architect-role.md
 .builders/
+*.codev-new
 
 # Claude Code (machine-local settings)
 .claude/
