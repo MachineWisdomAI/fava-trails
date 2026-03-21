@@ -2,8 +2,8 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "MachineWisdomAI/fava-trails: 🫛👣 FAVA Trails — versioned, auditable memory for...",
-    "count": 99,
-    "uniques": 37
+    "count": 95,
+    "uniques": 36
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pulls",
@@ -42,12 +42,6 @@
     "uniques": 1
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/pull/8",
-    "title": "feat(llm): Extract LLM client library with multi-provider support by timeleft...",
-    "count": 6,
-    "uniques": 1
-  },
-  {
     "path": "/MachineWisdomAI/fava-trails/commits/main",
     "title": "Commits · MachineWisdomAI/fava-trails · GitHub",
     "count": 5,
@@ -58,5 +52,11 @@
     "title": "feat: add SECOM compression hooks (protocols/secom) by timeleft-- · Pull Requ...",
     "count": 5,
     "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pulse",
+    "title": "Pulse · MachineWisdomAI/fava-trails",
+    "count": 4,
+    "uniques": 2
   }
 ]
