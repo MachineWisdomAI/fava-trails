@@ -2,14 +2,8 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "MachineWisdomAI/fava-trails: 🫛👣 FAVA Trails — versioned, auditable memory for...",
-    "count": 95,
+    "count": 94,
     "uniques": 36
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pulls",
-    "title": "Pull requests · MachineWisdomAI/fava-trails",
-    "count": 24,
-    "uniques": 2
   },
   {
     "path": "/MachineWisdomAI/fava-trails/releases",
@@ -18,21 +12,21 @@
     "uniques": 1
   },
   {
+    "path": "/MachineWisdomAI/fava-trails/pulls",
+    "title": "Pull requests · MachineWisdomAI/fava-trails",
+    "count": 17,
+    "uniques": 2
+  },
+  {
     "path": "/MachineWisdomAI/fava-trails/pull/10",
     "title": "feat: Add get CLI subcommand for programmatic artifact retrieval by timeleft-...",
-    "count": 16,
+    "count": 12,
     "uniques": 1
   },
   {
     "path": "/MachineWisdomAI/fava-trails/releases/new",
     "title": "New release · MachineWisdomAI/fava-trails",
     "count": 12,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/actions",
-    "title": "Workflow runs · MachineWisdomAI/fava-trails",
-    "count": 6,
     "uniques": 1
   },
   {
@@ -56,6 +50,12 @@
   {
     "path": "/MachineWisdomAI/fava-trails/pulse",
     "title": "Pulse · MachineWisdomAI/fava-trails",
+    "count": 4,
+    "uniques": 2
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/releases/tag/v0.5.1",
+    "title": "Release v0.5.1 — Lifecycle Hooks and Context Engineering Protocols · MachineW...",
     "count": 4,
     "uniques": 2
   }
