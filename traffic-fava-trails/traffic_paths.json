@@ -2,25 +2,13 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "MachineWisdomAI/fava-trails: 🫛👣 FAVA Trails — versioned, auditable memory for...",
-    "count": 94,
-    "uniques": 36
+    "count": 80,
+    "uniques": 35
   },
   {
     "path": "/MachineWisdomAI/fava-trails/releases",
     "title": "Releases · MachineWisdomAI/fava-trails",
     "count": 19,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pulls",
-    "title": "Pull requests · MachineWisdomAI/fava-trails",
-    "count": 17,
-    "uniques": 2
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pull/10",
-    "title": "feat: Add get CLI subcommand for programmatic artifact retrieval by timeleft-...",
-    "count": 12,
     "uniques": 1
   },
   {
@@ -30,22 +18,28 @@
     "uniques": 1
   },
   {
+    "path": "/MachineWisdomAI/fava-trails/pulls",
+    "title": "Pull requests · MachineWisdomAI/fava-trails",
+    "count": 9,
+    "uniques": 2
+  },
+  {
     "path": "/MachineWisdomAI/fava-trails/pull/15",
     "title": "feat: add SECOM compression hooks (protocols/secom) by timeleft-- · Pull Requ...",
     "count": 6,
     "uniques": 1
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/commits/main",
-    "title": "Commits · MachineWisdomAI/fava-trails · GitHub",
-    "count": 5,
-    "uniques": 4
-  },
-  {
     "path": "/MachineWisdomAI/fava-trails/pull/15/changes",
     "title": "feat: add SECOM compression hooks (protocols/secom) by timeleft-- · Pull Requ...",
     "count": 5,
     "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/commits/main",
+    "title": "Commits · MachineWisdomAI/fava-trails · GitHub",
+    "count": 4,
+    "uniques": 3
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pulse",
@@ -56,6 +50,12 @@
   {
     "path": "/MachineWisdomAI/fava-trails/releases/tag/v0.5.1",
     "title": "Release v0.5.1 — Lifecycle Hooks and Context Engineering Protocols · MachineW...",
+    "count": 4,
+    "uniques": 2
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/tree/main/src/fava_trails",
+    "title": "GitHub - MachineWisdomAI/fava-trails: 🫛👣 FAVA Trails — versioned, auditable m...",
     "count": 4,
     "uniques": 2
   }
