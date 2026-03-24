@@ -2,8 +2,8 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "MachineWisdomAI/fava-trails: 🫛👣 FAVA Trails — versioned, auditable memory for...",
-    "count": 80,
-    "uniques": 35
+    "count": 78,
+    "uniques": 34
   },
   {
     "path": "/MachineWisdomAI/fava-trails/releases",
@@ -20,19 +20,7 @@
   {
     "path": "/MachineWisdomAI/fava-trails/pulls",
     "title": "Pull requests · MachineWisdomAI/fava-trails",
-    "count": 9,
-    "uniques": 2
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pull/15",
-    "title": "feat: add SECOM compression hooks (protocols/secom) by timeleft-- · Pull Requ...",
     "count": 6,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pull/15/changes",
-    "title": "feat: add SECOM compression hooks (protocols/secom) by timeleft-- · Pull Requ...",
-    "count": 5,
     "uniques": 1
   },
   {
@@ -54,9 +42,21 @@
     "uniques": 2
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/tree/main/src/fava_trails",
-    "title": "GitHub - MachineWisdomAI/fava-trails: 🫛👣 FAVA Trails — versioned, auditable m...",
+    "path": "/MachineWisdomAI/fava-trails/pull/17",
+    "title": "feat(ace): ACE Playbook Hooks — Curator Pattern (Spec 18) by timeleft-- · Pul...",
     "count": 4,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/issues",
+    "title": "GitHub · Where software is built",
+    "count": 3,
     "uniques": 2
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pull/19",
+    "title": "fix(trust-gate): prevent propose_truth from hanging indefinitely on LLM timeo...",
+    "count": 3,
+    "uniques": 1
   }
 ]
