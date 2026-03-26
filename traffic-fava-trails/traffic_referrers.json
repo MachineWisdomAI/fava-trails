@@ -1,13 +1,13 @@
 [
   {
-    "referrer": "Google",
-    "count": 13,
-    "uniques": 4
+    "referrer": "github.com",
+    "count": 11,
+    "uniques": 1
   },
   {
     "referrer": "news.ycombinator.com",
-    "count": 11,
-    "uniques": 8
+    "count": 10,
+    "uniques": 7
   },
   {
     "referrer": "statics.teams.cdn.office.net",
@@ -15,14 +15,14 @@
     "uniques": 4
   },
   {
-    "referrer": "linkedin.com",
-    "count": 6,
+    "referrer": "Google",
+    "count": 9,
     "uniques": 2
   },
   {
-    "referrer": "github.com",
+    "referrer": "linkedin.com",
     "count": 6,
-    "uniques": 1
+    "uniques": 2
   },
   {
     "referrer": "search.brave.com",
