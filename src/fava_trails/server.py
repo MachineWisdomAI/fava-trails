@@ -263,7 +263,10 @@ def _build_trail_name_desc() -> str:
             f"Create sub-scopes (e.g. '{scope}/my-epic') for focused tasks — "
             f"do NOT dump everything into one scope."
         )
-    return base
+    return (
+        f"{base} Resolve via: (1) FAVA_TRAILS_SCOPE env var, "
+        f"(2) .fava-trails.yaml scope field, (3) ask the user."
+    )
 
 TRAIL_NAME_DESC = _build_trail_name_desc()
 
@@ -502,7 +505,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "get_usage_guide",
-        "description": "Returns the full FAVA Trails usage guide. Call this first if you are new to fava-trails or unsure how to use it — especially if your MCP client does not show server instructions. Covers scope discovery, session start protocol, save→promote→recall workflow, and trust calibration. Zero cost until called.",
+        "description": "Returns the full FAVA Trails usage guide. Call this first if you are new to fava-trails or unsure how to use it — especially if your MCP client does not show server instructions. Covers scope discovery, session start protocol, save, promote, recall workflow, and trust calibration. Zero cost until called.",
         "inputSchema": {
             "type": "object",
             "properties": {},
