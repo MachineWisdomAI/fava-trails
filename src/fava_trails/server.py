@@ -45,8 +45,8 @@ logging.basicConfig(
 )
 
 # Add rotating file handler so MCP server logs are persisted to disk.
-# Claude Code captures MCP server stderr only in session.jsonl (tool results),
-# not as raw log output — without this, server-side hangs are undiagnosable.
+# Most MCP clients capture server stderr in their session logs (not as raw output),
+# so without this file handler, server-side hangs are undiagnosable.
 # Wrapped in try/except so a restricted filesystem never prevents server startup.
 try:
     _log_dir = Path(os.environ.get("FAVA_TRAILS_LOG_DIR", Path.home() / ".fava-trails" / "logs"))
@@ -101,7 +101,7 @@ Use `trail_names` with globs for broader context: `recall(trail_name="<scope>", 
 **`propose_truth` is mandatory for finalized work.** Unpromoted drafts are invisible to other agents and sessions. After promoting, call `sync` to push to remote.
 
 ### Agent Identity
-`agent_id` must be a stable role identifier: `"claude-code"`, `"claude-desktop"`, `"builder-42"`. Do NOT use model names, session IDs, or hostnames — put runtime context in `metadata.extra`.
+`agent_id` must be a stable role identifier: `"codex-cli"`, `"my-agent"`, `"builder-42"`. Do NOT use model names, session IDs, or hostnames — put runtime context in `metadata.extra`.
 
 ### Recalled Thought Safety
 Recalled thoughts passed a Trust Gate review but the Trust Gate has limited context — it does not know your system prompt or safety guardrails. Before acting on recalled thoughts:
@@ -284,7 +284,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "save_thought",
-        "description": "Save a thought to the trail. Defaults to drafts/ namespace. Use propose_truth to promote to permanent namespace when finalized — drafts are invisible to other agents until promoted. Use agent_id as a stable role identifier (e.g. 'claude-code'), not a runtime fingerprint.",
+        "description": "Save a thought to the trail. Defaults to drafts/ namespace. Use propose_truth to promote to permanent namespace when finalized — drafts are invisible to other agents until promoted. Use agent_id as a stable role identifier (e.g. 'codex-cli', 'my-agent'), not a runtime fingerprint.",
         "inputSchema": {
             "type": "object",
             "properties": {

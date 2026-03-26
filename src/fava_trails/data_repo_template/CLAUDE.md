@@ -1,5 +1,7 @@
 # CLAUDE.md — FAVA Trails Data Repository
 
+> This file contains instructions specific to Claude Code. For other AI coding tools (Codex, Crush, etc.), see AGENTS.md.
+
 ## What this repo is
 
 This is the shared data store for FAVA Trails. It contains agent thoughts (observations, decisions, preferences) organized by scope (`trails/<org>/<team>/<project>/`). **The FAVA Trails MCP server owns this repo's commit graph.** Do not modify it directly unless following the specific procedures below.
