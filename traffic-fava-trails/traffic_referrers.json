@@ -6,13 +6,8 @@
   },
   {
     "referrer": "news.ycombinator.com",
-    "count": 10,
-    "uniques": 7
-  },
-  {
-    "referrer": "statics.teams.cdn.office.net",
     "count": 9,
-    "uniques": 4
+    "uniques": 6
   },
   {
     "referrer": "Google",
@@ -30,7 +25,7 @@
     "uniques": 1
   },
   {
-    "referrer": "machinewisdom.substack.com",
+    "referrer": "statics.teams.cdn.office.net",
     "count": 1,
     "uniques": 1
   }
