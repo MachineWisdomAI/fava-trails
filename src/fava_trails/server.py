@@ -280,6 +280,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "description": {"type": "string", "description": "Brief description of reasoning intent"},
                 "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
             },
+            "required": ["trail_name"],
         },
     },
     {
@@ -323,7 +324,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 },
                 "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
             },
-            "required": ["content"],
+            "required": ["content", "trail_name"],
         },
     },
     {
@@ -335,7 +336,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "thought_id": {"type": "string", "description": "ULID of the thought to retrieve"},
                 "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
             },
-            "required": ["thought_id"],
+            "required": ["thought_id", "trail_name"],
         },
     },
     {
@@ -347,7 +348,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "thought_id": {"type": "string", "description": "ULID of the draft thought to promote"},
                 "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
             },
-            "required": ["thought_id"],
+            "required": ["thought_id", "trail_name"],
         },
     },
     {
@@ -377,6 +378,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                     "description": "Additional scopes to search. Supports glob patterns (* = one level, ** = any depth).",
                 },
             },
+            "required": ["trail_name"],
         },
     },
     {
@@ -388,6 +390,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "revision": {"type": "string", "description": "Specific revision to abandon (default: current)"},
                 "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
             },
+            "required": ["trail_name"],
         },
     },
     {
@@ -398,6 +401,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "properties": {
                 "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
             },
+            "required": ["trail_name"],
         },
     },
     {
@@ -408,6 +412,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "properties": {
                 "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
             },
+            "required": ["trail_name"],
         },
     },
     {
@@ -419,6 +424,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "op_id": {"type": "string", "description": "Operation ID to restore to"},
                 "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
             },
+            "required": ["trail_name"],
         },
     },
     {
@@ -430,6 +436,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "revision": {"type": "string", "description": "Revision to diff (default: current working change)"},
                 "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
             },
+            "required": ["trail_name"],
         },
     },
     {
@@ -471,7 +478,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "metadata": {"type": "object"},
                 "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
             },
-            "required": ["content"],
+            "required": ["content", "trail_name"],
         },
     },
     {
@@ -484,7 +491,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "content": {"type": "string", "description": "The new content (replaces existing body, frontmatter preserved)"},
                 "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
             },
-            "required": ["thought_id", "content"],
+            "required": ["thought_id", "content", "trail_name"],
         },
     },
     {
@@ -500,7 +507,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "confidence": {"type": "number", "minimum": 0, "maximum": 1},
                 "trail_name": {"type": "string", "description": TRAIL_NAME_DESC},
             },
-            "required": ["thought_id", "content", "reason"],
+            "required": ["thought_id", "content", "reason", "trail_name"],
         },
     },
     {
@@ -525,7 +532,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "confidence": {"type": "number", "minimum": 0, "maximum": 1},
                 "trail_name": {"type": "string", "description": "Source scope path (where the original thought lives). Required."},
             },
-            "required": ["thought_id", "content", "target_trail_name", "reason"],
+            "required": ["thought_id", "content", "target_trail_name", "reason", "trail_name"],
         },
     },
 ]
