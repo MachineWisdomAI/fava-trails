@@ -43,7 +43,7 @@ from __future__ import annotations
 #
 #     # Phase 1: MAP — spawn parallel mapper agents
 #     #   Each mapper extracts relevant information from one chunk.
-#     #   Real implementation: spawn N Claude Sonnet agents concurrently.
+#     #   Real implementation: spawn N mapper agents concurrently.
 #
 #     mapper_ids = [f"mapper-{i}" for i in range(len(documents))]
 #

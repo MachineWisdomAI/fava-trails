@@ -272,11 +272,12 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     for name, dest in [
         ("README.md", target / "README.md"),
         ("CLAUDE.md", target / "CLAUDE.md"),
+        ("AGENTS.md", target / "AGENTS.md"),
         ("trust-gate-prompt.md", target / "trails" / "trust-gate-prompt.md"),
     ]:
         src = template_pkg / name
         dest.write_text(src.read_text())
-    print("[4/6] Created README.md, CLAUDE.md, trails/trust-gate-prompt.md")
+    print("[4/6] Created README.md, CLAUDE.md, AGENTS.md, trails/trust-gate-prompt.md")
 
     # Initialize JJ colocated repo
     result = subprocess.run(

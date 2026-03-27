@@ -121,6 +121,34 @@ For Claude Desktop on Windows (accessing WSL):
 }
 ```
 
+**OpenAI Codex CLI**: `~/.codex/config.toml`
+
+```toml
+[mcp_servers.fava-trails]
+command = "fava-trails-server"
+
+[mcp_servers.fava-trails.env]
+FAVA_TRAILS_DATA_REPO = "/path/to/fava-trails-data"
+OPENROUTER_API_KEY = "sk-or-v1-..."
+```
+
+**Other MCP clients** (Crush, OpenCode, etc.): check your client's MCP config docs — most accept this JSON format:
+
+```json
+{
+  "mcpServers": {
+    "fava-trails": {
+      "type": "stdio",
+      "command": "fava-trails-server",
+      "env": {
+        "FAVA_TRAILS_DATA_REPO": "/path/to/fava-trails-data",
+        "OPENROUTER_API_KEY": "sk-or-v1-..."
+      }
+    }
+  }
+}
+```
+
 > **The Trust Gate uses LLM verification:** Thoughts are reviewed before promotion to ensure they're coherent and safe. By default, FAVA Trails uses [OpenRouter](https://openrouter.ai/) to access 300–500+ models from 60+ providers including Anthropic, OpenAI, Google, Qwen, and others. Get a free API key at [openrouter.ai/keys](https://openrouter.ai/keys). The default model (`google/gemini-2.5-flash`) costs ~$0.001 per review. Multi-provider support via [any-llm-sdk](https://github.com/mozilla-ai/any-llm) enables switching to other providers by modifying `config.yaml`.
 
 ### Use it

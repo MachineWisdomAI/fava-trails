@@ -87,6 +87,33 @@ class TestToolDescriptionEnhancements:
         desc = _get_tool_desc("save_thought")
         assert "stable role" in desc
 
+    def test_save_thought_contains_promote_guidance(self):
+        """save_thought description must remind agents to promote when finalized."""
+        desc = _get_tool_desc("save_thought")
+        assert "propose_truth" in desc
+        assert "finalized" in desc
+
+    def test_propose_truth_contains_sync_guidance(self):
+        """propose_truth description must advise calling sync after promoting."""
+        desc = _get_tool_desc("propose_truth")
+        assert "sync" in desc
+
+    def test_recall_contains_scope_discovery(self):
+        """recall description must include scope discovery priority order."""
+        desc = _get_tool_desc("recall")
+        assert "FAVA_TRAILS_SCOPE" in desc
+        assert ".fava-trails.yaml" in desc
+
+    def test_recall_contains_session_start_hint(self):
+        """recall description must hint at session start usage."""
+        desc = _get_tool_desc("recall")
+        assert "session" in desc.lower()
+
+    def test_get_usage_guide_entry_point_language(self):
+        """get_usage_guide description must be positioned as entry point for new agents."""
+        desc = _get_tool_desc("get_usage_guide")
+        assert "new to fava-trails" in desc or "unsure how to use" in desc
+
 
 class TestGetUsageGuide:
     """Tests for the get_usage_guide tool."""
