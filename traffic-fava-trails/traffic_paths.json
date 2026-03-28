@@ -1,9 +1,9 @@
 [
   {
     "path": "/MachineWisdomAI/fava-trails",
-    "title": "MachineWisdomAI/fava-trails: 🫛👣 FAVA Trails — versioned, auditable memory for...",
-    "count": 47,
-    "uniques": 27
+    "title": "GitHub - MachineWisdomAI/fava-trails: 🫛👣 FAVA Trails — versioned, auditable m...",
+    "count": 46,
+    "uniques": 26
   },
   {
     "path": "/MachineWisdomAI/fava-trails/releases",
@@ -24,10 +24,28 @@
     "uniques": 3
   },
   {
+    "path": "/MachineWisdomAI/fava-trails/pulls",
+    "title": "Pull requests · MachineWisdomAI/fava-trails",
+    "count": 4,
+    "uniques": 1
+  },
+  {
     "path": "/MachineWisdomAI/fava-trails/issues",
     "title": "GitHub · Where software is built",
     "count": 3,
     "uniques": 2
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pull/35",
+    "title": "feat: multi-tool MCP compatibility (Codex, Crush) by timeleft-- · Pull Reques...",
+    "count": 3,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pull/35/changes",
+    "title": "feat: multi-tool MCP compatibility (Codex, Crush) by timeleft-- · Pull Reques...",
+    "count": 3,
+    "uniques": 1
   },
   {
     "path": "/MachineWisdomAI/fava-trails/issues/31",
@@ -36,26 +54,8 @@
     "uniques": 2
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/pulse",
-    "title": "Pulse · MachineWisdomAI/fava-trails",
-    "count": 2,
-    "uniques": 2
-  },
-  {
     "path": "/MachineWisdomAI/fava-trails/pull/33",
     "title": "fix: support prefix matching for shortened thought IDs by timeleft-- · Pull R...",
-    "count": 2,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pulls",
-    "title": "Pull requests · MachineWisdomAI/fava-trails",
-    "count": 2,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/releases/edit/v0.5.2",
-    "title": "Edit release · MachineWisdomAI/fava-trails",
     "count": 2,
     "uniques": 1
   }
