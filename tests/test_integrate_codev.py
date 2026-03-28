@@ -201,3 +201,33 @@ def test_missing_generic_prompt(data_repo):
             rc = cmd_integrate_codev(_make_args())
 
     assert rc == 1
+
+
+def test_missing_addendum_from_package(data_repo):
+    """Error when addendum resource cannot be read from the package."""
+    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
+        with patch("fava_trails.cli.get_trails_dir", return_value=data_repo / "trails"):
+            with patch("fava_trails.cli.importlib_resources") as mock_res:
+                mock_res.files.return_value.__truediv__ = lambda *a: mock_res.files.return_value
+                mock_res.files.return_value.read_text.side_effect = FileNotFoundError("not found")
+                rc = cmd_integrate_codev(_make_args())
+
+    assert rc == 1
+
+
+def test_force_rejected_with_check(data_repo):
+    """--force --check is rejected."""
+    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
+        with patch("fava_trails.cli.get_trails_dir", return_value=data_repo / "trails"):
+            rc = cmd_integrate_codev(_make_args(force=True, check=True))
+
+    assert rc == 1
+
+
+def test_force_rejected_with_diff(data_repo):
+    """--force --diff is rejected."""
+    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
+        with patch("fava_trails.cli.get_trails_dir", return_value=data_repo / "trails"):
+            rc = cmd_integrate_codev(_make_args(force=True, diff=True))
+
+    assert rc == 1

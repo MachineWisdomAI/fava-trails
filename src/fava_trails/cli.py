@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import platform
 import re
@@ -936,18 +937,15 @@ def cmd_secom_warmup(args: argparse.Namespace) -> int:
 # ─── integrate codev ──────────────────────────────────────────────────────────
 
 CODEV_ADDENDUM_VERSION = 1
-_PROVENANCE_RE = re.compile(r"^<!-- Generic prompt hash: ([a-f0-9]+)")
 
 
 def _compose_codev_prompt(generic_prompt: str, addendum: str, pkg_version: str) -> str:
     """Compose the codev trust gate prompt from generic prompt + addendum."""
-    import hashlib
-
     generic_hash = hashlib.sha256(generic_prompt.encode()).hexdigest()[:12]
     header = (
         f"<!-- Composed by: fava-trails integrate codev v{pkg_version} -->\n"
         f"<!-- Generic prompt hash: {generic_hash} | Addendum version: {CODEV_ADDENDUM_VERSION} -->\n"
-        f"<!-- To update: fava-trails integrate codev --upgrade -->\n"
+        f"<!-- To update: fava-trails integrate codev -->\n"
     )
     return header + "\n" + generic_prompt + "\n\n" + addendum
 
@@ -957,6 +955,10 @@ def cmd_integrate_codev(args: argparse.Namespace) -> int:
     check = getattr(args, "check", False)
     diff = getattr(args, "diff", False)
     force = getattr(args, "force", False)
+
+    if force and (check or diff):
+        print("Error: --force cannot be combined with --check or --diff.", file=sys.stderr)
+        return 1
 
     # 1. Validate data repo exists
     try:
@@ -979,8 +981,13 @@ def cmd_integrate_codev(args: argparse.Namespace) -> int:
     generic_prompt = generic_path.read_text()
 
     # 3. Read addendum from package
-    addendum_pkg = importlib_resources.files("fava_trails") / "integrations" / "codev" / "trust-gate-addendum.md"
-    addendum = addendum_pkg.read_text()
+    try:
+        addendum_pkg = importlib_resources.files("fava_trails") / "integrations" / "codev" / "trust-gate-addendum.md"
+        addendum = addendum_pkg.read_text()
+    except (FileNotFoundError, ModuleNotFoundError, OSError) as e:
+        print(f"Error: could not read codev addendum from package: {e}", file=sys.stderr)
+        print("  Reinstall fava-trails: uv pip install -e .", file=sys.stderr)
+        return 1
 
     # 4. Get package version
     try:
@@ -1147,8 +1154,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_integrate_codev = integrate_sub.add_parser(
         "codev", help="Compose codev trust gate prompt (generic + addendum)"
     )
-    p_integrate_codev.add_argument("--check", action="store_true", help="Verify composed file is up to date (CI-friendly)")
-    p_integrate_codev.add_argument("--diff", action="store_true", help="Preview changes without writing")
+    integrate_codev_mode = p_integrate_codev.add_mutually_exclusive_group()
+    integrate_codev_mode.add_argument("--check", action="store_true", help="Verify composed file is up to date (CI-friendly)")
+    integrate_codev_mode.add_argument("--diff", action="store_true", help="Preview changes without writing")
     p_integrate_codev.add_argument("--force", action="store_true", help="Overwrite even if manually edited")
     p_integrate_codev.set_defaults(func=cmd_integrate_codev)
 
