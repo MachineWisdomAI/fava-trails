@@ -25,7 +25,6 @@ def _make_args(**kwargs):
         "diff": False,
         "force": False,
         "scope": None,
-        "project_only": False,
         "prompt_only": False,
     }
     defaults.update(kwargs)
@@ -291,24 +290,6 @@ def test_force_rejected_with_diff(data_repo):
     assert rc == 1
 
 
-def test_project_only_and_prompt_only_mutually_exclusive(data_repo):
-    """--project-only and --prompt-only are mutually exclusive."""
-    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
-        with patch("fava_trails.cli.get_trails_dir", return_value=data_repo / "trails"):
-            rc = cmd_integrate_codev(_make_args(project_only=True, prompt_only=True))
-    assert rc == 1
-
-
-def test_project_only_rejected_with_check():
-    """--project-only --check is rejected."""
-    rc = cmd_integrate_codev(_make_args(project_only=True, check=True))
-    assert rc == 1
-
-
-def test_project_only_rejected_with_diff():
-    """--project-only --diff is rejected."""
-    rc = cmd_integrate_codev(_make_args(project_only=True, diff=True))
-    assert rc == 1
 
 
 # --- Git remote parsing (TICK 26-001) ---
@@ -547,23 +528,19 @@ def test_prompt_only_skips_project_config(data_repo):
     mock_detect.assert_not_called()
 
 
-def test_project_only_skips_tg_prompt(data_repo, tmp_path):
-    """--project-only skips TG prompt composition."""
-    with patch("fava_trails.cli._is_codev_project", return_value=True):
-        with patch("fava_trails.cli._configure_codev_project", return_value=0):
-            # Should NOT call get_data_repo_root
-            rc = cmd_integrate_codev(_make_args(project_only=True))
+def test_auto_skips_up_to_date_prompt(data_repo, capsys):
+    """When TG prompt is already up to date, auto-skips and prints status."""
+    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
+        with patch("fava_trails.cli.get_trails_dir", return_value=data_repo / "trails"):
+            with patch("fava_trails.cli._is_codev_project", return_value=False):
+                # First run writes
+                cmd_integrate_codev(_make_args())
+                # Second run should auto-skip
+                rc = cmd_integrate_codev(_make_args())
 
     assert rc == 0
-    # No TG prompt file written
-    assert not (data_repo / "trails" / "codev-artifacts" / "trust-gate-prompt.md").exists()
-
-
-def test_project_only_not_in_codev_fails():
-    """--project-only fails when not in a codev project."""
-    with patch("fava_trails.cli._is_codev_project", return_value=False):
-        rc = cmd_integrate_codev(_make_args(project_only=True))
-    assert rc == 1
+    captured = capsys.readouterr()
+    assert "up to date" in captured.out
 
 
 def test_scope_override_passed_to_configure(data_repo):

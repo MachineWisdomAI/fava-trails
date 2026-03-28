@@ -57,10 +57,10 @@ all scopes under `codev-artifacts/` via hierarchical resolution (first-match-win
 | `--diff` | Preview what would change without writing. |
 | `--force` | Overwrite even if the composed file was manually edited or artifacts config differs. |
 | `--scope <scope>` | Override auto-derived artifact scope (e.g., `--scope codev-artifacts/MyOrg/MyRepo`). |
-| `--project-only` | Only configure `.codev/config.json`, skip TG prompt composition. |
 | `--prompt-only` | Only compose TG prompt, skip project config. |
 
-`--project-only` and `--prompt-only` are mutually exclusive.
+The command is safe to run repeatedly — if the trust gate prompt is already
+up to date it will be skipped automatically.
 
 ### CI Staleness Check
 
