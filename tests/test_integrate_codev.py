@@ -299,6 +299,18 @@ def test_project_only_and_prompt_only_mutually_exclusive(data_repo):
     assert rc == 1
 
 
+def test_project_only_rejected_with_check():
+    """--project-only --check is rejected."""
+    rc = cmd_integrate_codev(_make_args(project_only=True, check=True))
+    assert rc == 1
+
+
+def test_project_only_rejected_with_diff():
+    """--project-only --diff is rejected."""
+    rc = cmd_integrate_codev(_make_args(project_only=True, diff=True))
+    assert rc == 1
+
+
 # --- Git remote parsing (TICK 26-001) ---
 
 
@@ -326,6 +338,20 @@ def test_parse_git_remote_ssh():
 def test_parse_git_remote_ssh_no_dotgit():
     """SSH remote URL without .git suffix."""
     with patch("subprocess.check_output", return_value="git@github.com:MyOrg/MyRepo\n"):
+        result = _parse_git_remote_org_repo()
+    assert result == "MyOrg/MyRepo"
+
+
+def test_parse_git_remote_https_trailing_slash():
+    """HTTPS remote URL with trailing slash."""
+    with patch("subprocess.check_output", return_value="https://github.com/MyOrg/MyRepo.git/\n"):
+        result = _parse_git_remote_org_repo()
+    assert result == "MyOrg/MyRepo"
+
+
+def test_parse_git_remote_uppercase_dotgit():
+    """Remote URL with uppercase .GIT suffix."""
+    with patch("subprocess.check_output", return_value="https://github.com/MyOrg/MyRepo.GIT\n"):
         result = _parse_git_remote_org_repo()
     assert result == "MyOrg/MyRepo"
 

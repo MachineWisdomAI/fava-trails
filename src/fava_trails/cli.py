@@ -966,8 +966,9 @@ def _parse_git_remote_org_repo(cwd: Path | None = None) -> str | None:
         parsed = urlparse(url)
         path = parsed.path.lstrip("/")
 
-    # Strip .git suffix and extract last two segments (Org/Repo)
-    path = re.sub(r"\.git$", "", path)
+    # Strip .git suffix (case-insensitive) and trailing slashes, extract last two segments
+    path = path.rstrip("/")
+    path = re.sub(r"\.git$", "", path, flags=re.IGNORECASE)
     parts = path.split("/")
     if len(parts) >= 2:
         return f"{parts[-2]}/{parts[-1]}"
@@ -1081,6 +1082,10 @@ def cmd_integrate_codev(args: argparse.Namespace) -> int:
 
     if project_only and prompt_only:
         print("Error: --project-only and --prompt-only are mutually exclusive.", file=sys.stderr)
+        return 1
+
+    if project_only and (check or diff):
+        print("Error: --project-only cannot be combined with --check or --diff.", file=sys.stderr)
         return 1
 
     # ── TG prompt composition (skip if --project-only) ──────────────────────
