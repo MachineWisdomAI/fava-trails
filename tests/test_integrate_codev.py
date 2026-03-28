@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from fava_trails.cli import _compose_codev_prompt, cmd_integrate_codev
+from fava_trails.cli import _compose_codev_prompt, _strip_provenance_header, cmd_integrate_codev
 
 
 def _make_args(**kwargs):
@@ -104,6 +104,47 @@ def test_integrate_codev_idempotent(data_repo):
 
 
 # --- --check detects staleness ---
+
+
+def test_check_ignores_version_in_header(data_repo):
+    """--check should not false-positive when only the package version changes."""
+    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
+        with patch("fava_trails.cli.get_trails_dir", return_value=data_repo / "trails"):
+            # Write with version "0.5.3"
+            cmd_integrate_codev(_make_args())
+
+    # Now re-compose with a different version and verify --check still passes
+    # (content is the same, only the header version line differs)
+    output = data_repo / "trails" / "codev-artifacts" / "trust-gate-prompt.md"
+    existing = output.read_text(encoding="utf-8")
+    # Replace version in header to simulate a package upgrade
+    patched = existing.replace(
+        "<!-- Composed by: fava-trails integrate codev v",
+        "<!-- Composed by: fava-trails integrate codev v999.",
+        1,
+    )
+    output.write_text(patched, encoding="utf-8")
+
+    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
+        with patch("fava_trails.cli.get_trails_dir", return_value=data_repo / "trails"):
+            rc = cmd_integrate_codev(_make_args(check=True))
+
+    assert rc == 0  # should pass — content is identical
+
+
+def test_strip_provenance_header():
+    """_strip_provenance_header removes header lines, keeps content."""
+    composed = _compose_codev_prompt("generic", "addendum", "1.0.0")
+    stripped = _strip_provenance_header(composed)
+    assert "<!-- Composed by:" not in stripped
+    assert "generic" in stripped
+    assert "addendum" in stripped
+
+
+def test_strip_provenance_header_no_header():
+    """_strip_provenance_header returns text unchanged if no header present."""
+    text = "No header here."
+    assert _strip_provenance_header(text) == text
 
 
 def test_check_passes_when_up_to_date(data_repo):

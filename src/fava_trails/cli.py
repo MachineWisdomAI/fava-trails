@@ -937,6 +937,7 @@ def cmd_secom_warmup(args: argparse.Namespace) -> int:
 # ─── integrate codev ──────────────────────────────────────────────────────────
 
 CODEV_ADDENDUM_VERSION = 1
+_PROVENANCE_HEADER_END = "<!-- To update: fava-trails integrate codev -->\n"
 
 
 def _compose_codev_prompt(generic_prompt: str, addendum: str, pkg_version: str) -> str:
@@ -945,9 +946,22 @@ def _compose_codev_prompt(generic_prompt: str, addendum: str, pkg_version: str) 
     header = (
         f"<!-- Composed by: fava-trails integrate codev v{pkg_version} -->\n"
         f"<!-- Generic prompt hash: {generic_hash} | Addendum version: {CODEV_ADDENDUM_VERSION} -->\n"
-        f"<!-- To update: fava-trails integrate codev -->\n"
+        f"{_PROVENANCE_HEADER_END}"
     )
     return header + "\n" + generic_prompt + "\n\n" + addendum
+
+
+def _strip_provenance_header(text: str) -> str:
+    """Strip the provenance header from a composed prompt for content-only comparison.
+
+    The header contains the package version which changes on upgrades, so
+    --check must compare content only to avoid false positives.
+    """
+    marker = _PROVENANCE_HEADER_END
+    idx = text.find(marker)
+    if idx == -1:
+        return text
+    return text[idx + len(marker):]
 
 
 def cmd_integrate_codev(args: argparse.Namespace) -> int:
@@ -978,12 +992,12 @@ def cmd_integrate_codev(args: argparse.Namespace) -> int:
         print(f"Error: generic trust gate prompt not found at {generic_path}", file=sys.stderr)
         print("  Run: fava-trails bootstrap <path>", file=sys.stderr)
         return 1
-    generic_prompt = generic_path.read_text()
+    generic_prompt = generic_path.read_text(encoding="utf-8")
 
     # 3. Read addendum from package
     try:
         addendum_pkg = importlib_resources.files("fava_trails") / "integrations" / "codev" / "trust-gate-addendum.md"
-        addendum = addendum_pkg.read_text()
+        addendum = addendum_pkg.read_text(encoding="utf-8")
     except (FileNotFoundError, ModuleNotFoundError, OSError) as e:
         print(f"Error: could not read codev addendum from package: {e}", file=sys.stderr)
         print("  Reinstall fava-trails: uv pip install -e .", file=sys.stderr)
@@ -1008,8 +1022,10 @@ def cmd_integrate_codev(args: argparse.Namespace) -> int:
         if not output_path.exists():
             print("STALE: composed prompt does not exist yet.", file=sys.stderr)
             return 1
-        existing = output_path.read_text()
-        if existing == composed:
+        existing = output_path.read_text(encoding="utf-8")
+        # Compare content only (strip provenance header) so package version
+        # bumps don't cause false-positive staleness in CI.
+        if _strip_provenance_header(existing) == _strip_provenance_header(composed):
             print("OK: composed prompt is up to date.")
             return 0
         else:
@@ -1022,7 +1038,7 @@ def cmd_integrate_codev(args: argparse.Namespace) -> int:
             for line in composed.splitlines():
                 print(f"+{line}")
             return 0
-        existing = output_path.read_text()
+        existing = output_path.read_text(encoding="utf-8")
         if existing == composed:
             print("No changes.")
             return 0
@@ -1039,7 +1055,7 @@ def cmd_integrate_codev(args: argparse.Namespace) -> int:
 
     # Default write mode
     if output_path.exists() and not force:
-        existing = output_path.read_text()
+        existing = output_path.read_text(encoding="utf-8")
         # Check if existing file was manually edited (no provenance header)
         if not existing.startswith("<!-- Composed by: fava-trails integrate codev"):
             print(
@@ -1050,7 +1066,7 @@ def cmd_integrate_codev(args: argparse.Namespace) -> int:
             return 1
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(composed)
+    output_path.write_text(composed, encoding="utf-8")
     print(f"Wrote composed trust gate prompt to {output_path}")
     return 0
 
