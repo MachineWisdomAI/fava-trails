@@ -117,10 +117,12 @@ class TrustGatePromptCache:
         return len(self._prompts)
 
 
-def _redact_metadata(record: ThoughtRecord) -> dict:
+def _redact_metadata(record: ThoughtRecord, *, trail_name: str | None = None) -> dict:
     """Redact sensitive fields from thought metadata before sending to OpenRouter.
 
     Strips: agent_id, metadata.extra, and any fields marked sensitive.
+    Includes trail_name (scope path) when provided — not sensitive, enables
+    scope-based artifact type detection (e.g. /specs/, /plans/, /reviews/).
     """
     fm = record.frontmatter
     redacted = {
@@ -129,6 +131,8 @@ def _redact_metadata(record: ThoughtRecord) -> dict:
         "confidence": fm.confidence,
         "validation_status": fm.validation_status.value,
     }
+    if trail_name:
+        redacted["trail_name"] = trail_name
     if fm.parent_id:
         redacted["parent_id"] = fm.parent_id
     if fm.metadata:
@@ -148,13 +152,15 @@ def _redact_metadata(record: ThoughtRecord) -> dict:
 def _build_review_payload(
     prompt: str,
     record: ThoughtRecord,
+    *,
+    trail_name: str | None = None,
 ) -> tuple[str, str]:
     """Build system and user messages for the review request.
 
     System message: trusted prompt loaded at startup.
     User message: thought content wrapped in XML tags as untrusted input.
     """
-    redacted_meta = _redact_metadata(record)
+    redacted_meta = _redact_metadata(record, trail_name=trail_name)
     metadata_yaml = yaml.dump(redacted_meta, default_flow_style=False, sort_keys=False)
 
     system_msg = prompt
@@ -252,6 +258,8 @@ async def review_thought(
     model: str,
     client: LLMClient,
     policy: str = "llm-oneshot",
+    *,
+    trail_name: str | None = None,
 ) -> TrustResult:
     """Review a thought using the specified policy.
 
@@ -261,6 +269,7 @@ async def review_thought(
         model: Model ID for the reviewer (alias or canonical name).
         client: LLMClient instance for making API calls.
         policy: Review policy ("llm-oneshot" or "human").
+        trail_name: Scope path (e.g. 'codev-artifacts/Org/Repo/specs/26-foo').
 
     Returns:
         TrustResult with verdict, reasoning, and provenance.
@@ -276,7 +285,7 @@ async def review_thought(
             f"Unknown trust gate policy: {policy!r}. Available: 'llm-oneshot'."
         )
 
-    system_msg, user_msg = _build_review_payload(prompt, record)
+    system_msg, user_msg = _build_review_payload(prompt, record, trail_name=trail_name)
     reviewer_id = f"llm-oneshot:{model}"
 
     # Attempt API call with 1 retry on parse failure
