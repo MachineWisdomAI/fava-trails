@@ -1,13 +1,22 @@
 {
   "artifacts": {
-    "backend": "fava-trails",
+    "backend": "cli",
+    "command": "fava-trails",
     "scope": "codev-artifacts/MachineWisdomAI/fava-trails"
   },
   "porch": {
     "checks": {
-      "build": { "command": "uv run ruff check src/", "cwd": "." },
-      "tests": { "command": "uv run pytest -v", "cwd": "." },
-      "e2e_tests": { "skip": true }
+      "build": {
+        "command": "uv run ruff check src/",
+        "cwd": "."
+      },
+      "tests": {
+        "command": "uv run pytest -v",
+        "cwd": "."
+      },
+      "e2e_tests": {
+        "skip": true
+      }
     }
   }
 }

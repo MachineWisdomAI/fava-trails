@@ -1,18 +1,32 @@
-"""Tests for `fava-trails integrate codev` CLI command (Spec 26)."""
+"""Tests for `fava-trails integrate codev` CLI command (Spec 26 + TICK 26-001)."""
 
 from __future__ import annotations
 
+import json
 import os
 from unittest.mock import patch
 
 import pytest
 
-from fava_trails.cli import _compose_codev_prompt, _strip_provenance_header, cmd_integrate_codev
+from fava_trails.cli import (
+    _compose_codev_prompt,
+    _configure_codev_project,
+    _is_codev_project,
+    _parse_git_remote_org_repo,
+    _strip_provenance_header,
+    cmd_integrate_codev,
+)
 
 
 def _make_args(**kwargs):
     from argparse import Namespace
-    defaults = {"check": False, "diff": False, "force": False}
+    defaults = {
+        "check": False,
+        "diff": False,
+        "force": False,
+        "scope": None,
+        "prompt_only": False,
+    }
     defaults.update(kwargs)
     return Namespace(**defaults)
 
@@ -72,7 +86,8 @@ def test_integrate_codev_writes_composed_file(data_repo):
     args = _make_args()
     with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
         with patch("fava_trails.cli.get_trails_dir", return_value=data_repo / "trails"):
-            rc = cmd_integrate_codev(args)
+            with patch("fava_trails.cli._is_codev_project", return_value=False):
+                rc = cmd_integrate_codev(args)
 
     assert rc == 0
     output = data_repo / "trails" / "codev-artifacts" / "trust-gate-prompt.md"
@@ -93,10 +108,11 @@ def test_integrate_codev_idempotent(data_repo):
 
     with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
         with patch("fava_trails.cli.get_trails_dir", return_value=data_repo / "trails"):
-            rc1 = cmd_integrate_codev(args)
-            content1 = output.read_text()
-            rc2 = cmd_integrate_codev(args)
-            content2 = output.read_text()
+            with patch("fava_trails.cli._is_codev_project", return_value=False):
+                rc1 = cmd_integrate_codev(args)
+                content1 = output.read_text()
+                rc2 = cmd_integrate_codev(args)
+                content2 = output.read_text()
 
     assert rc1 == 0
     assert rc2 == 0
@@ -272,3 +288,268 @@ def test_force_rejected_with_diff(data_repo):
             rc = cmd_integrate_codev(_make_args(force=True, diff=True))
 
     assert rc == 1
+
+
+
+
+# --- Git remote parsing (TICK 26-001) ---
+
+
+def test_parse_git_remote_https():
+    """HTTPS remote URL is parsed correctly."""
+    with patch("subprocess.check_output", return_value="https://github.com/MyOrg/MyRepo.git\n"):
+        result = _parse_git_remote_org_repo()
+    assert result == "MyOrg/MyRepo"
+
+
+def test_parse_git_remote_https_no_dotgit():
+    """HTTPS remote URL without .git suffix."""
+    with patch("subprocess.check_output", return_value="https://github.com/MyOrg/MyRepo\n"):
+        result = _parse_git_remote_org_repo()
+    assert result == "MyOrg/MyRepo"
+
+
+def test_parse_git_remote_ssh():
+    """SSH remote URL is parsed correctly."""
+    with patch("subprocess.check_output", return_value="git@github.com:MyOrg/MyRepo.git\n"):
+        result = _parse_git_remote_org_repo()
+    assert result == "MyOrg/MyRepo"
+
+
+def test_parse_git_remote_ssh_no_dotgit():
+    """SSH remote URL without .git suffix."""
+    with patch("subprocess.check_output", return_value="git@github.com:MyOrg/MyRepo\n"):
+        result = _parse_git_remote_org_repo()
+    assert result == "MyOrg/MyRepo"
+
+
+def test_parse_git_remote_https_trailing_slash():
+    """HTTPS remote URL with trailing slash."""
+    with patch("subprocess.check_output", return_value="https://github.com/MyOrg/MyRepo.git/\n"):
+        result = _parse_git_remote_org_repo()
+    assert result == "MyOrg/MyRepo"
+
+
+def test_parse_git_remote_uppercase_dotgit():
+    """Remote URL with uppercase .GIT suffix."""
+    with patch("subprocess.check_output", return_value="https://github.com/MyOrg/MyRepo.GIT\n"):
+        result = _parse_git_remote_org_repo()
+    assert result == "MyOrg/MyRepo"
+
+
+def test_parse_git_remote_no_remote():
+    """Returns None when git remote fails."""
+    import subprocess as sp
+    with patch("subprocess.check_output", side_effect=sp.CalledProcessError(1, "git")):
+        result = _parse_git_remote_org_repo()
+    assert result is None
+
+
+def test_parse_git_remote_malformed():
+    """Returns None for a malformed remote URL (single path segment)."""
+    with patch("subprocess.check_output", return_value="just-a-name\n"):
+        result = _parse_git_remote_org_repo()
+    assert result is None
+
+
+# --- Codev project detection (TICK 26-001) ---
+
+
+def test_is_codev_project_with_config(tmp_path):
+    """Detects codev project via .codev/config.json."""
+    (tmp_path / ".codev").mkdir()
+    (tmp_path / ".codev" / "config.json").write_text("{}")
+    assert _is_codev_project(tmp_path) is True
+
+
+def test_is_codev_project_with_codev_dir(tmp_path):
+    """Detects codev project via codev/ directory."""
+    (tmp_path / "codev").mkdir()
+    assert _is_codev_project(tmp_path) is True
+
+
+def test_is_codev_project_neither(tmp_path):
+    """Returns False when neither marker exists."""
+    assert _is_codev_project(tmp_path) is False
+
+
+# --- Project config (TICK 26-001) ---
+
+
+@pytest.fixture
+def codev_project(tmp_path):
+    """Set up a minimal codev project directory."""
+    (tmp_path / ".codev").mkdir()
+    (tmp_path / ".codev" / "config.json").write_text("{}\n")
+    return tmp_path
+
+
+def test_configure_writes_correct_json(codev_project):
+    """_configure_codev_project writes correct artifacts config."""
+    with patch("fava_trails.cli._parse_git_remote_org_repo", return_value="TestOrg/TestRepo"):
+        rc = _configure_codev_project(force=False, scope_override=None, cwd=codev_project)
+    assert rc == 0
+    config = json.loads((codev_project / ".codev" / "config.json").read_text())
+    assert config["artifacts"] == {
+        "backend": "cli",
+        "command": "fava-trails",
+        "scope": "codev-artifacts/TestOrg/TestRepo",
+    }
+
+
+def test_configure_preserves_existing_keys(codev_project):
+    """Existing keys in .codev/config.json are preserved."""
+    existing = {"shell": {"builder": "claude"}, "porch": {"checks": {}}}
+    (codev_project / ".codev" / "config.json").write_text(json.dumps(existing))
+
+    with patch("fava_trails.cli._parse_git_remote_org_repo", return_value="Org/Repo"):
+        rc = _configure_codev_project(force=False, scope_override=None, cwd=codev_project)
+    assert rc == 0
+    config = json.loads((codev_project / ".codev" / "config.json").read_text())
+    assert config["shell"] == {"builder": "claude"}
+    assert config["porch"] == {"checks": {}}
+    assert config["artifacts"]["scope"] == "codev-artifacts/Org/Repo"
+
+
+def test_configure_refuses_without_force(codev_project):
+    """Refuses to overwrite differing artifacts config without --force."""
+    existing = {"artifacts": {"backend": "other", "scope": "old-scope"}}
+    (codev_project / ".codev" / "config.json").write_text(json.dumps(existing))
+
+    with patch("fava_trails.cli._parse_git_remote_org_repo", return_value="Org/Repo"):
+        rc = _configure_codev_project(force=False, scope_override=None, cwd=codev_project)
+    assert rc == 1
+    # Original config should be unchanged
+    config = json.loads((codev_project / ".codev" / "config.json").read_text())
+    assert config["artifacts"]["backend"] == "other"
+
+
+def test_configure_force_overwrites(codev_project):
+    """--force overwrites differing artifacts config."""
+    existing = {"artifacts": {"backend": "other"}, "shell": {"builder": "bash"}}
+    (codev_project / ".codev" / "config.json").write_text(json.dumps(existing))
+
+    with patch("fava_trails.cli._parse_git_remote_org_repo", return_value="Org/Repo"):
+        rc = _configure_codev_project(force=True, scope_override=None, cwd=codev_project)
+    assert rc == 0
+    config = json.loads((codev_project / ".codev" / "config.json").read_text())
+    assert config["artifacts"]["backend"] == "cli"
+    assert config["shell"]["builder"] == "bash"  # preserved
+
+
+def test_configure_scope_override(codev_project):
+    """--scope overrides auto-derived scope."""
+    rc = _configure_codev_project(
+        force=False, scope_override="custom/scope", cwd=codev_project,
+    )
+    assert rc == 0
+    config = json.loads((codev_project / ".codev" / "config.json").read_text())
+    assert config["artifacts"]["scope"] == "custom/scope"
+
+
+def test_configure_no_remote_fails(codev_project):
+    """Fails when git remote cannot be parsed and no --scope given."""
+    with patch("fava_trails.cli._parse_git_remote_org_repo", return_value=None):
+        rc = _configure_codev_project(force=False, scope_override=None, cwd=codev_project)
+    assert rc == 1
+
+
+def test_configure_creates_codev_dir(tmp_path):
+    """Creates .codev/ directory if it doesn't exist."""
+    rc = _configure_codev_project(
+        force=False, scope_override="codev-artifacts/Org/Repo", cwd=tmp_path,
+    )
+    assert rc == 0
+    assert (tmp_path / ".codev" / "config.json").exists()
+
+
+def test_configure_uses_2_space_indent(codev_project):
+    """Config JSON uses 2-space indent to match codev conventions."""
+    rc = _configure_codev_project(
+        force=False, scope_override="codev-artifacts/Org/Repo", cwd=codev_project,
+    )
+    assert rc == 0
+    raw = (codev_project / ".codev" / "config.json").read_text()
+    assert '  "artifacts"' in raw  # 2-space indent
+
+
+def test_configure_idempotent(codev_project):
+    """Running twice with same config is idempotent."""
+    with patch("fava_trails.cli._parse_git_remote_org_repo", return_value="Org/Repo"):
+        rc1 = _configure_codev_project(force=False, scope_override=None, cwd=codev_project)
+        content1 = (codev_project / ".codev" / "config.json").read_text()
+        rc2 = _configure_codev_project(force=False, scope_override=None, cwd=codev_project)
+        content2 = (codev_project / ".codev" / "config.json").read_text()
+    assert rc1 == 0
+    assert rc2 == 0
+    assert content1 == content2
+
+
+# --- Integration: cmd_integrate_codev with project config (TICK 26-001) ---
+
+
+def test_integrate_codev_configures_project(data_repo, tmp_path):
+    """Default run configures both TG prompt and project config."""
+    # Set up codev project markers in cwd
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    (project_dir / "codev").mkdir()
+
+    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
+        with patch("fava_trails.cli.get_trails_dir", return_value=data_repo / "trails"):
+            with patch("fava_trails.cli._is_codev_project", return_value=True):
+                with patch("fava_trails.cli._configure_codev_project", return_value=0) as mock_cfg:
+                    rc = cmd_integrate_codev(_make_args())
+
+    assert rc == 0
+    mock_cfg.assert_called_once_with(False, None)
+
+
+def test_integrate_codev_no_project_prints_hint(data_repo, capsys):
+    """When not in a codev project, prints a hint."""
+    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
+        with patch("fava_trails.cli.get_trails_dir", return_value=data_repo / "trails"):
+            with patch("fava_trails.cli._is_codev_project", return_value=False):
+                rc = cmd_integrate_codev(_make_args())
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "codev project" in captured.out.lower()
+
+
+def test_prompt_only_skips_project_config(data_repo):
+    """--prompt-only skips project config."""
+    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
+        with patch("fava_trails.cli.get_trails_dir", return_value=data_repo / "trails"):
+            with patch("fava_trails.cli._is_codev_project") as mock_detect:
+                rc = cmd_integrate_codev(_make_args(prompt_only=True))
+
+    assert rc == 0
+    mock_detect.assert_not_called()
+
+
+def test_auto_skips_up_to_date_prompt(data_repo, capsys):
+    """When TG prompt is already up to date, auto-skips and prints status."""
+    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
+        with patch("fava_trails.cli.get_trails_dir", return_value=data_repo / "trails"):
+            with patch("fava_trails.cli._is_codev_project", return_value=False):
+                # First run writes
+                cmd_integrate_codev(_make_args())
+                # Second run should auto-skip
+                rc = cmd_integrate_codev(_make_args())
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "up to date" in captured.out
+
+
+def test_scope_override_passed_to_configure(data_repo):
+    """--scope flag is passed through to _configure_codev_project."""
+    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
+        with patch("fava_trails.cli.get_trails_dir", return_value=data_repo / "trails"):
+            with patch("fava_trails.cli._is_codev_project", return_value=True):
+                with patch("fava_trails.cli._configure_codev_project", return_value=0) as mock_cfg:
+                    rc = cmd_integrate_codev(_make_args(scope="custom/scope"))
+
+    assert rc == 0
+    mock_cfg.assert_called_once_with(False, "custom/scope")

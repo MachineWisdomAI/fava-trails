@@ -1,7 +1,35 @@
 # Codev Integration for FAVA Trails
 
 Adds a codev-specific trust gate addendum that enforces quality checks on
-specs, plans, and reviews stored as FAVA Trails thoughts.
+specs, plans, and reviews stored as FAVA Trails thoughts, and configures
+your codev project to use FAVA Trails as its artifact backend.
+
+## Quick Start
+
+Run from inside your codev project directory:
+
+```bash
+fava-trails integrate codev
+```
+
+This single command does two things:
+
+1. **Composes the trust gate prompt** — merges the generic TG prompt with the
+   codev addendum and writes it to `trails/codev-artifacts/trust-gate-prompt.md`
+   in your data repo.
+2. **Configures `.codev/config.json`** — auto-derives `<Org>/<Repo>` from your
+   git remote and writes the `artifacts` section:
+   ```json
+   {
+     "artifacts": {
+       "backend": "cli",
+       "command": "fava-trails",
+       "scope": "codev-artifacts/<Org>/<Repo>"
+     }
+   }
+   ```
+
+Existing keys in `.codev/config.json` (shell, porch, terminal, etc.) are preserved.
 
 ## Scope Convention
 
@@ -21,22 +49,18 @@ codev-artifacts/MachineWisdomAI/fava-trails/specs/26-codev-trust-gate-integratio
 The trust gate prompt at `trails/codev-artifacts/trust-gate-prompt.md` governs
 all scopes under `codev-artifacts/` via hierarchical resolution (first-match-wins).
 
-## Setup
-
-```bash
-fava-trails integrate codev
-```
-
-This composes the generic trust gate prompt with the codev addendum and writes
-the result to `trails/codev-artifacts/trust-gate-prompt.md` in your data repo.
-
-### Flags
+## Flags
 
 | Flag | Description |
 |------|-------------|
 | `--check` | Verify composed file matches current sources. Exit 1 on mismatch (CI-friendly). |
 | `--diff` | Preview what would change without writing. |
-| `--force` | Overwrite even if the composed file was manually edited. |
+| `--force` | Overwrite even if the composed file was manually edited or artifacts config differs. |
+| `--scope <scope>` | Override auto-derived artifact scope (e.g., `--scope codev-artifacts/MyOrg/MyRepo`). |
+| `--prompt-only` | Only compose TG prompt, skip project config. |
+
+The command is safe to run repeatedly — if the trust gate prompt is already
+up to date it will be skipped automatically.
 
 ### CI Staleness Check
 
@@ -55,6 +79,7 @@ changed since last `integrate codev` run).
 2. Reads the codev addendum from the fava-trails package
 3. Composes them with a provenance header (version, hash)
 4. Writes to `trails/codev-artifacts/trust-gate-prompt.md`
+5. If in a codev project, configures `.codev/config.json` with artifact settings
 
 The composed prompt replaces the generic prompt for all `codev-artifacts/**`
 scopes via the trust gate's hierarchical scope resolution.
