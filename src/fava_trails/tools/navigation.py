@@ -162,6 +162,7 @@ async def handle_propose_truth(
                 model=global_config.trust_gate_model,
                 client=llm_client,
                 policy=policy,
+                trail_name=trail.trail_name,
             )
             if tg_timeout > 0:
                 try:

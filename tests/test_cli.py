@@ -247,6 +247,20 @@ def test_bootstrap_creates_structure(tmp_path):
     assert config["remote_url"] is None
 
 
+def test_bootstrap_prints_integration_hint(tmp_path, capsys):
+    """bootstrap prints available integrations hint after completion."""
+    target = tmp_path / "data-repo"
+    args = _make_args(path=str(target), remote=None)
+
+    with patch("shutil.which", return_value="/usr/bin/jj"):
+        with patch("subprocess.run", return_value=_make_jj_mock(0)):
+            rc = cmd_bootstrap(args)
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "fava-trails integrate codev" in captured.out
+
+
 def test_bootstrap_with_remote(tmp_path):
     """bootstrap sets remote_url in config.yaml when --remote is provided."""
     target = tmp_path / "data-repo"

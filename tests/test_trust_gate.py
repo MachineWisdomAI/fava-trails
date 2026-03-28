@@ -317,6 +317,35 @@ def test_redaction_strips_sensitive_fields(sample_thought):
         assert redacted["metadata"]["tags"] == ["architecture"]
 
 
+# --- Test 8b: Redaction includes trail_name when provided ---
+
+
+def test_redaction_includes_trail_name(sample_thought):
+    """Redaction should include trail_name when provided as keyword argument."""
+    trail = "codev-artifacts/MachineWisdomAI/fava-trails/specs/26-codev-tg"
+    redacted = _redact_metadata(sample_thought, trail_name=trail)
+
+    assert redacted["trail_name"] == trail
+    # Sensitive fields still excluded
+    assert "agent_id" not in redacted
+    if "metadata" in redacted:
+        assert "extra" not in redacted["metadata"]
+
+
+def test_redaction_omits_trail_name_when_none(sample_thought):
+    """Redaction should not include trail_name key when not provided."""
+    redacted = _redact_metadata(sample_thought)
+    assert "trail_name" not in redacted
+
+
+def test_build_review_payload_includes_trail_name(sample_thought):
+    """_build_review_payload passes trail_name through to redacted metadata."""
+    trail = "codev-artifacts/Org/Repo/plans/17-hooks"
+    _, user_msg = _build_review_payload("prompt", sample_thought, trail_name=trail)
+    assert "trail_name" in user_msg
+    assert "codev-artifacts/Org/Repo/plans/17-hooks" in user_msg
+
+
 # --- Test 9: Provenance fields populated after review ---
 
 
