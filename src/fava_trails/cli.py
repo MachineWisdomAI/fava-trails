@@ -940,6 +940,46 @@ CODEV_ADDENDUM_VERSION = 1
 _PROVENANCE_HEADER_END = "<!-- To update: fava-trails integrate codev -->\n"
 
 
+def _parse_git_remote_org_repo(cwd: Path | None = None) -> str | None:
+    """Extract Org/Repo from ``git remote get-url origin``.
+
+    Handles HTTPS (``https://github.com/Org/Repo.git``) and SSH
+    (``git@github.com:Org/Repo.git``) URLs.  Returns ``None`` on failure.
+    """
+    try:
+        url = subprocess.check_output(
+            ["git", "remote", "get-url", "origin"],
+            cwd=cwd,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+    # SSH: git@github.com:Org/Repo.git
+    m = re.match(r"^[\w.-]+@[\w.-]+:(.+)$", url)
+    if m:
+        path = m.group(1)
+    else:
+        # HTTPS or other scheme://host/path
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        path = parsed.path.lstrip("/")
+
+    # Strip .git suffix and extract last two segments (Org/Repo)
+    path = re.sub(r"\.git$", "", path)
+    parts = path.split("/")
+    if len(parts) >= 2:
+        return f"{parts[-2]}/{parts[-1]}"
+    return None
+
+
+def _is_codev_project(cwd: Path | None = None) -> bool:
+    """Return True if *cwd* (default: os.getcwd()) looks like a codev project."""
+    base = Path(cwd) if cwd else Path.cwd()
+    return (base / ".codev" / "config.json").exists() or (base / "codev").is_dir()
+
+
 def _compose_codev_prompt(generic_prompt: str, addendum: str, pkg_version: str) -> str:
     """Compose the codev trust gate prompt from generic prompt + addendum."""
     generic_hash = hashlib.sha256(generic_prompt.encode()).hexdigest()[:12]
@@ -964,110 +1004,200 @@ def _strip_provenance_header(text: str) -> str:
     return text[idx + len(marker):]
 
 
+def _configure_codev_project(force: bool, scope_override: str | None, cwd: Path | None = None) -> int:
+    """Configure ``.codev/config.json`` with FAVA Trails artifact settings.
+
+    Returns 0 on success, 1 on error.
+    """
+    import json
+
+    base = Path(cwd) if cwd else Path.cwd()
+
+    # Derive scope
+    if scope_override:
+        scope = scope_override
+    else:
+        org_repo = _parse_git_remote_org_repo(base)
+        if org_repo is None:
+            print(
+                "Error: could not derive Org/Repo from git remote. "
+                "Use --scope to specify manually.",
+                file=sys.stderr,
+            )
+            return 1
+        scope = f"codev-artifacts/{org_repo}"
+
+    # Read existing config
+    config_path = base / ".codev" / "config.json"
+    if config_path.exists():
+        try:
+            existing = json.loads(config_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"Error reading {config_path}: {e}", file=sys.stderr)
+            return 1
+    else:
+        existing = {}
+
+    desired_artifacts = {
+        "backend": "cli",
+        "command": "fava-trails",
+        "scope": scope,
+    }
+
+    # Check if artifacts key already exists and differs
+    if "artifacts" in existing and existing["artifacts"] != desired_artifacts:
+        if not force:
+            print(
+                f"Error: {config_path} already has an 'artifacts' section that differs.",
+                file=sys.stderr,
+            )
+            print(f"  Existing: {json.dumps(existing['artifacts'])}", file=sys.stderr)
+            print(f"  Desired:  {json.dumps(desired_artifacts)}", file=sys.stderr)
+            print("  Use --force to overwrite.", file=sys.stderr)
+            return 1
+
+    # Merge — preserve all other keys
+    existing["artifacts"] = desired_artifacts
+
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(json.dumps(existing, indent=2) + "\n", encoding="utf-8")
+    print(f"Configured {config_path}")
+    print(f"  artifacts.scope = {scope}")
+    return 0
+
+
 def cmd_integrate_codev(args: argparse.Namespace) -> int:
     """Compose the codev trust gate prompt (generic + addendum) into the data repo."""
     check = getattr(args, "check", False)
     diff = getattr(args, "diff", False)
     force = getattr(args, "force", False)
+    project_only = getattr(args, "project_only", False)
+    prompt_only = getattr(args, "prompt_only", False)
+    scope_override = getattr(args, "scope", None)
 
     if force and (check or diff):
         print("Error: --force cannot be combined with --check or --diff.", file=sys.stderr)
         return 1
 
-    # 1. Validate data repo exists
-    try:
-        get_data_repo_root()  # validates data repo exists
-        trails_dir = get_trails_dir()
-    except (OSError, ValueError) as e:
-        print(f"Error: {e}", file=sys.stderr)
+    if project_only and prompt_only:
+        print("Error: --project-only and --prompt-only are mutually exclusive.", file=sys.stderr)
         return 1
 
-    if not trails_dir.exists():
-        print(f"Error: trails directory not found at {trails_dir}", file=sys.stderr)
-        return 1
-
-    # 2. Read generic trust gate prompt
-    generic_path = trails_dir / "trust-gate-prompt.md"
-    if not generic_path.exists():
-        print(f"Error: generic trust gate prompt not found at {generic_path}", file=sys.stderr)
-        print("  Run: fava-trails bootstrap <path>", file=sys.stderr)
-        return 1
-    generic_prompt = generic_path.read_text(encoding="utf-8")
-
-    # 3. Read addendum from package
-    try:
-        addendum_pkg = importlib_resources.files("fava_trails") / "integrations" / "codev" / "trust-gate-addendum.md"
-        addendum = addendum_pkg.read_text(encoding="utf-8")
-    except (FileNotFoundError, ModuleNotFoundError, OSError) as e:
-        print(f"Error: could not read codev addendum from package: {e}", file=sys.stderr)
-        print("  Reinstall fava-trails: uv pip install -e .", file=sys.stderr)
-        return 1
-
-    # 4. Get package version
-    try:
-        from importlib.metadata import version
-        pkg_version = version("fava-trails")
-    except Exception:
-        pkg_version = "unknown"
-
-    # 5. Compose
-    composed = _compose_codev_prompt(generic_prompt, addendum, pkg_version)
-
-    # 6. Determine output path
-    output_dir = trails_dir / "codev-artifacts"
-    output_path = output_dir / "trust-gate-prompt.md"
-
-    # 7. Handle modes
-    if check:
-        if not output_path.exists():
-            print("STALE: composed prompt does not exist yet.", file=sys.stderr)
-            return 1
-        existing = output_path.read_text(encoding="utf-8")
-        # Compare content only (strip provenance header) so package version
-        # bumps don't cause false-positive staleness in CI.
-        if _strip_provenance_header(existing) == _strip_provenance_header(composed):
-            print("OK: composed prompt is up to date.")
-            return 0
-        else:
-            print("STALE: composed prompt does not match current sources.", file=sys.stderr)
+    # ── TG prompt composition (skip if --project-only) ──────────────────────
+    if not project_only:
+        # 1. Validate data repo exists
+        try:
+            get_data_repo_root()  # validates data repo exists
+            trails_dir = get_trails_dir()
+        except (OSError, ValueError) as e:
+            print(f"Error: {e}", file=sys.stderr)
             return 1
 
-    if diff:
-        if not output_path.exists():
-            print(f"--- (new file)\n+++ {output_path}")
-            for line in composed.splitlines():
-                print(f"+{line}")
-            return 0
-        existing = output_path.read_text(encoding="utf-8")
-        if existing == composed:
-            print("No changes.")
-            return 0
-        import difflib
+        if not trails_dir.exists():
+            print(f"Error: trails directory not found at {trails_dir}", file=sys.stderr)
+            return 1
 
-        diff_lines = difflib.unified_diff(
-            existing.splitlines(keepends=True),
-            composed.splitlines(keepends=True),
-            fromfile=str(output_path),
-            tofile=str(output_path) + " (new)",
-        )
-        sys.stdout.writelines(diff_lines)
-        return 0
+        # 2. Read generic trust gate prompt
+        generic_path = trails_dir / "trust-gate-prompt.md"
+        if not generic_path.exists():
+            print(f"Error: generic trust gate prompt not found at {generic_path}", file=sys.stderr)
+            print("  Run: fava-trails bootstrap <path>", file=sys.stderr)
+            return 1
+        generic_prompt = generic_path.read_text(encoding="utf-8")
 
-    # Default write mode
-    if output_path.exists() and not force:
-        existing = output_path.read_text(encoding="utf-8")
-        # Check if existing file was manually edited (no provenance header)
-        if not existing.startswith("<!-- Composed by: fava-trails integrate codev"):
-            print(
-                f"Error: {output_path} exists but was not generated by this tool.",
-                file=sys.stderr,
+        # 3. Read addendum from package
+        try:
+            addendum_pkg = importlib_resources.files("fava_trails") / "integrations" / "codev" / "trust-gate-addendum.md"
+            addendum = addendum_pkg.read_text(encoding="utf-8")
+        except (FileNotFoundError, ModuleNotFoundError, OSError) as e:
+            print(f"Error: could not read codev addendum from package: {e}", file=sys.stderr)
+            print("  Reinstall fava-trails: uv pip install -e .", file=sys.stderr)
+            return 1
+
+        # 4. Get package version
+        try:
+            from importlib.metadata import version
+            pkg_version = version("fava-trails")
+        except Exception:
+            pkg_version = "unknown"
+
+        # 5. Compose
+        composed = _compose_codev_prompt(generic_prompt, addendum, pkg_version)
+
+        # 6. Determine output path
+        output_dir = trails_dir / "codev-artifacts"
+        output_path = output_dir / "trust-gate-prompt.md"
+
+        # 7. Handle modes
+        if check:
+            if not output_path.exists():
+                print("STALE: composed prompt does not exist yet.", file=sys.stderr)
+                return 1
+            existing = output_path.read_text(encoding="utf-8")
+            # Compare content only (strip provenance header) so package version
+            # bumps don't cause false-positive staleness in CI.
+            if _strip_provenance_header(existing) == _strip_provenance_header(composed):
+                print("OK: composed prompt is up to date.")
+                return 0
+            else:
+                print("STALE: composed prompt does not match current sources.", file=sys.stderr)
+                return 1
+
+        if diff:
+            if not output_path.exists():
+                print(f"--- (new file)\n+++ {output_path}")
+                for line in composed.splitlines():
+                    print(f"+{line}")
+                return 0
+            existing = output_path.read_text(encoding="utf-8")
+            if existing == composed:
+                print("No changes.")
+                return 0
+            import difflib
+
+            diff_lines = difflib.unified_diff(
+                existing.splitlines(keepends=True),
+                composed.splitlines(keepends=True),
+                fromfile=str(output_path),
+                tofile=str(output_path) + " (new)",
             )
-            print("  Use --force to overwrite, or --diff to preview changes.", file=sys.stderr)
-            return 1
+            sys.stdout.writelines(diff_lines)
+            return 0
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(composed, encoding="utf-8")
-    print(f"Wrote composed trust gate prompt to {output_path}")
+        # Default write mode
+        if output_path.exists() and not force:
+            existing = output_path.read_text(encoding="utf-8")
+            # Check if existing file was manually edited (no provenance header)
+            if not existing.startswith("<!-- Composed by: fava-trails integrate codev"):
+                print(
+                    f"Error: {output_path} exists but was not generated by this tool.",
+                    file=sys.stderr,
+                )
+                print("  Use --force to overwrite, or --diff to preview changes.", file=sys.stderr)
+                return 1
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(composed, encoding="utf-8")
+        print(f"Wrote composed trust gate prompt to {output_path}")
+
+    # ── Project config (skip if --prompt-only) ──────────────────────────────
+    if not prompt_only:
+        if _is_codev_project():
+            rc = _configure_codev_project(force, scope_override)
+            if rc != 0:
+                return rc
+        else:
+            if project_only:
+                print(
+                    "Error: --project-only specified but not in a codev project "
+                    "(no .codev/config.json or codev/ directory).",
+                    file=sys.stderr,
+                )
+                return 1
+            print(
+                "Hint: Run this command inside a codev project to also configure artifact storage.",
+            )
+
     return 0
 
 
@@ -1168,12 +1298,16 @@ def build_parser() -> argparse.ArgumentParser:
     integrate_sub = p_integrate.add_subparsers(dest="integrate_command", metavar="<integration>")
 
     p_integrate_codev = integrate_sub.add_parser(
-        "codev", help="Compose codev trust gate prompt (generic + addendum)"
+        "codev", help="Compose codev trust gate prompt and configure project artifacts"
     )
     integrate_codev_mode = p_integrate_codev.add_mutually_exclusive_group()
     integrate_codev_mode.add_argument("--check", action="store_true", help="Verify composed file is up to date (CI-friendly)")
     integrate_codev_mode.add_argument("--diff", action="store_true", help="Preview changes without writing")
     p_integrate_codev.add_argument("--force", action="store_true", help="Overwrite even if manually edited")
+    p_integrate_codev.add_argument("--scope", type=str, default=None, help="Override auto-derived artifact scope (e.g., codev-artifacts/Org/Repo)")
+    integrate_codev_target = p_integrate_codev.add_mutually_exclusive_group()
+    integrate_codev_target.add_argument("--project-only", action="store_true", help="Only configure .codev/config.json, skip TG prompt")
+    integrate_codev_target.add_argument("--prompt-only", action="store_true", help="Only compose TG prompt, skip project config")
     p_integrate_codev.set_defaults(func=cmd_integrate_codev)
 
     p_integrate.set_defaults(func=lambda args: (p_integrate.print_help(), 0)[1])
