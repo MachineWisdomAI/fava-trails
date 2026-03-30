@@ -2,8 +2,8 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "MachineWisdomAI/fava-trails: 🫛👣 FAVA Trails — versioned, auditable memory for...",
-    "count": 44,
-    "uniques": 23
+    "count": 40,
+    "uniques": 19
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pulls",
@@ -16,12 +16,6 @@
     "title": "Releases · MachineWisdomAI/fava-trails",
     "count": 6,
     "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/commits/main",
-    "title": "Commits · MachineWisdomAI/fava-trails · GitHub",
-    "count": 4,
-    "uniques": 3
   },
   {
     "path": "/MachineWisdomAI/fava-trails/releases/new",
@@ -58,5 +52,11 @@
     "title": "HTTP error 522 · Issue #31 · MachineWisdomAI/fava-trails",
     "count": 2,
     "uniques": 2
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/actions",
+    "title": "Workflow runs · MachineWisdomAI/fava-trails",
+    "count": 2,
+    "uniques": 1
   }
 ]
