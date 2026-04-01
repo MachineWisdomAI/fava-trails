@@ -2,8 +2,8 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "MachineWisdomAI/fava-trails: 🫛👣 FAVA Trails — versioned, auditable memory for...",
-    "count": 34,
-    "uniques": 16
+    "count": 28,
+    "uniques": 13
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pulls",
@@ -14,12 +14,6 @@
   {
     "path": "/MachineWisdomAI/fava-trails/releases",
     "title": "Releases · MachineWisdomAI/fava-trails",
-    "count": 6,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/releases/new",
-    "title": "New release · MachineWisdomAI/fava-trails",
     "count": 4,
     "uniques": 1
   },
@@ -42,9 +36,9 @@
     "uniques": 1
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/actions",
-    "title": "Workflow runs · MachineWisdomAI/fava-trails",
-    "count": 2,
+    "path": "/MachineWisdomAI/fava-trails/releases/new",
+    "title": "New release · MachineWisdomAI/fava-trails",
+    "count": 3,
     "uniques": 1
   },
   {
@@ -54,8 +48,14 @@
     "uniques": 1
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/pull/33",
-    "title": "fix: support prefix matching for shortened thought IDs by timeleft-- · Pull R...",
+    "path": "/MachineWisdomAI/fava-trails/pull/34",
+    "title": "chore(deps): Bump pyasn1 from 0.6.2 to 0.6.3 in the uv group across 1 directo...",
+    "count": 2,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pull/37/changes",
+    "title": "feat: add codev trust gate integration (Spec 26) by timeleft-- · Pull Request...",
     "count": 2,
     "uniques": 1
   }
