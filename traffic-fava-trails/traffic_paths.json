@@ -1,61 +1,61 @@
 [
   {
     "path": "/MachineWisdomAI/fava-trails",
-    "title": "MachineWisdomAI/fava-trails: 🫛👣 FAVA Trails — versioned, auditable memory for...",
-    "count": 28,
-    "uniques": 13
+    "title": "Overview",
+    "count": 25,
+    "uniques": 12
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pulls",
-    "title": "Pull requests · MachineWisdomAI/fava-trails",
+    "title": "/pulls",
     "count": 8,
     "uniques": 1
   },
   {
     "path": "/MachineWisdomAI/fava-trails/releases",
-    "title": "Releases · MachineWisdomAI/fava-trails",
+    "title": "/releases",
     "count": 4,
     "uniques": 1
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pull/35",
-    "title": "feat: multi-tool MCP compatibility (Codex, Crush) by timeleft-- · Pull Reques...",
+    "title": "/pull/35",
     "count": 3,
     "uniques": 1
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pull/35/changes",
-    "title": "feat: multi-tool MCP compatibility (Codex, Crush) by timeleft-- · Pull Reques...",
+    "title": "/pull/35/changes",
     "count": 3,
     "uniques": 1
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pull/37",
-    "title": "feat: add codev trust gate integration (Spec 26) by timeleft-- · Pull Request...",
+    "title": "/pull/37",
     "count": 3,
     "uniques": 1
   },
   {
     "path": "/MachineWisdomAI/fava-trails/releases/new",
-    "title": "New release · MachineWisdomAI/fava-trails",
+    "title": "/releases/new",
     "count": 3,
     "uniques": 1
   },
   {
     "path": "/MachineWisdomAI/fava-trails/issues",
-    "title": "GitHub · Where software is built",
+    "title": "/issues",
     "count": 2,
     "uniques": 1
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pull/34",
-    "title": "chore(deps): Bump pyasn1 from 0.6.2 to 0.6.3 in the uv group across 1 directo...",
+    "title": "/pull/34",
     "count": 2,
     "uniques": 1
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pull/37/changes",
-    "title": "feat: add codev trust gate integration (Spec 26) by timeleft-- · Pull Request...",
+    "title": "/pull/37/changes",
     "count": 2,
     "uniques": 1
   }
