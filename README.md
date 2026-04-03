@@ -8,7 +8,7 @@
 
 **Federated Agents Versioned Audit Trail** — Git-native, curated memory for AI agents via MCP.
 
-Every thought, decision, and observation is stored as a markdown file with YAML frontmatter in a Git repo you control, with crash-proof persistence and an immutable audit trail. Agents interact through [MCP](https://modelcontextprotocol.io/) tools — they never see VCS commands.
+Every thought, decision, and observation is stored as a markdown file with YAML frontmatter in a Git repo you control, with crash-proof persistence and a versioned audit trail. Agents interact through [MCP](https://modelcontextprotocol.io/) tools — they never see VCS commands.
 
 ## Why
 
@@ -23,7 +23,7 @@ Every thought, decision, and observation is stored as a markdown file with YAML 
 
 ### Prerequisites
 
-FAVA Trails uses [Jujutsu (JJ)](https://jj-vcs.github.io/jj/) as its storage engine, running in colocate mode alongside Git. Your repo remains a standard Git repo (push to GitHub, CI/CD sees normal commits). One-time install:
+FAVA Trails uses [Jujutsu (JJ)](https://jj-vcs.github.io/jj/) as its storage engine, running in colocate mode alongside Git. Your repo remains a standard Git repo (GitHub and CI/CD see normal commits; pushes go through the `sync` MCP tool or `jj git push`). One-time install:
 
 ```bash
 fava-trails install-jj
@@ -53,7 +53,7 @@ uv sync
 # Create an empty repo on GitHub (or any git remote), then clone it
 git clone https://github.com/YOUR-ORG/fava-trails-data.git
 
-# Bootstrap it (creates config, .gitignore, initializes storage engine)
+# Bootstrap it (creates config, .gitignore, initializes JJ in colocate mode)
 fava-trails bootstrap fava-trails-data
 ```
 
@@ -176,7 +176,7 @@ FAVA Trails uses git remotes for cross-machine sync. The `fava-trails bootstrap`
 # 1. Install FAVA Trails
 pip install fava-trails
 
-# 2. Install the storage engine (runs alongside Git in colocate mode)
+# 2. Install JJ (storage engine; runs alongside Git in colocate mode)
 fava-trails install-jj
 
 # 3. Clone the SAME data repo (handles colocated mode + bookmark tracking)
