@@ -6,9 +6,9 @@
 
 # FAVA Trails
 
-**Federated Agents Versioned Audit Trail** — VCS-backed memory for AI agents via MCP.
+**Federated Agents Versioned Audit Trail** — Git-native, curated memory for AI agents via MCP.
 
-Every thought, decision, and observation is stored as a markdown file with YAML frontmatter, tracked in a [Jujutsu (JJ)](https://jj-vcs.github.io/jj/) colocated git monorepo. Agents interact through [MCP](https://modelcontextprotocol.io/) tools — they never see VCS commands.
+Every thought, decision, and observation is stored as a markdown file with YAML frontmatter in a Git repo you control, with crash-proof persistence and a versioned audit trail. Agents interact through [MCP](https://modelcontextprotocol.io/) tools — they never see VCS commands.
 
 ## Why
 
@@ -16,20 +16,18 @@ Every thought, decision, and observation is stored as a markdown file with YAML 
 - **Draft isolation** — working thoughts stay in `drafts/`. Other agents only see promoted thoughts.
 - **Trust Gate** — an LLM-based reviewer validates thoughts before they enter shared truth. Hallucinations stay contained in draft.
 - **Full lineage** — every thought carries who wrote it, when, and why it changed.
-- **Crash-proof** — JJ auto-snapshots. No unsaved work.
+- **Crash-proof** — every write is an atomic commit. No unsaved work.
 - **Engine/Fuel split** — this repo is the engine (stateless MCP server). Your data lives in a separate repo you control.
 
 ## Install
 
 ### Prerequisites
 
-Install [Jujutsu (JJ)](https://jj-vcs.github.io/jj/) — FAVA Trails uses JJ as its VCS engine:
+FAVA Trails uses [Jujutsu (JJ)](https://jj-vcs.github.io/jj/) as its storage engine, running in colocate mode alongside Git. Your repo remains a standard Git repo (GitHub and CI/CD see normal commits; pushes go through the `sync` MCP tool or `jj git push`). One-time install:
 
 ```bash
 fava-trails install-jj
 ```
-
-Or install manually from [jj-vcs.github.io/jj](https://jj-vcs.github.io/jj/).
 
 ### From PyPI (recommended)
 
@@ -55,7 +53,7 @@ uv sync
 # Create an empty repo on GitHub (or any git remote), then clone it
 git clone https://github.com/YOUR-ORG/fava-trails-data.git
 
-# Bootstrap it (creates config, .gitignore, initializes JJ)
+# Bootstrap it (creates config, .gitignore, initializes JJ in colocate mode)
 fava-trails bootstrap fava-trails-data
 ```
 
@@ -166,7 +164,7 @@ recall(trail_name="myorg/eng/my-project", query="X")
   → finds the promoted thought
 ```
 
-Agents interact through MCP tools — they never see VCS commands. JJ expertise is not required.
+Agents interact through MCP tools — they never see VCS commands.
 
 ## Cross-Machine Sync
 
@@ -178,7 +176,7 @@ FAVA Trails uses git remotes for cross-machine sync. The `fava-trails bootstrap`
 # 1. Install FAVA Trails
 pip install fava-trails
 
-# 2. Install JJ
+# 2. Install JJ (storage engine; runs alongside Git in colocate mode)
 fava-trails install-jj
 
 # 3. Clone the SAME data repo (handles colocated mode + bookmark tracking)
@@ -190,6 +188,8 @@ fava-trails clone https://github.com/YOUR-ORG/fava-trails-data.git fava-trails-d
 Both machines push/pull through the same git remote. Use the `sync` MCP tool to pull latest thoughts from other machines.
 
 ### Manual push (if auto-push is off)
+
+> **Note:** Most users never need these commands. The `sync` MCP tool and `push_strategy: immediate` handle everything automatically. These are for advanced manual intervention only.
 
 ```bash
 cd /path/to/fava-trails-data
