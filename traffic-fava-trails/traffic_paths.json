@@ -2,13 +2,13 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 41,
-    "uniques": 15
+    "count": 45,
+    "uniques": 16
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pulls",
     "title": "/pulls",
-    "count": 7,
+    "count": 5,
     "uniques": 2
   },
   {
@@ -16,18 +16,6 @@
     "title": "/releases",
     "count": 5,
     "uniques": 2
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pull/35",
-    "title": "/pull/35",
-    "count": 3,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pull/35/changes",
-    "title": "/pull/35/changes",
-    "count": 3,
-    "uniques": 1
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pull/37",
@@ -56,6 +44,18 @@
   {
     "path": "/MachineWisdomAI/fava-trails/actions",
     "title": "/actions",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/fork",
+    "title": "/fork",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/forks",
+    "title": "/forks",
     "count": 1,
     "uniques": 1
   }
