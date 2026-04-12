@@ -2,49 +2,13 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 45,
+    "count": 38,
     "uniques": 16
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pulls",
-    "title": "/pulls",
-    "count": 5,
-    "uniques": 2
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/releases",
-    "title": "/releases",
-    "count": 5,
-    "uniques": 2
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pull/37",
-    "title": "/pull/37",
-    "count": 3,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/releases/new",
-    "title": "/releases/new",
-    "count": 3,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pull/37/changes",
-    "title": "/pull/37/changes",
-    "count": 2,
-    "uniques": 1
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pull/42",
     "title": "/pull/42",
     "count": 2,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/actions",
-    "title": "/actions",
-    "count": 1,
     "uniques": 1
   },
   {
@@ -54,8 +18,38 @@
     "uniques": 1
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/forks",
-    "title": "/forks",
+    "path": "/MachineWisdomAI/fava-trails/pull/15/files/87b0c29ba91d974827a33f39ede43bad9ae7a09c",
+    "title": "/pull/15/files/87b0c29ba91d974827a33f39ede43bad9ae7a09c",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pull/27/commits",
+    "title": "/pull/27/commits",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pull/40",
+    "title": "/pull/40",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pull/42/changes",
+    "title": "/pull/42/changes",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pulls",
+    "title": "/pulls",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/releases",
+    "title": "/releases",
     "count": 1,
     "uniques": 1
   }
