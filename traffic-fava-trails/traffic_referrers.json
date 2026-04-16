@@ -1,8 +1,8 @@
 [
   {
     "referrer": "news.ycombinator.com",
-    "count": 8,
-    "uniques": 6
+    "count": 6,
+    "uniques": 5
   },
   {
     "referrer": "Bing",
@@ -16,7 +16,7 @@
   },
   {
     "referrer": "hn.algolia.com",
-    "count": 2,
+    "count": 1,
     "uniques": 1
   }
 ]
