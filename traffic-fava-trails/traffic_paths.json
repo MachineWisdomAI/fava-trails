@@ -2,8 +2,14 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 38,
-    "uniques": 16
+    "count": 35,
+    "uniques": 14
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/blob/682b2f4d3a845a02bf349fc02ef39da94d4dabca/src/fava_trails/protocols/secom/__init__.py",
+    "title": "/blob/682b2f4d3a845a02bf349fc02ef39da94d4dabca/src/fava_trails/protocols/secom/__init__.py",
+    "count": 2,
+    "uniques": 1
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pull/42",
