@@ -1,17 +1,17 @@
 [
   {
-    "referrer": "news.ycombinator.com",
-    "count": 6,
-    "uniques": 6
-  },
-  {
     "referrer": "Bing",
     "count": 6,
     "uniques": 1
   },
   {
+    "referrer": "news.ycombinator.com",
+    "count": 5,
+    "uniques": 5
+  },
+  {
     "referrer": "github.com",
-    "count": 1,
+    "count": 2,
     "uniques": 1
   }
 ]
