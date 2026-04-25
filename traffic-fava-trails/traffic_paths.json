@@ -2,13 +2,13 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 21,
-    "uniques": 13
+    "count": 14,
+    "uniques": 12
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pulls",
     "title": "/pulls",
-    "count": 2,
+    "count": 3,
     "uniques": 2
   },
   {
@@ -32,12 +32,6 @@
   {
     "path": "/MachineWisdomAI/fava-trails/milestones",
     "title": "/milestones",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pull/15/files/87b0c29ba91d974827a33f39ede43bad9ae7a09c",
-    "title": "/pull/15/files/87b0c29ba91d974827a33f39ede43bad9ae7a09c",
     "count": 1,
     "uniques": 1
   },
