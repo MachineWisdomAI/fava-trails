@@ -18,5 +18,9 @@
         "skip": true
       }
     }
+  },
+  "forge": {
+    "provider": "linear",
+    "linear-team": "ENG"
   }
 }

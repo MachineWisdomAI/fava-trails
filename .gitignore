@@ -48,3 +48,6 @@ af-config.json
 
 # Claude Code (machine-local settings)
 .claude/
+
+# Codev VS Code extension settings (shared)
+!.vscode/settings.json
