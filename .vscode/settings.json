@@ -1,0 +1,6 @@
+{
+  "codev.autoStartTower": true,
+  "codev.autoConnect": true,
+  "codev.autoOpenBuilderTerminal": "auto",
+  "codev.terminalPosition": "panel"
+}
