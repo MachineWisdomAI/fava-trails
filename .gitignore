@@ -50,4 +50,5 @@ af-config.json
 .claude/
 
 # Codev VS Code extension settings (shared)
+!.vscode/
 !.vscode/settings.json
