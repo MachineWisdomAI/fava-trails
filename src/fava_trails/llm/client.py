@@ -15,6 +15,16 @@ from .registry import get_registry
 # Enable unified exception hierarchy across all providers
 os.environ.setdefault("ANY_LLM_UNIFIED_EXCEPTIONS", "1")
 
+# Relax service_tier validation. OpenRouter may return values outside the
+# OpenAI SDK Literal set, e.g. "standard", and any-llm revalidates the response
+# against this model before returning it.
+from any_llm.types.completion import ChatCompletion as _ChatCompletion
+
+_service_tier = _ChatCompletion.model_fields.get("service_tier")
+if _service_tier is not None:
+    _service_tier.annotation = str | None
+    _ChatCompletion.model_rebuild(force=True)
+
 logger = logging.getLogger(__name__)
 
 
