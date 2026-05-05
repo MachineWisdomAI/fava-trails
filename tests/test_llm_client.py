@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from any_llm.exceptions import AuthenticationError, RateLimitError
+from any_llm.types.completion import ChatCompletion
 
 from fava_trails.llm.client import LLMClient, LLMError, LLMResponse
 
@@ -165,3 +166,23 @@ async def test_api_key_passed_to_acompletion(client):
     call_kwargs = mock_acompletion.call_args.kwargs
     assert call_kwargs["api_key"] == "or-key"
     assert call_kwargs["provider"] == "openrouter"
+
+
+def test_chatcompletion_accepts_nonstandard_service_tier():
+    """Importing fava_trails.llm.client patches ChatCompletion to accept any service_tier string."""
+    data = {
+        "id": "gen-test",
+        "choices": [
+            {
+                "finish_reason": "stop",
+                "index": 0,
+                "message": {"role": "assistant", "content": "ok"},
+            }
+        ],
+        "created": 1000000,
+        "model": "google/gemini-2.5-flash",
+        "object": "chat.completion",
+        "service_tier": "standard",
+    }
+    obj = ChatCompletion.model_validate(data)
+    assert obj.service_tier == "standard"
