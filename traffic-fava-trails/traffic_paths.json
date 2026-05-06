@@ -18,8 +18,8 @@
     "uniques": 2
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/pulls",
-    "title": "/pulls",
+    "path": "/MachineWisdomAI/fava-trails/pull/45",
+    "title": "/pull/45",
     "count": 2,
     "uniques": 1
   },
@@ -36,8 +36,20 @@
     "uniques": 1
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/milestones",
-    "title": "/milestones",
+    "path": "/MachineWisdomAI/fava-trails/pull/44",
+    "title": "/pull/44",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pull/45/changes",
+    "title": "/pull/45/changes",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pulls",
+    "title": "/pulls",
     "count": 1,
     "uniques": 1
   }
