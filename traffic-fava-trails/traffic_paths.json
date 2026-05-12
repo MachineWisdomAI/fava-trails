@@ -2,14 +2,8 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 19,
+    "count": 17,
     "uniques": 15
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/commits/main",
-    "title": "/commits/main",
-    "count": 8,
-    "uniques": 1
   },
   {
     "path": "/MachineWisdomAI/fava-trails/issues",
@@ -32,12 +26,6 @@
   {
     "path": "/MachineWisdomAI/fava-trails/actions",
     "title": "/actions",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/commits",
-    "title": "/commits",
     "count": 1,
     "uniques": 1
   },
