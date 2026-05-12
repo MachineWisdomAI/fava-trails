@@ -22,5 +22,17 @@
   "forge": {
     "provider": "linear",
     "linear-team": "ENG"
+  },
+  "worktree": {
+    "symlinks": [
+      ".env.local",
+      ".env.development",
+      ".env.development.local",
+      "apps/*/.env",
+      "apps/*/.env.local",
+      "packages/*/.env",
+      "packages/*/.env.local"
+    ],
+    "postSpawn": []
   }
 }
