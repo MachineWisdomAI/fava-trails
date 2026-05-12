@@ -2,6 +2,18 @@
 
 Agent-facing reference for FAVA Trails MCP tools. For project setup and configuration, see [README.md](README.md). For the full session protocol with examples, see [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md).
 
+## Repository Workflow
+
+- **Development**: `~/git/MachineWisdomAI/fava-trails/` (this repo)
+- **Never modify**: `~/git/vendor/fava-trails/` (read-only, pinned for running MCP servers)
+- Feature branches use worktrees: `~/git/MachineWisdomAI/fava-trails-{slug}/`
+- Never commit directly to `main` — always use a feature branch and PR
+- Pre-flight before starting work:
+  ```bash
+  git worktree list && git branch -r
+  ```
+- If another agent or branch is active on this repo, coordinate or use a separate worktree.
+
 ## Scope Discovery
 
 Every tool call requires `trail_name` — a slash-separated scope path (e.g. `mw/eng/fava-trails`). Resolve in priority order:
@@ -284,6 +296,10 @@ The actual thought content in markdown.
 
 ## Development
 
+PRs must pass:
+- `test` — pytest suite (`uv sync --frozen && uv run pytest -v`)
+- Semantic PR title — Conventional Commits format, such as `feat:`, `fix:`, or `chore:`
+
 ```bash
 # Run all tests
 uv run pytest -v
@@ -294,4 +310,3 @@ uv run pytest tests/test_tools.py -v
 # Run with coverage
 uv run pytest --cov=fava_trails
 ```
-
