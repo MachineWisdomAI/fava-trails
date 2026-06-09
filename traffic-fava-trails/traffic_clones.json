@@ -428,14 +428,14 @@
       "uniques": 8
     },
     {
-      "timestamp": "2026-05-25T00:00:00Z",
-      "count": 23,
-      "uniques": 11
-    },
-    {
       "timestamp": "2026-05-26T00:00:00Z",
       "count": 3,
       "uniques": 2
+    },
+    {
+      "timestamp": "2026-05-25T00:00:00Z",
+      "count": 23,
+      "uniques": 11
     },
     {
       "timestamp": "2026-05-27T00:00:00Z",
