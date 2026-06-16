@@ -2,14 +2,20 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 26,
-    "uniques": 13
+    "count": 25,
+    "uniques": 12
   },
   {
     "path": "/MachineWisdomAI/fava-trails/issues",
     "title": "/issues",
-    "count": 3,
+    "count": 2,
     "uniques": 2
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/actions",
+    "title": "/actions",
+    "count": 1,
+    "uniques": 1
   },
   {
     "path": "/MachineWisdomAI/fava-trails/blob/main/AGENTS_USAGE_INSTRUCTIONS.md",
