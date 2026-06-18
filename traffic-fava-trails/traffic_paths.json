@@ -2,7 +2,7 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 27,
+    "count": 26,
     "uniques": 12
   },
   {
@@ -20,6 +20,12 @@
   {
     "path": "/MachineWisdomAI/fava-trails/actions/runs/27413285726/workflow",
     "title": "/actions/runs/27413285726/workflow",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/blob/main/.gitignore",
+    "title": "/blob/main/.gitignore",
     "count": 1,
     "uniques": 1
   },
