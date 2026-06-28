@@ -2,20 +2,20 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 28,
-    "uniques": 18
+    "count": 30,
+    "uniques": 19
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pulls",
+    "title": "/pulls",
+    "count": 4,
+    "uniques": 3
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pull/48",
     "title": "/pull/48",
     "count": 4,
     "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pulls",
-    "title": "/pulls",
-    "count": 3,
-    "uniques": 2
   },
   {
     "path": "/MachineWisdomAI/fava-trails/issues",
@@ -48,14 +48,14 @@
     "uniques": 1
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/AGENTS_USAGE_INSTRUCTIONS.md",
-    "title": "/blob/main/AGENTS_USAGE_INSTRUCTIONS.md",
+    "path": "/MachineWisdomAI/fava-trails/releases",
+    "title": "/releases",
     "count": 1,
     "uniques": 1
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/docs/fava_trails_faq.md",
-    "title": "/blob/main/docs/fava_trails_faq.md",
+    "path": "/MachineWisdomAI/fava-trails/stargazers",
+    "title": "/stargazers",
     "count": 1,
     "uniques": 1
   }
