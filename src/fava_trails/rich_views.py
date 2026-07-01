@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,6 +18,8 @@ from .models import ThoughtRecord
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", re.MULTILINE)
 _SAFE_THOUGHT_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _WHITESPACE_RE = re.compile(r"\s+")
+_GENERATED_READER_MARKER = "fava-trails rich-view generate"
+_GENERATED_READER_ARTIFACTS = ("src", "package.json", "astro.config.mjs", "README.md")
 
 
 @dataclass(frozen=True)
@@ -164,6 +167,8 @@ def _truncate_title(value: str, max_length: int = 80) -> str:
 def _write_reader(output_dir: Path, scope: str, generated_at: datetime, thoughts: list[ReaderThought]) -> None:
     generated_at_iso = generated_at.isoformat()
 
+    _prepare_reader_output_dir(output_dir)
+
     (output_dir / "src/pages/id").mkdir(parents=True, exist_ok=True)
     (output_dir / "src/data").mkdir(parents=True, exist_ok=True)
     (output_dir / "src/layouts").mkdir(parents=True, exist_ok=True)
@@ -178,6 +183,39 @@ def _write_reader(output_dir: Path, scope: str, generated_at: datetime, thoughts
         _write_thought_page(output_dir, scope, generated_at_iso, thought)
 
 
+def _prepare_reader_output_dir(output_dir: Path) -> None:
+    if not output_dir.exists():
+        return
+    if not output_dir.is_dir():
+        raise ValueError(f"Output path exists and is not a directory: {output_dir}")
+    if not any(output_dir.iterdir()):
+        return
+    if not _is_generated_reader_output_dir(output_dir):
+        raise ValueError(
+            f"refusing to overwrite non-reader output directory {output_dir}; "
+            "choose an empty directory or a previous fava-trails reader output"
+        )
+
+    # Clean prior generated artifacts so re-runs don't leave stale pages from previous generations.
+    for name in _GENERATED_READER_ARTIFACTS:
+        p = output_dir / name
+        if p.is_dir():
+            shutil.rmtree(p)
+        elif p.exists():
+            p.unlink(missing_ok=True)
+
+
+def _is_generated_reader_output_dir(output_dir: Path) -> bool:
+    marker_path = output_dir / "src/data/generated.json"
+    if not marker_path.is_file():
+        return False
+    try:
+        metadata = json.loads(marker_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return isinstance(metadata, dict) and metadata.get("generator") == _GENERATED_READER_MARKER
+
+
 def _write_package_json(output_dir: Path) -> None:
     package = {
         "name": "fava-reader",
@@ -189,7 +227,7 @@ def _write_package_json(output_dir: Path) -> None:
             "preview": "astro preview",
         },
         "devDependencies": {
-            "astro": "latest",
+            "astro": "^7.0.0",
         },
     }
     (output_dir / "package.json").write_text(json.dumps(package, indent=2) + "\n", encoding="utf-8")

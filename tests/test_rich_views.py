@@ -178,6 +178,65 @@ def test_generate_reader_rejects_path_traversal_thought_id_without_writing_outsi
     assert not outside_path.exists()
 
 
+def test_generate_reader_rejects_non_empty_non_reader_output_without_clobbering(tmp_path):
+    trails_dir = tmp_path / "data-repo" / "trails"
+    output_dir = tmp_path / "existing-project"
+    scope = "mw/eng/demo"
+    source_id = "01KTEST000000000000000004"
+    _write_thought(trails_dir, scope, "decisions", source_id, "# Safe source")
+
+    existing_src = output_dir / "src"
+    existing_src.mkdir(parents=True)
+    existing_app = existing_src / "app.py"
+    existing_app.write_text("print('keep me')\n", encoding="utf-8")
+    existing_readme = output_dir / "README.md"
+    existing_readme.write_text("# Existing project\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="refusing to overwrite non-reader output directory"):
+        generate_reader(
+            trails_dir=trails_dir,
+            scope=scope,
+            output_dir=output_dir,
+            generated_at=datetime(2026, 7, 1, 12, 0, tzinfo=UTC),
+        )
+
+    assert existing_app.read_text(encoding="utf-8") == "print('keep me')\n"
+    assert existing_readme.read_text(encoding="utf-8") == "# Existing project\n"
+    assert not (output_dir / "src/pages/id" / f"{source_id}.md").exists()
+
+
+def test_generate_reader_rerun_cleans_stale_generated_pages(tmp_path):
+    trails_dir = tmp_path / "data-repo" / "trails"
+    output_dir = tmp_path / "reader"
+    scope = "mw/eng/demo"
+    first_id = "01KTEST000000000000000004"
+    stale_id = "01KTEST000000000000000005"
+    generated_at = datetime(2026, 7, 1, 12, 0, tzinfo=UTC)
+
+    _write_thought(trails_dir, scope, "decisions", first_id, "# Current thought")
+    stale_source = _write_thought(trails_dir, scope, "observations", stale_id, "# Stale thought")
+
+    generate_reader(
+        trails_dir=trails_dir,
+        scope=scope,
+        output_dir=output_dir,
+        generated_at=generated_at,
+    )
+    assert (output_dir / "src/pages/id" / f"{stale_id}.md").is_file()
+
+    stale_source.unlink()
+    result = generate_reader(
+        trails_dir=trails_dir,
+        scope=scope,
+        output_dir=output_dir,
+        generated_at=generated_at,
+    )
+
+    assert result.thought_count == 1
+    assert (output_dir / "src/pages/id" / f"{first_id}.md").is_file()
+    assert not (output_dir / "src/pages/id" / f"{stale_id}.md").exists()
+
+
 def test_cli_rich_view_generate_command_builds_reader_from_fixture_records(tmp_path):
     trails_dir = tmp_path / "data-repo" / "trails"
     output_dir = tmp_path / "reader"
