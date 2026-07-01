@@ -781,6 +781,32 @@ def cmd_get(args: argparse.Namespace) -> int:
     return 1
 
 
+# ─── Rich Views reader generation ─────────────────────────────────────────────
+
+
+def cmd_rich_view_generate(args: argparse.Namespace) -> int:
+    """Generate a minimal plain-Astro reader from FAVA source records."""
+    try:
+        trails_dir = Path(args.trails_dir).expanduser().resolve() if args.trails_dir else get_trails_dir()
+        output_dir = Path(args.out).expanduser().resolve()
+        from .rich_views import generate_reader
+
+        result = generate_reader(
+            trails_dir=trails_dir,
+            scope=args.scope,
+            output_dir=output_dir,
+        )
+    except (OSError, ValueError, yaml.YAMLError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    print(f"Generated FAVA reader for {result.scope} at {result.output_dir}")
+    print(f"  Thoughts: {result.thought_count}")
+    print(f"  Generated at: {result.generated_at.isoformat()}")
+    print("  Build: cd <output-dir> && npm install && npm run build")
+    return 0
+
+
 # ─── Protocol setup commands ──────────────────────────────────────────────────
 
 
@@ -1287,6 +1313,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Include YAML frontmatter in output",
     )
     p_get.set_defaults(func=cmd_get)
+
+    # rich-view
+    p_rich_view = subparsers.add_parser("rich-view", help="Generate minimal FAVA Rich Views readers")
+    rich_view_sub = p_rich_view.add_subparsers(dest="rich_view_command", metavar="<subcommand>")
+
+    p_rich_view_generate = rich_view_sub.add_parser(
+        "generate",
+        help="Generate a minimal plain-Astro FAVA reader from source records",
+    )
+    p_rich_view_generate.add_argument("--scope", required=True, help="Input FAVA scope path")
+    p_rich_view_generate.add_argument("--out", required=True, help="Output directory for the generated reader")
+    p_rich_view_generate.add_argument(
+        "--trails-dir",
+        default=None,
+        help="Directory containing FAVA trails (default: configured data repo trails directory)",
+    )
+    p_rich_view_generate.set_defaults(func=cmd_rich_view_generate)
+
+    p_rich_view.set_defaults(func=lambda args: (p_rich_view.print_help(), 0)[1])
 
     # integrate
     p_integrate = subparsers.add_parser("integrate", help="Set up integrations with external tools")

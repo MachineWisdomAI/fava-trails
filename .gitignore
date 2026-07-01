@@ -15,6 +15,9 @@ venv/
 .coverage
 htmlcov/
 
+# Agent review artifacts
+.wise-agents/
+
 # IDE
 .vscode/
 .idea/
@@ -26,6 +29,9 @@ Thumbs.db
 # Environment
 .env
 .secrets
+
+# Node package manager artifacts from generated readers
+package-lock.json
 
 # Codev (transient state — protocols and resources are committed)
 .agent-farm/

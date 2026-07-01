@@ -2,6 +2,11 @@
 
 All notable changes to FAVA Trails are documented here.
 
+## Unreleased
+
+### Added
+- `fava-trails rich-view generate --scope <path> --out <dir>`: generates a minimal plain-Astro static reader from FAVA trail thought records (ULID routes, derived titles, snapshot metadata). Implements #52.
+
 ## [0.5.7] — 2026-06-30
 
 ### Fixed
