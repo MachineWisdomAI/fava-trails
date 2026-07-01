@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import shutil
 from pathlib import Path
 
@@ -87,6 +88,26 @@ class JjBackend(VcsBackend):
             )
         return stdout, stderr
 
+    async def _run_git(self, *args: str, check: bool = True) -> tuple[str, str]:
+        """Run a git command at repo_root. Internal helper for colocated safety checks."""
+        proc = await asyncio.create_subprocess_exec(
+            "git",
+            *args,
+            cwd=self.repo_root,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout_bytes, stderr_bytes = await proc.communicate()
+        stdout = stdout_bytes.decode("utf-8", errors="replace").strip()
+        stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
+        if check and proc.returncode != 0:
+            raise JjError(
+                f"git {args[0]} failed (rc={proc.returncode}): {stderr or stdout}",
+                returncode=proc.returncode,
+                stderr=stderr,
+            )
+        return stdout, stderr
+
     # --- Semantic translation helpers ---
 
     @staticmethod
@@ -134,6 +155,70 @@ class JjBackend(VcsBackend):
         except ValueError:
             # trail_path not under repo_root — return as-is (shouldn't happen)
             return str(self.trail_path)
+
+    def _repo_rel_path(self, path: str | Path) -> str:
+        """Normalize an absolute or relative path to a repo-relative POSIX path."""
+        p = Path(path)
+        if p.is_absolute():
+            try:
+                return p.relative_to(self.repo_root).as_posix()
+            except ValueError:
+                return p.as_posix()
+        return p.as_posix()
+
+    async def _dirty_paths(self) -> list[str]:
+        """Return current JJ dirty paths as repo-relative paths."""
+        stdout, _ = await self._run("diff", "--name-only", check=False)
+        return sorted({line.strip() for line in stdout.splitlines() if line.strip()})
+
+    async def _tracked_case_collisions(self) -> list[list[str]]:
+        """Find tracked paths that differ only by case."""
+        stdout, _ = await self._run_git("ls-files", "-z")
+        buckets: dict[str, list[str]] = {}
+        for path in stdout.split("\0"):
+            if not path:
+                continue
+            buckets.setdefault(path.lower(), []).append(path)
+        return [sorted(paths) for paths in buckets.values() if len(paths) > 1]
+
+    async def _assert_no_case_collisions(self) -> None:
+        collisions = await self._tracked_case_collisions()
+        if collisions:
+            preview = "; ".join(" <-> ".join(paths[:3]) for paths in collisions[:5])
+            raise RuntimeError(
+                "Tracked path case collision detected. "
+                "Resolve paths that differ only by case before writing: "
+                f"{preview}"
+            )
+
+    @staticmethod
+    def _is_protected_data_file(path: str) -> bool:
+        return path.endswith(".md") or path.endswith(".yaml") or path.endswith(".gitkeep")
+
+    async def _executable_bit_changes(self, paths: list[str]) -> list[str]:
+        """Return protected data files whose dirty diff changes executable mode."""
+        if not paths:
+            return []
+
+        stdout, _ = await self._run("diff", "--git", *paths, check=False)
+        bad: list[str] = []
+        current_path: str | None = None
+        mode_change_in_block = False
+        for line in stdout.splitlines():
+            if line.startswith("diff --git "):
+                if current_path and mode_change_in_block and self._is_protected_data_file(current_path):
+                    bad.append(current_path)
+                current_path = None
+                mode_change_in_block = False
+                match = re.match(r"diff --git a/(.*?) b/(.*)", line)
+                if match:
+                    current_path = match.group(2)
+                continue
+            if line.startswith("old mode ") or line.startswith("new mode "):
+                mode_change_in_block = True
+        if current_path and mode_change_in_block and self._is_protected_data_file(current_path):
+            bad.append(current_path)
+        return bad
 
     # Log template: change_id, commit_id, description, author email, timestamp, empty flag
     LOG_TEMPLATE = (
@@ -199,6 +284,7 @@ class JjBackend(VcsBackend):
         return f"Trail directory created at {self.trail_path}"
 
     async def new_change(self, description: str = "") -> VcsChange:
+        await self._assert_no_case_collisions()
         effective = description.strip() or "(new change)"
         args = ["new", "-m", effective]
         stdout, _ = await self._run(*args)
@@ -223,9 +309,10 @@ class JjBackend(VcsBackend):
         fall under the expected trail prefix (or allowed_prefixes for cross-scope ops).
         Then describes and creates new change.
         """
-        # Get dirty files in the working copy
-        stdout, _ = await self._run("diff", "--name-only", check=False)
-        dirty_paths = [line.strip() for line in stdout.splitlines() if line.strip()]
+        await self._assert_no_case_collisions()
+
+        dirty_paths = await self._dirty_paths()
+        expected_paths = {self._repo_rel_path(path) for path in paths}
 
         # Cross-trail assertion: all dirty files must be under allowed prefixes
         if dirty_paths:
@@ -236,6 +323,21 @@ class JjBackend(VcsBackend):
                         f"Cross-trail pollution detected: '{dp}' is outside allowed prefixes {prefixes}. "
                         "Aborting commit to prevent data corruption."
                     )
+
+            unexpected_paths = sorted(set(dirty_paths) - expected_paths)
+            if unexpected_paths:
+                raise RuntimeError(
+                    "Unexpected dirty paths detected: "
+                    f"{unexpected_paths}. Expected only {sorted(expected_paths)}. "
+                    "Aborting commit to prevent unrelated local state from hitchhiking."
+                )
+
+            executable_changes = await self._executable_bit_changes(dirty_paths)
+            if executable_changes:
+                raise RuntimeError(
+                    "Executable bit change detected in data files: "
+                    f"{executable_changes}. Aborting commit to prevent unsafe mode churn."
+                )
 
         # Proceed with commit — always describe to prevent phantom empty commits
         # that block jj git push (JJ refuses to push undescribed commits)
@@ -465,6 +567,29 @@ class JjBackend(VcsBackend):
         return None
 
     async def fetch_and_rebase(self) -> RebaseResult:
+        case_collisions = await self._tracked_case_collisions()
+        if case_collisions:
+            return RebaseResult(
+                success=False,
+                has_case_collisions=True,
+                case_collisions=case_collisions,
+                summary=(
+                    "Tracked paths differ only by case. Resolve case collisions before syncing."
+                ),
+            )
+
+        dirty_paths = await self._dirty_paths()
+        if dirty_paths:
+            return RebaseResult(
+                success=False,
+                has_dirty_working_copy=True,
+                dirty_paths=dirty_paths,
+                summary=(
+                    "Local working copy has uncommitted changes. "
+                    "Commit, recover, or discard them before syncing."
+                ),
+            )
+
         # Record pre-rebase op for rollback
         ops = await self.op_log(limit=1)
         pre_op = ops[0].op_id if ops else ""

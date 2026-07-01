@@ -203,6 +203,74 @@ async def test_commit_files_cross_trail_pollution_assertion(jj_backend):
 
 
 @pytest.mark.asyncio
+async def test_commit_files_refuses_unexpected_dirty_file_inside_trail(jj_backend):
+    """commit_files should only commit the operation's declared paths."""
+    expected = jj_backend.trail_path / "expected.md"
+    unexpected = jj_backend.trail_path / "unexpected.md"
+    expected.write_text("# Expected")
+    unexpected.write_text("# Unexpected ambient dirt")
+
+    with pytest.raises(RuntimeError, match="Unexpected dirty paths"):
+        await jj_backend.commit_files("should fail", [str(expected)])
+
+
+@pytest.mark.asyncio
+async def test_commit_files_rejects_executable_bit_change_for_data_files(jj_backend):
+    """Mode-only executable changes to Markdown/YAML/gitkeep files are unsafe."""
+    test_file = jj_backend.trail_path / "mode-test.md"
+    test_file.write_text("# Mode test")
+    await jj_backend.commit_files("add mode test", [str(test_file)])
+
+    test_file.chmod(0o755)
+
+    with pytest.raises(RuntimeError, match="Executable bit change"):
+        await jj_backend.commit_files("should fail", [str(test_file)])
+
+
+@pytest.mark.asyncio
+async def test_fetch_and_rebase_blocks_dirty_working_copy(jj_backend):
+    """sync should not report success while local files are uncommitted."""
+    dirty = jj_backend.trail_path / "dirty.md"
+    dirty.write_text("# Dirty local state")
+
+    result = await jj_backend.fetch_and_rebase()
+
+    assert result.success is False
+    assert result.has_dirty_working_copy is True
+    assert "trails/test-jj/dirty.md" in result.dirty_paths
+
+
+@pytest.mark.asyncio
+async def test_fetch_and_rebase_blocks_case_colliding_tracked_paths(jj_backend):
+    """sync should block when tracked paths differ only by case."""
+    blob = subprocess.run(
+        ["git", "hash-object", "-w", "--stdin"],
+        cwd=str(jj_backend.repo_root),
+        input=b"",
+        check=True,
+        capture_output=True,
+    ).stdout.decode().strip()
+    subprocess.run(
+        ["git", "update-index", "--add", "--cacheinfo", f"100644,{blob},trails/CaseScope/thoughts/drafts/.gitkeep"],
+        cwd=str(jj_backend.repo_root),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "update-index", "--add", "--cacheinfo", f"100644,{blob},trails/casescope/thoughts/drafts/.gitkeep"],
+        cwd=str(jj_backend.repo_root),
+        check=True,
+        capture_output=True,
+    )
+
+    result = await jj_backend.fetch_and_rebase()
+
+    assert result.success is False
+    assert result.has_case_collisions is True
+    assert result.case_collisions
+
+
+@pytest.mark.asyncio
 async def test_gc(jj_backend):
     """GC should complete without error."""
     result = await jj_backend.gc()
