@@ -100,6 +100,11 @@ def test_generate_reader_writes_plain_astro_reader_from_fixture_records(tmp_path
     metadata = (output_dir / "src/data/generated.json").read_text(encoding="utf-8")
     assert '"inputScope": "mw/eng/demo"' in metadata
     assert '"generatedAt": "2026-07-01T12:00:00+00:00"' in metadata
+    assert f"/id/{EXPLICIT_TITLE_ID}/" in metadata
+    assert f"/id/{HEADING_TITLE_ID}/" in metadata
+    assert f"/id/{FALLBACK_TITLE_ID}/" in metadata
+    assert f"/thoughts/{EXPLICIT_TITLE_ID}/" not in metadata
+    assert f'"/{EXPLICIT_TITLE_ID}/"' not in metadata
 
     index = (output_dir / "src/pages/index.astro").read_text(encoding="utf-8")
     assert "Static snapshot" in index
@@ -109,11 +114,15 @@ def test_generate_reader_writes_plain_astro_reader_from_fixture_records(tmp_path
     assert "Explicit operator title" in index
     assert "Heading-derived title" in index
     assert "Fallback title comes from the first words" in index
-    assert f"/thoughts/{EXPLICIT_TITLE_ID}/" in index
-    assert f"/thoughts/{HEADING_TITLE_ID}/" in index
-    assert f"/thoughts/{FALLBACK_TITLE_ID}/" in index
+    assert f"/id/{EXPLICIT_TITLE_ID}/" in index
+    assert f"/id/{HEADING_TITLE_ID}/" in index
+    assert f"/id/{FALLBACK_TITLE_ID}/" in index
+    assert f"/thoughts/{EXPLICIT_TITLE_ID}/" not in index
+    assert f'"/{EXPLICIT_TITLE_ID}/"' not in index
 
-    detail_page = output_dir / "src/pages/thoughts" / f"{EXPLICIT_TITLE_ID}.md"
+    assert not (output_dir / "src/pages/thoughts" / f"{EXPLICIT_TITLE_ID}.md").exists()
+
+    detail_page = output_dir / "src/pages/id" / f"{EXPLICIT_TITLE_ID}.md"
     detail_text = detail_page.read_text(encoding="utf-8")
     assert f'thoughtId: "{EXPLICIT_TITLE_ID}"' in detail_text
     assert 'inputScope: "mw/eng/demo"' in detail_text
@@ -203,4 +212,5 @@ def test_cli_rich_view_generate_command_builds_reader_from_fixture_records(tmp_p
     assert result.returncode == 0, result.stderr
     assert "Generated FAVA reader" in result.stdout
     assert (output_dir / "src/pages/index.astro").is_file()
-    assert (output_dir / "src/pages/thoughts" / f"{EXPLICIT_TITLE_ID}.md").is_file()
+    assert (output_dir / "src/pages/id" / f"{EXPLICIT_TITLE_ID}.md").is_file()
+    assert not (output_dir / "src/pages/thoughts" / f"{EXPLICIT_TITLE_ID}.md").exists()

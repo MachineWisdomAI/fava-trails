@@ -110,7 +110,7 @@ def _load_reader_thoughts(trails_dir: Path, scope: str) -> list[ReaderThought]:
                 agent_id=fm.agent_id,
                 confidence=fm.confidence,
                 tags=tuple(fm.metadata.tags),
-                route=f"/thoughts/{thought_id}/",
+                route=f"/id/{thought_id}/",
             )
         )
 
@@ -163,7 +163,8 @@ def _truncate_title(value: str, max_length: int = 80) -> str:
 
 def _write_reader(output_dir: Path, scope: str, generated_at: datetime, thoughts: list[ReaderThought]) -> None:
     generated_at_iso = generated_at.isoformat()
-    (output_dir / "src/pages/thoughts").mkdir(parents=True, exist_ok=True)
+
+    (output_dir / "src/pages/id").mkdir(parents=True, exist_ok=True)
     (output_dir / "src/data").mkdir(parents=True, exist_ok=True)
     (output_dir / "src/layouts").mkdir(parents=True, exist_ok=True)
 
@@ -483,7 +484,7 @@ def _write_thought_page(output_dir: Path, scope: str, generated_at: str, thought
         frontmatter.append("tags: []")
     frontmatter.append("---")
     page = "\n".join(frontmatter) + "\n" + thought.content.rstrip() + "\n"
-    (output_dir / "src/pages/thoughts" / f"{thought.thought_id}.md").write_text(page, encoding="utf-8")
+    (output_dir / "src/pages/id" / f"{thought.thought_id}.md").write_text(page, encoding="utf-8")
 
 
 def _yaml_string(value: str) -> str:
