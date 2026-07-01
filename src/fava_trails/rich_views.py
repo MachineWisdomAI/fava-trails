@@ -15,6 +15,7 @@ from .config import sanitize_scope_path
 from .models import ThoughtRecord
 
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", re.MULTILINE)
+_SAFE_THOUGHT_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _WHITESPACE_RE = re.compile(r"\s+")
 
 
@@ -86,6 +87,7 @@ def _load_reader_thoughts(trails_dir: Path, scope: str) -> list[ReaderThought]:
         raw_frontmatter = _read_raw_frontmatter(raw_text)
         record = ThoughtRecord.from_markdown(raw_text)
         thought_id = record.thought_id
+        _validate_reader_thought_id(thought_id, path)
         if thought_id in seen:
             raise ValueError(f"Duplicate thought_id {thought_id} in {path} and {seen[thought_id]}")
         seen[thought_id] = path
@@ -113,6 +115,11 @@ def _load_reader_thoughts(trails_dir: Path, scope: str) -> list[ReaderThought]:
         )
 
     return sorted(thoughts, key=lambda thought: thought.thought_id)
+
+
+def _validate_reader_thought_id(thought_id: str, source_path: Path) -> None:
+    if not _SAFE_THOUGHT_ID_RE.fullmatch(thought_id):
+        raise ValueError(f"Unsafe thought_id {thought_id!r} in {source_path}")
 
 
 def _read_raw_frontmatter(text: str) -> dict[str, Any]:

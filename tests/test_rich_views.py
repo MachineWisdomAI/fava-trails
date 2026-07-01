@@ -23,10 +23,11 @@ def _write_thought(
     thought_id: str,
     body: str,
     *,
+    filename: str | None = None,
     title: str | None = None,
     source_type: str = "observation",
 ) -> Path:
-    path = trails_dir / scope / "thoughts" / namespace / f"{thought_id}.md"
+    path = trails_dir / scope / "thoughts" / namespace / f"{filename or thought_id}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     title_line = f'title: "{title}"\n' if title else ""
     path.write_text(
@@ -134,6 +135,38 @@ def test_generate_reader_rejects_duplicate_thought_ids(tmp_path):
             output_dir=tmp_path / "reader",
             generated_at=datetime(2026, 7, 1, 12, 0, tzinfo=UTC),
         )
+
+
+def test_generate_reader_rejects_path_traversal_thought_id_without_writing_outside_output(tmp_path):
+    trails_dir = tmp_path / "data-repo" / "trails"
+    output_dir = tmp_path / "reader"
+    outside_dir = tmp_path / "tmp"
+    outside_dir.mkdir()
+    outside_path = outside_dir / "pwned.md"
+    scope = "mw/eng/demo"
+    unsafe_id = "../../../../tmp/pwned"
+    source_path = _write_thought(
+        trails_dir,
+        scope,
+        "decisions",
+        unsafe_id,
+        "# Poisoned",
+        filename="01KTEST000000000000000004",
+    )
+
+    with pytest.raises(ValueError) as exc:
+        generate_reader(
+            trails_dir=trails_dir,
+            scope=scope,
+            output_dir=output_dir,
+            generated_at=datetime(2026, 7, 1, 12, 0, tzinfo=UTC),
+        )
+
+    message = str(exc.value)
+    assert "Unsafe thought_id" in message
+    assert unsafe_id in message
+    assert str(source_path) in message
+    assert not outside_path.exists()
 
 
 def test_cli_rich_view_generate_command_builds_reader_from_fixture_records(tmp_path):
