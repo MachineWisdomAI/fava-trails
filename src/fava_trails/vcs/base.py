@@ -54,6 +54,10 @@ class RebaseResult:
 
     success: bool
     has_conflicts: bool = False
+    has_dirty_working_copy: bool = False
+    dirty_paths: list[str] = field(default_factory=list)
+    has_case_collisions: bool = False
+    case_collisions: list[list[str]] = field(default_factory=list)
     pre_rebase_op_id: str = ""
     conflict_details: list[VcsConflict] = field(default_factory=list)
     summary: str = ""
@@ -88,7 +92,12 @@ class VcsBackend(ABC):
         ...
 
     @abstractmethod
-    async def commit_files(self, message: str, paths: list[str]) -> VcsChange:
+    async def commit_files(
+        self,
+        message: str,
+        paths: list[str],
+        allowed_prefixes: list[str] | None = None,
+    ) -> VcsChange:
         """Commit specific files with a message. Asserts no cross-trail pollution."""
         ...
 

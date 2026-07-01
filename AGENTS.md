@@ -150,6 +150,8 @@ Discard current reasoning line. Abandons the current JJ change.
 ### `sync`
 
 Sync with shared truth. Fetches from remote and rebases. Aborts automatically on conflict.
+Also blocks (status `blocked`) before fetching if the data repo has a dirty working copy or
+tracked paths that collide by case — repair or commit the offending paths, then retry.
 
 ### `conflicts`
 

@@ -186,9 +186,11 @@ class TrailManager:
             save_trail_config(self.trail_name, self.config)
 
             # Initial commit with directory structure
+            commit_paths = [self.trail_path / ".fava-trails.yaml"]
+            commit_paths.extend(self.trail_path.rglob(".gitkeep"))
             await self.vcs.commit_files(
                 "Initialize trail with namespace directories",
-                [str(p) for p in self.trail_path.rglob(".gitkeep")],
+                [str(p) for p in commit_paths],
             )
 
             return result
@@ -643,7 +645,7 @@ class TrailManager:
 
             await self.vcs.commit_files(
                 f"Promote {thought_id[:8]} from drafts/ to {target_ns}/ [{record.frontmatter.source_type.value}]",
-                [str(target_path)],
+                [str(target_path), str(drafts_path)],
             )
 
         # after_propose hook — runs inline so feedback reaches the caller

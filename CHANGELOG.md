@@ -2,6 +2,13 @@
 
 All notable changes to FAVA Trails are documented here.
 
+## [0.5.7] — 2026-06-30
+
+### Fixed
+- **Sync guarded against dirty data**: `sync` now blocks (instead of silently proceeding) when the data repo has a dirty working copy or tracked paths that collide by case. `commit_files` fails fast on unexpected dirty paths and executable-bit churn on data files, and operation-created paths (e.g. config files, drafts being removed on promotion) are now correctly included in their commits.
+
+---
+
 ## [0.4.9] — 2026-02-27
 
 ### Fixed

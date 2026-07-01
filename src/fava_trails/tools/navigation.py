@@ -237,6 +237,24 @@ async def handle_rollback(trail, arguments: dict) -> dict[str, Any]:
 async def handle_sync(trail, arguments: dict) -> dict[str, Any]:
     """Sync with shared truth. Aborts on conflict."""
     result = await trail.sync()
+    if getattr(result, "has_case_collisions", False):
+        return {
+            "status": "blocked",
+            "message": (
+                f"Sync blocked: {result.summary} "
+                "Repair or remove the colliding tracked paths before retrying."
+            ),
+            "case_collisions": result.case_collisions,
+        }
+    if getattr(result, "has_dirty_working_copy", False):
+        return {
+            "status": "blocked",
+            "message": (
+                f"Sync blocked: dirty working copy. {result.summary} "
+                "The sync tool fetches/rebases; it does not commit existing local files."
+            ),
+            "dirty_paths": result.dirty_paths,
+        }
     if result.has_conflicts:
         return {
             "status": "conflict",
@@ -245,6 +263,11 @@ async def handle_sync(trail, arguments: dict) -> dict[str, Any]:
                 {"file": c.file_path, "description": c.description}
                 for c in result.conflict_details
             ],
+        }
+    if not result.success:
+        return {
+            "status": "error",
+            "message": f"Sync failed: {result.summary}",
         }
     return {
         "status": "ok",
