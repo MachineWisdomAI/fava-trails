@@ -21,6 +21,7 @@ import yaml
 
 from .config import get_data_repo_root, get_trails_dir, load_global_config, sanitize_scope_path, save_global_config
 from .models import HookEntry, ThoughtRecord
+from .rich_views import ReaderGenerationError, generate_reader
 
 # ─── JJ binary helper ─────────────────────────────────────────────────────────
 
@@ -142,6 +143,33 @@ def _write_project_yaml(project_dir: Path, scope: str) -> None:
             existing = {}
     existing["scope"] = scope
     yaml_path.write_text(yaml.dump(existing, default_flow_style=False, sort_keys=False))
+
+
+# ─── Rich Views ───────────────────────────────────────────────────────────────
+
+
+def cmd_generate_reader(args: argparse.Namespace) -> int:
+    """Generate a minimal static FAVA reader with plain Astro."""
+
+    try:
+        result = generate_reader(
+            source=Path(args.source),
+            scope=args.scope,
+            output_dir=Path(args.output),
+            build=args.build,
+        )
+    except (ReaderGenerationError, subprocess.CalledProcessError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    print(
+        f"Generated FAVA reader inputs for {result.thought_count} thoughts "
+        f"from scope {result.scope!r} at {result.generated_at}"
+    )
+    print(f"Astro project: {result.output_dir}")
+    if not args.build:
+        print(f"Build static HTML: cd {result.output_dir} && npm run build")
+    return 0
 
 
 # ─── Commands ─────────────────────────────────────────────────────────────────
@@ -1287,6 +1315,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="Include YAML frontmatter in output",
     )
     p_get.set_defaults(func=cmd_get)
+
+    # generate-reader
+    p_generate_reader = subparsers.add_parser(
+        "generate-reader",
+        help="Generate a minimal plain-Astro reader from FAVA source thought records",
+    )
+    p_generate_reader.add_argument(
+        "--source",
+        required=True,
+        help="FAVA data repo root, trails directory, or scope directory containing thoughts/",
+    )
+    p_generate_reader.add_argument(
+        "--scope",
+        required=True,
+        help="Input scope path to render, e.g. mwai/eng/fava-trails",
+    )
+    p_generate_reader.add_argument(
+        "--output",
+        default="rich_views",
+        help="Plain Astro project directory to populate (default: rich_views)",
+    )
+    p_generate_reader.add_argument(
+        "--build",
+        action="store_true",
+        help="Run npm run build in the Astro project after generating inputs",
+    )
+    p_generate_reader.set_defaults(func=cmd_generate_reader)
 
     # integrate
     p_integrate = subparsers.add_parser("integrate", help="Set up integrations with external tools")

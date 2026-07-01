@@ -1,0 +1,243 @@
+---
+import Layout from '../layouts/Layout.astro';
+import reader from '../data/fava-reader.json';
+
+const counts = reader.thoughts.reduce((acc, thought) => {
+	acc.total += 1;
+	acc.namespaces[thought.namespace] = (acc.namespaces[thought.namespace] ?? 0) + 1;
+	acc.statuses[thought.validation_status] = (acc.statuses[thought.validation_status] ?? 0) + 1;
+	acc.sourceTypes[thought.source_type] = (acc.sourceTypes[thought.source_type] ?? 0) + 1;
+	return acc;
+}, { total: 0, namespaces: {}, statuses: {}, sourceTypes: {} });
+---
+
+<Layout>
+	<main class="reader-shell" data-input-scope={reader.metadata.input_scope} data-generated-at={reader.metadata.generated_at}>
+		<header class="topline">
+			<div>
+				<p class="eyebrow">FAVA Reader</p>
+				<h1>{reader.metadata.input_scope}</h1>
+			</div>
+			<div class="freshness">
+				<p>Generated</p>
+				<strong>{reader.metadata.generated_at}</strong>
+				<span>{reader.metadata.freshness_notice}</span>
+			</div>
+		</header>
+
+		<section class="summary" aria-label="Reader summary">
+			<div>
+				<span>Total thoughts</span>
+				<strong>{counts.total}</strong>
+			</div>
+			<div>
+				<span>Namespaces</span>
+				<strong>{Object.keys(counts.namespaces).length}</strong>
+			</div>
+			<div>
+				<span>Validation states</span>
+				<strong>{Object.keys(counts.statuses).length}</strong>
+			</div>
+			<div>
+				<span>Source types</span>
+				<strong>{Object.keys(counts.sourceTypes).length}</strong>
+			</div>
+		</section>
+
+		<section class="thoughts" aria-label="Thought records">
+			<div class="section-heading">
+				<h2>Thoughts</h2>
+				<p>ULID routes are canonical. Titles are display metadata derived during generation.</p>
+			</div>
+			<ol>
+				{reader.thoughts.map((thought) => (
+					<li class:list={["thought-row", thought.validation_status, thought.superseded_by ? "superseded" : ""]}>
+						<a href={thought.route}>
+							<span class="title">{thought.title}</span>
+							<span class="meta">
+								<code>{thought.thought_id}</code>
+								<span>{thought.scope}</span>
+								<span>{thought.namespace}</span>
+								<span>{thought.source_type}</span>
+								<span>{thought.validation_status}</span>
+								<span>{thought.agent_id}</span>
+								<span>{Math.round(thought.confidence * 100)}%</span>
+							</span>
+							<span class="excerpt">{thought.excerpt}</span>
+						</a>
+					</li>
+				))}
+			</ol>
+		</section>
+	</main>
+</Layout>
+
+<style>
+	.reader-shell {
+		max-width: 1180px;
+		margin: 0 auto;
+		padding: 24px;
+	}
+
+	.topline {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(260px, 420px);
+		gap: 20px;
+		align-items: start;
+		margin-bottom: 18px;
+	}
+
+	.eyebrow,
+	.freshness p {
+		margin: 0 0 6px;
+		color: #667069;
+		font-size: 12px;
+		font-weight: 700;
+		text-transform: uppercase;
+	}
+
+	h1 {
+		margin: 0;
+		font-size: 30px;
+		line-height: 1.1;
+		letter-spacing: 0;
+	}
+
+	.freshness {
+		border: 1px solid #ccd4ce;
+		border-left: 4px solid #99772a;
+		border-radius: 6px;
+		padding: 12px;
+		background: #fffef8;
+	}
+
+	.freshness strong,
+	.freshness span {
+		display: block;
+		font-size: 13px;
+		line-height: 1.4;
+	}
+
+	.freshness span {
+		margin-top: 6px;
+		color: #565f59;
+	}
+
+	.summary {
+		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: 10px;
+		margin-bottom: 24px;
+	}
+
+	.summary div {
+		border: 1px solid #d9dfdb;
+		border-radius: 6px;
+		padding: 12px;
+		background: #ffffff;
+	}
+
+	.summary span,
+	.meta,
+	.excerpt {
+		color: #59625c;
+		font-size: 13px;
+	}
+
+	.summary strong {
+		display: block;
+		margin-top: 4px;
+		font-size: 24px;
+	}
+
+	.section-heading {
+		display: flex;
+		gap: 16px;
+		align-items: baseline;
+		justify-content: space-between;
+		margin-bottom: 10px;
+	}
+
+	h2 {
+		margin: 0;
+		font-size: 18px;
+	}
+
+	.section-heading p {
+		margin: 0;
+		color: #667069;
+		font-size: 13px;
+	}
+
+	ol {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		border-top: 1px solid #d9dfdb;
+	}
+
+	.thought-row a {
+		display: grid;
+		grid-template-columns: minmax(220px, 0.8fr) minmax(340px, 1fr);
+		gap: 6px 18px;
+		padding: 12px 8px;
+		border-bottom: 1px solid #d9dfdb;
+		text-decoration: none;
+		color: inherit;
+	}
+
+	.thought-row a:hover {
+		background: #eef4ef;
+	}
+
+	.title {
+		font-weight: 700;
+	}
+
+	.meta {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	.meta span,
+	.meta code {
+		border: 1px solid #d8ded9;
+		border-radius: 5px;
+		padding: 2px 5px;
+		background: #ffffff;
+		font-size: 12px;
+	}
+
+	.excerpt {
+		grid-column: 1 / -1;
+	}
+
+	.thought-row.draft {
+		box-shadow: inset 3px 0 0 #8d6b22;
+	}
+
+	.thought-row.approved {
+		box-shadow: inset 3px 0 0 #2f6d50;
+	}
+
+	.thought-row.superseded {
+		opacity: 0.72;
+	}
+
+	@media (max-width: 760px) {
+		.reader-shell {
+			padding: 16px;
+		}
+
+		.topline,
+		.summary,
+		.thought-row a {
+			grid-template-columns: 1fr;
+		}
+
+		.section-heading {
+			display: block;
+		}
+	}
+</style>

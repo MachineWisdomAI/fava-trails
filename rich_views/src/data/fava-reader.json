@@ -1,0 +1,11 @@
+{
+  "metadata": {
+    "input_scope": "not-generated",
+    "generated_at": "not-generated",
+    "source_root": "not-generated",
+    "thought_count": 0,
+    "static_snapshot": true,
+    "freshness_notice": "Run fava-trails generate-reader to create a manually generated static snapshot."
+  },
+  "thoughts": []
+}

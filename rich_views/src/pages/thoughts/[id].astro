@@ -1,0 +1,160 @@
+---
+import { getCollection, render } from 'astro:content';
+import Layout from '../../layouts/Layout.astro';
+import reader from '../../data/fava-reader.json';
+
+export async function getStaticPaths() {
+	return reader.thoughts.map((thought) => ({
+		params: { id: thought.thought_id },
+		props: { thought },
+	}));
+}
+
+const { thought } = Astro.props;
+const entries = await getCollection('thoughts');
+const canonicalId = thought.thought_id;
+const normalizedId = canonicalId.toLowerCase();
+const entry = entries.find((item) => {
+	const entryId = item.id.toLowerCase();
+	const entrySlug = item.slug?.toLowerCase();
+	return item.data.thought_id === canonicalId || entryId === normalizedId || entryId === `${normalizedId}.md` || entrySlug === normalizedId;
+});
+if (!entry) {
+	throw new Error(`Missing generated Markdown entry for ${canonicalId}. Available: ${entries.map((entry) => entry.id).join(', ')}`);
+}
+const { Content } = await render(entry);
+---
+
+<Layout>
+	<main class="thought-shell" data-thought-id={thought.thought_id} data-source-path={thought.source_path}>
+		<nav><a href="/">Scope dashboard</a></nav>
+		<header>
+			<p class="eyebrow">{thought.scope} / {thought.namespace}</p>
+			<h1>{thought.title}</h1>
+			<p class="identity">Canonical ID: <code>{thought.thought_id}</code></p>
+		</header>
+
+		<section class="metadata" aria-label="FAVA metadata">
+			<dl>
+				<div><dt>Source</dt><dd>{thought.source_path}</dd></div>
+				<div><dt>Generated</dt><dd>{reader.metadata.generated_at}</dd></div>
+				<div><dt>Static view</dt><dd>{reader.metadata.freshness_notice}</dd></div>
+				<div><dt>Source type</dt><dd>{thought.source_type}</dd></div>
+				<div><dt>Status</dt><dd>{thought.validation_status}</dd></div>
+				<div><dt>Agent</dt><dd>{thought.agent_id}</dd></div>
+				<div><dt>Confidence</dt><dd>{Math.round(thought.confidence * 100)}%</dd></div>
+				<div><dt>Parent</dt><dd>{thought.parent_id ?? "none"}</dd></div>
+				<div><dt>Superseded by</dt><dd>{thought.superseded_by ?? "none"}</dd></div>
+			</dl>
+			{thought.tags.length > 0 && (
+				<div class="tags">
+					{thought.tags.map((tag) => <span>{tag}</span>)}
+				</div>
+			)}
+		</section>
+
+		<section class="body" aria-label="Thought body">
+			<Content />
+		</section>
+	</main>
+</Layout>
+
+<style>
+	.thought-shell {
+		max-width: 960px;
+		margin: 0 auto;
+		padding: 24px;
+	}
+
+	nav {
+		margin-bottom: 18px;
+	}
+
+	.eyebrow {
+		margin: 0 0 6px;
+		color: #667069;
+		font-size: 12px;
+		font-weight: 700;
+		text-transform: uppercase;
+	}
+
+	h1 {
+		margin: 0;
+		font-size: 30px;
+		line-height: 1.15;
+		letter-spacing: 0;
+	}
+
+	.identity {
+		margin: 10px 0 20px;
+		color: #59625c;
+	}
+
+	code {
+		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	}
+
+	.metadata {
+		border: 1px solid #d9dfdb;
+		border-radius: 6px;
+		padding: 14px;
+		background: #ffffff;
+		margin-bottom: 24px;
+	}
+
+	dl {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 10px 16px;
+		margin: 0;
+	}
+
+	dt {
+		color: #667069;
+		font-size: 12px;
+		font-weight: 700;
+		text-transform: uppercase;
+	}
+
+	dd {
+		margin: 2px 0 0;
+		overflow-wrap: anywhere;
+	}
+
+	.tags {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		margin-top: 14px;
+	}
+
+	.tags span {
+		border: 1px solid #d8ded9;
+		border-radius: 5px;
+		padding: 2px 6px;
+		background: #f7f8f5;
+		font-size: 12px;
+	}
+
+	.body {
+		border-top: 3px solid #2f6d50;
+		padding-top: 18px;
+		line-height: 1.6;
+	}
+
+	.body :global(h1),
+	.body :global(h2),
+	.body :global(h3) {
+		line-height: 1.2;
+	}
+
+	@media (max-width: 720px) {
+		.thought-shell {
+			padding: 16px;
+		}
+
+		dl {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>

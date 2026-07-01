@@ -15,6 +15,11 @@ venv/
 .coverage
 htmlcov/
 
+# Node / Astro
+node_modules/
+rich_views/.astro/
+rich_views/dist/
+
 # IDE
 .vscode/
 .idea/
