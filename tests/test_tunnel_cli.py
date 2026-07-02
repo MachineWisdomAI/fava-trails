@@ -79,7 +79,7 @@ def test_load_gateway_config_builds_loopback_mcp_url(tmp_path, monkeypatch):
 
     assert config.data_repo == data_repo.resolve()
     assert config.trails_dir == data_repo / "trails"
-    assert config.mcp_url == "http://127.0.0.1:8765/mcp"
+    assert config.mcp_url == "http://127.0.0.1:8765/mcp/"
     assert config.profile == "fava-trails"
 
 
@@ -194,7 +194,7 @@ def test_start_writes_state_and_pid(tmp_path, monkeypatch, capsys):
     state_dirs = list((tmp_path / "state" / "fava-trails" / "tunnel").iterdir())
     assert len(state_dirs) == 1
     assert (state_dirs[0] / "supervisor.pid").read_text() == "4321\n"
-    assert "http://127.0.0.1:8765/mcp" in (state_dirs[0] / "metadata.json").read_text()
+    assert "http://127.0.0.1:8765/mcp/" in (state_dirs[0] / "metadata.json").read_text()
 
 
 def test_start_passes_tunnel_doctor_to_supervisor_when_requested(tmp_path, monkeypatch):

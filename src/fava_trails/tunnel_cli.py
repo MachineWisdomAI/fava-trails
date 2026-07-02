@@ -26,7 +26,7 @@ from .config import ConfigStore
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 DEFAULT_PROFILE = "fava-trails"
-DEFAULT_MCP_PATH = "/mcp"
+DEFAULT_MCP_PATH = "/mcp/"
 
 
 @dataclass(frozen=True)
