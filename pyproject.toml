@@ -21,6 +21,8 @@ dependencies = [
     "python-ulid>=3.0.0",
     "any-llm-sdk>=1.10.0",
     "httpx>=0.27.0",
+    "starlette>=0.52.0",
+    "uvicorn>=0.41.0",
 ]
 
 [project.optional-dependencies]
@@ -43,6 +45,7 @@ Issues = "https://github.com/MachineWisdomAI/fava-trails/issues"
 [project.scripts]
 fava-trails-server = "fava_trails.server:run"
 fava-trails = "fava_trails.cli:main"
+fava-trails-tunnel = "fava_trails.tunnel_cli:main"
 
 [build-system]
 requires = ["hatchling"]

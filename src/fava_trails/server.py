@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import functools
 import importlib.resources
-import json
 import logging
 import logging.handlers
 import os
@@ -20,7 +19,7 @@ from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import TextContent, Tool
+from mcp.types import TextContent, Tool, ToolAnnotations
 
 from .config import (
     ConfigStore,
@@ -269,6 +268,130 @@ def _build_trail_name_desc() -> str:
     )
 
 TRAIL_NAME_DESC = _build_trail_name_desc()
+
+STRUCTURED_RESULT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "status": {"type": "string"},
+        "message": {"type": "string"},
+        "warning": {"type": "string"},
+        "hook_feedback": {"type": "object", "additionalProperties": True},
+        "push_warning": {"type": "string"},
+    },
+    "required": ["status"],
+    "additionalProperties": True,
+}
+
+
+def _structured_or_common_error(success_schema: dict[str, Any]) -> dict[str, Any]:
+    """Allow a precise success shape while preserving structured error responses."""
+    return {
+        "anyOf": [
+            success_schema,
+            STRUCTURED_RESULT_SCHEMA,
+        ]
+    }
+
+THOUGHT_SUMMARY_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "thought_id": {"type": "string"},
+        "source_type": {"type": "string"},
+        "validation_status": {"type": "string"},
+        "confidence": {"type": "number"},
+        "agent_id": {"type": "string"},
+        "created_at": {"type": ["string", "null"]},
+        "content_preview": {"type": "string"},
+        "content": {"type": "string"},
+        "source_trail": {"type": "string"},
+        "metadata": {"type": "object", "additionalProperties": True},
+        "relationships": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
+    },
+    "additionalProperties": True,
+}
+
+LIST_SCOPES_OUTPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "status": {"type": "string"},
+        "count": {"type": "integer"},
+        "scopes": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "thought_count": {"type": "integer"},
+                },
+                "required": ["path"],
+                "additionalProperties": True,
+            },
+        },
+    },
+    "required": ["status", "count", "scopes"],
+    "additionalProperties": True,
+}
+
+RECALL_OUTPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "status": {"type": "string"},
+        "count": {"type": "integer"},
+        "thoughts": {"type": "array", "items": THOUGHT_SUMMARY_SCHEMA},
+        "filters": {"type": "object", "additionalProperties": True},
+    },
+    "required": ["status", "count", "thoughts", "filters"],
+    "additionalProperties": True,
+}
+
+USAGE_GUIDE_OUTPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "status": {"type": "string"},
+        "content": {"type": "string"},
+        "message": {"type": "string"},
+    },
+    "required": ["status"],
+    "additionalProperties": True,
+}
+
+TOOL_OUTPUT_SCHEMAS: dict[str, dict[str, Any]] = {
+    "list_scopes": _structured_or_common_error(LIST_SCOPES_OUTPUT_SCHEMA),
+    "list_trails": _structured_or_common_error(LIST_SCOPES_OUTPUT_SCHEMA),
+    "recall": _structured_or_common_error(RECALL_OUTPUT_SCHEMA),
+    "get_usage_guide": _structured_or_common_error(USAGE_GUIDE_OUTPUT_SCHEMA),
+}
+
+READ_ONLY_TOOLS = {
+    "conflicts",
+    "diff",
+    "get_thought",
+    "get_usage_guide",
+    "list_scopes",
+    "list_trails",
+    "recall",
+}
+
+DESTRUCTIVE_TOOLS = {
+    "change_scope",
+    "forget",
+    "rollback",
+    "supersede",
+    "update_thought",
+}
+
+OPEN_WORLD_TOOLS = {
+    "change_scope",
+    "forget",
+    "learn_preference",
+    "propose_truth",
+    "rollback",
+    "save_thought",
+    "start_thought",
+    "supersede",
+    "sync",
+    "update_thought",
+}
 
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
@@ -538,9 +661,94 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 ]
 
 
+def _decorate_tool_definitions() -> None:
+    """Attach output schemas and annotations to static tool definitions."""
+    for td in TOOL_DEFINITIONS:
+        name = td["name"]
+        td["outputSchema"] = TOOL_OUTPUT_SCHEMAS.get(name, STRUCTURED_RESULT_SCHEMA)
+        annotations: dict[str, Any] = {
+            "readOnlyHint": name in READ_ONLY_TOOLS,
+            "destructiveHint": name in DESTRUCTIVE_TOOLS,
+            "openWorldHint": name in OPEN_WORLD_TOOLS,
+        }
+        if name in READ_ONLY_TOOLS:
+            annotations["idempotentHint"] = True
+        td["annotations"] = annotations
+
+
+_decorate_tool_definitions()
+
+
+def _summarize_tool_arguments(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Return log-safe tool arguments without thought bodies or secrets."""
+    summary: dict[str, Any] = {}
+    for key in (
+        "trail_name",
+        "target_trail_name",
+        "thought_id",
+        "query",
+        "namespace",
+        "prefix",
+        "limit",
+        "include_stats",
+        "include_superseded",
+        "include_relationships",
+        "op_id",
+        "revision",
+        "source_type",
+        "preference_type",
+    ):
+        if key in arguments:
+            summary[key] = arguments[key]
+
+    if "trail_names" in arguments:
+        trail_names = arguments.get("trail_names") or []
+        summary["trail_names_count"] = len(trail_names)
+        summary["trail_names"] = trail_names[:5]
+    if "scope" in arguments:
+        scope = arguments.get("scope") or {}
+        summary["scope_keys"] = sorted(scope.keys()) if isinstance(scope, dict) else type(scope).__name__
+    if "metadata" in arguments:
+        metadata = arguments.get("metadata") or {}
+        summary["metadata_keys"] = (
+            sorted(metadata.keys()) if isinstance(metadata, dict) else type(metadata).__name__
+        )
+    if "relationships" in arguments:
+        relationships = arguments.get("relationships") or []
+        summary["relationships_count"] = len(relationships)
+    for text_key in ("content", "reason", "description"):
+        if text_key in arguments:
+            value = arguments.get(text_key)
+            summary[f"{text_key}_length"] = len(value) if isinstance(value, str) else None
+    return summary
+
+
+def _summarize_tool_result(result: Any) -> dict[str, Any]:
+    """Return log-safe result facts for call telemetry."""
+    if not isinstance(result, dict):
+        return {"result_type": type(result).__name__}
+    summary: dict[str, Any] = {"status": result.get("status")}
+    for key in ("count", "has_conflicts"):
+        if key in result:
+            summary[key] = result[key]
+    if "thoughts" in result and isinstance(result["thoughts"], list):
+        summary["thoughts_count"] = len(result["thoughts"])
+    if "scopes" in result and isinstance(result["scopes"], list):
+        summary["scopes_count"] = len(result["scopes"])
+    if "conflicts" in result and isinstance(result["conflicts"], list):
+        summary["conflicts_count"] = len(result["conflicts"])
+    if "thought" in result and isinstance(result["thought"], dict):
+        summary["thought_id"] = result["thought"].get("thought_id")
+    if "new_thought" in result and isinstance(result["new_thought"], dict):
+        summary["new_thought_id"] = result["new_thought"].get("thought_id")
+    if "message" in result:
+        summary["message_length"] = len(str(result["message"]))
+    return summary
+
+
 def with_tool_timeout(
-    fn: Callable[..., Coroutine[Any, Any, list[TextContent]]],
-) -> Callable[..., Coroutine[Any, Any, list[TextContent]]]:
+    fn: Callable[..., Coroutine[Any, Any, Any]],
+) -> Callable[..., Coroutine[Any, Any, Any]]:
     """Decorator: wraps an MCP tool handler with a configurable asyncio timeout.
 
     Reads ``tool_timeout_secs`` from GlobalConfig at call time (not decoration time)
@@ -548,7 +756,7 @@ def with_tool_timeout(
     Set ``tool_timeout_secs: 0`` in config.yaml to disable.
     """
     @functools.wraps(fn)
-    async def wrapper(name: str, arguments: dict[str, Any]) -> list[TextContent]:
+    async def wrapper(name: str, arguments: dict[str, Any]) -> Any:
         timeout = ConfigStore.get().global_config.tool_timeout_secs
         if timeout <= 0:
             return await fn(name, arguments)
@@ -565,7 +773,7 @@ def with_tool_timeout(
                     "For propose_truth, the LLM provider may be unresponsive — retry."
                 ),
             }
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return result
     return wrapper
 
 
@@ -577,6 +785,8 @@ async def handle_list_tools() -> list[Tool]:
             name=td["name"],
             description=td["description"],
             inputSchema=td["inputSchema"],
+            outputSchema=td["outputSchema"],
+            annotations=ToolAnnotations(**td["annotations"]),
         )
         for td in TOOL_DEFINITIONS
     ]
@@ -584,7 +794,7 @@ async def handle_list_tools() -> list[Tool]:
 
 @server.call_tool()
 @with_tool_timeout
-async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
+async def handle_call_tool(name: str, arguments: dict[str, Any]) -> Any:
     """Route tool calls to handlers. Responses are structured JSON (except get_usage_guide which returns markdown)."""
     from .tools.navigation import (
         handle_conflicts,
@@ -606,18 +816,24 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
         handle_update_thought,
     )
 
+    logger.info("Tool call started: %s %s", name, _summarize_tool_arguments(arguments))
+    result: Any
     try:
         # Tools that don't need a trail
         if name in ("list_scopes", "list_trails"):
             result = await handle_list_scopes(arguments)
-            return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
+            logger.info("Tool call completed: %s %s", name, _summarize_tool_result(result))
+            return result
 
         if name == "get_usage_guide":
             content = _load_usage_guide()
             if content.startswith("Error:"):
                 result = {"status": "error", "message": content}
-                return [TextContent(type="text", text=json.dumps(result, indent=2))]
-            return [TextContent(type="text", text=content)]
+                logger.info("Tool call completed: %s %s", name, _summarize_tool_result(result))
+                return result
+            result = {"status": "ok", "content": content}
+            logger.info("Tool call completed: %s %s", name, _summarize_tool_result(result))
+            return ([TextContent(type="text", text=content)], result)
 
         # All other tools need a trail
         trail = await _get_trail(arguments.get("trail_name"))
@@ -660,7 +876,12 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
                             for c in active_conflicts
                         ],
                     }
-                    return [TextContent(type="text", text=json.dumps(conflict_result, indent=2, default=str))]
+                    logger.info(
+                        "Tool call completed: %s %s",
+                        name,
+                        _summarize_tool_result(conflict_result),
+                    )
+                    return conflict_result
 
         # Route to handler
         if name == "recall":
@@ -731,7 +952,8 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
         logger.exception(f"Tool {name} failed")
         result = {"status": "error", "message": f"Tool '{name}' failed: {str(e)}"}
 
-    return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
+    logger.info("Tool call completed: %s %s", name, _summarize_tool_result(result))
+    return result
 
 
 def run():
