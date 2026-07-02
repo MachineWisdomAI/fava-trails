@@ -49,6 +49,12 @@ class GatewayConfig:
         return f"http://{self.host}:{self.port}/healthz"
 
 
+@dataclass(frozen=True)
+class GatewayIdentity:
+    data_repo: Path
+    profile: str
+
+
 def _state_home() -> Path:
     return Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state"))
 
@@ -115,10 +121,19 @@ def _resolve_data_repo(args: argparse.Namespace) -> Path:
     return Path(value).expanduser().resolve()
 
 
-def _load_gateway_config(args: argparse.Namespace, *, require_tunnel_client: bool = True) -> GatewayConfig:
+def _resolve_gateway_identity(args: argparse.Namespace) -> GatewayIdentity:
     data_repo = _resolve_data_repo(args)
     if not data_repo.is_dir():
         raise ValueError(f"data repo not found: {data_repo}")
+    return GatewayIdentity(
+        data_repo=data_repo,
+        profile=getattr(args, "profile", DEFAULT_PROFILE),
+    )
+
+
+def _load_gateway_config(args: argparse.Namespace, *, require_tunnel_client: bool = True) -> GatewayConfig:
+    identity = _resolve_gateway_identity(args)
+    data_repo = identity.data_repo
 
     config_path = data_repo / "config.yaml"
     if not config_path.is_file():
@@ -147,7 +162,7 @@ def _load_gateway_config(args: argparse.Namespace, *, require_tunnel_client: boo
     host = getattr(args, "host", DEFAULT_HOST)
     port = getattr(args, "port", DEFAULT_PORT)
     mcp_path = getattr(args, "mcp_path", DEFAULT_MCP_PATH)
-    profile = getattr(args, "profile", DEFAULT_PROFILE)
+    profile = identity.profile
     tunnel_client_arg = getattr(args, "tunnel_client", None) or "tunnel-client"
     tunnel_client = shutil.which(tunnel_client_arg) or (
         str(Path(tunnel_client_arg).expanduser()) if Path(tunnel_client_arg).expanduser().is_file() else ""
@@ -263,7 +278,48 @@ def _terminate_process(process: subprocess.Popen, *, timeout: float = 5.0) -> No
             process.wait(timeout=timeout)
 
 
-def _write_metadata(state_dir: Path, config: GatewayConfig, *, pid: int) -> None:
+def _terminate_pid_group(pid: int, *, timeout: float = 5.0) -> None:
+    if not _is_pid_running(pid):
+        return
+    if os.name != "nt":
+        try:
+            os.killpg(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+    else:
+        os.kill(pid, signal.SIGTERM)
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not _is_pid_running(pid):
+            return
+        time.sleep(0.1)
+
+    if os.name != "nt":
+        try:
+            os.killpg(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            return
+    else:
+        os.kill(pid, signal.SIGTERM)
+
+
+def _read_json_file(path: Path) -> dict:
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _write_metadata(
+    state_dir: Path,
+    config: GatewayConfig,
+    *,
+    pid: int,
+    http_pid: int | None = None,
+    tunnel_pid: int | None = None,
+) -> None:
     state_dir.mkdir(parents=True, exist_ok=True)
     payload = {
         "pid": pid,
@@ -274,12 +330,17 @@ def _write_metadata(state_dir: Path, config: GatewayConfig, *, pid: int) -> None
         "profile": config.profile,
         "log_file": str(_log_file(state_dir)),
     }
+    if http_pid is not None:
+        payload["http_pid"] = http_pid
+    if tunnel_pid is not None:
+        payload["tunnel_pid"] = tunnel_pid
     _metadata_file(state_dir).write_text(json.dumps(payload, indent=2) + "\n")
 
 
-def _write_ready(state_dir: Path, config: GatewayConfig, *, tunnel_pid: int) -> None:
+def _write_ready(state_dir: Path, config: GatewayConfig, *, http_pid: int, tunnel_pid: int) -> None:
     payload = {
         "status": "ready",
+        "http_pid": http_pid,
         "tunnel_pid": tunnel_pid,
         "mcp_url": config.mcp_url,
         "profile": config.profile,
@@ -302,7 +363,15 @@ def _print_startup(config: GatewayConfig, *, state_dir: Path | None = None) -> N
 def cmd_run(args: argparse.Namespace) -> int:
     http_process: subprocess.Popen | None = None
     tunnel_process: subprocess.Popen | None = None
+    original_sigint = signal.getsignal(signal.SIGINT)
+    original_sigterm = signal.getsignal(signal.SIGTERM)
+
+    def handle_shutdown(signum, frame):  # noqa: ARG001
+        raise KeyboardInterrupt
+
     try:
+        signal.signal(signal.SIGINT, handle_shutdown)
+        signal.signal(signal.SIGTERM, handle_shutdown)
         config = _load_gateway_config(args)
         _check_port_available(config.host, config.port)
         state_dir = Path(args.state_dir).expanduser().resolve() if getattr(args, "state_dir", None) else None
@@ -316,6 +385,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         _print_startup(config, state_dir=state_dir)
 
         http_process = _start_http_runtime(config)
+        if state_dir:
+            _write_metadata(state_dir, config, pid=os.getpid(), http_pid=http_process.pid)
         _wait_for_health(config.health_url, http_process, timeout=args.ready_timeout)
         print("  Private MCP runtime: ready")
 
@@ -325,7 +396,14 @@ def cmd_run(args: argparse.Namespace) -> int:
 
         tunnel_process = _start_tunnel_client(config)
         if state_dir:
-            _write_ready(state_dir, config, tunnel_pid=tunnel_process.pid)
+            _write_metadata(
+                state_dir,
+                config,
+                pid=os.getpid(),
+                http_pid=http_process.pid,
+                tunnel_pid=tunnel_process.pid,
+            )
+            _write_ready(state_dir, config, http_pid=http_process.pid, tunnel_pid=tunnel_process.pid)
         print(f"  tunnel-client: running (pid {tunnel_process.pid})")
         return tunnel_process.wait()
     except KeyboardInterrupt:
@@ -346,6 +424,12 @@ def cmd_run(args: argparse.Namespace) -> int:
                 _pid_file(state_dir).unlink()
             except FileNotFoundError:
                 pass
+            try:
+                _ready_file(state_dir).unlink()
+            except FileNotFoundError:
+                pass
+        signal.signal(signal.SIGINT, original_sigint)
+        signal.signal(signal.SIGTERM, original_sigterm)
 
 
 def cmd_start(args: argparse.Namespace) -> int:
@@ -418,8 +502,8 @@ def cmd_start(args: argparse.Namespace) -> int:
 
 def cmd_status(args: argparse.Namespace) -> int:
     try:
-        config = _load_gateway_config(args, require_tunnel_client=False)
-        state_dir = _state_dir(config.data_repo, config.profile)
+        identity = _resolve_gateway_identity(args)
+        state_dir = _state_dir(identity.data_repo, identity.profile)
         pid = _read_pid(_pid_file(state_dir))
         if pid and _is_pid_running(pid):
             print(f"Gateway running (pid {pid})")
@@ -436,29 +520,42 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 def cmd_stop(args: argparse.Namespace) -> int:
     try:
-        config = _load_gateway_config(args, require_tunnel_client=False)
-        state_dir = _state_dir(config.data_repo, config.profile)
+        identity = _resolve_gateway_identity(args)
+        state_dir = _state_dir(identity.data_repo, identity.profile)
         pid_path = _pid_file(state_dir)
         pid = _read_pid(pid_path)
         if not pid or not _is_pid_running(pid):
             print("Gateway not running")
             return 0
-        if os.name != "nt":
-            os.killpg(pid, signal.SIGTERM)
-        else:
-            os.kill(pid, signal.SIGTERM)
+        metadata = _read_json_file(_metadata_file(state_dir))
+        ready = _read_json_file(_ready_file(state_dir))
+        child_pids = [
+            value
+            for value in (
+                metadata.get("tunnel_pid"),
+                metadata.get("http_pid"),
+                ready.get("tunnel_pid"),
+                ready.get("http_pid"),
+            )
+            if isinstance(value, int) and value > 0
+        ]
+        _terminate_pid_group(pid, timeout=args.timeout)
         deadline = time.monotonic() + args.timeout
         while time.monotonic() < deadline:
             if not _is_pid_running(pid):
                 break
             time.sleep(0.1)
+        for child_pid in dict.fromkeys(child_pids):
+            if child_pid != pid:
+                _terminate_pid_group(child_pid, timeout=args.timeout)
         if _is_pid_running(pid):
-            if os.name != "nt":
-                os.killpg(pid, signal.SIGKILL)
-            else:
-                os.kill(pid, signal.SIGTERM)
+            _terminate_pid_group(pid, timeout=0)
         try:
             pid_path.unlink()
+        except FileNotFoundError:
+            pass
+        try:
+            _ready_file(state_dir).unlink()
         except FileNotFoundError:
             pass
         print(f"Stopped gateway pid {pid}")

@@ -21,6 +21,7 @@ from fava_trails.tunnel_cli import (
     cmd_run,
     cmd_start,
     cmd_status,
+    cmd_stop,
 )
 
 
@@ -155,14 +156,81 @@ def test_start_writes_state_and_pid(tmp_path, monkeypatch, capsys):
 
 def test_status_reports_not_running_for_missing_pid(tmp_path, monkeypatch, capsys):
     data_repo = _make_data_repo(tmp_path)
-    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
 
-    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+    with patch("fava_trails.tunnel_cli._load_gateway_config", side_effect=AssertionError):
         rc = cmd_status(_args(data_repo=str(data_repo)))
 
     assert rc == 1
     assert "not running" in capsys.readouterr().out
+
+
+def test_stop_does_not_require_startup_only_environment(tmp_path, monkeypatch, capsys):
+    data_repo = _make_data_repo(tmp_path)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    state_dir = tunnel_cli._state_dir(data_repo.resolve(), DEFAULT_PROFILE)
+    state_dir.mkdir(parents=True)
+    tunnel_cli._pid_file(state_dir).write_text("4321\n")
+
+    with patch("fava_trails.tunnel_cli._load_gateway_config", side_effect=AssertionError):
+        with patch("fava_trails.tunnel_cli._is_pid_running", side_effect=[True, False, False]):
+            with patch("fava_trails.tunnel_cli._terminate_pid_group") as terminate_pid_group:
+                rc = cmd_stop(_args(data_repo=str(data_repo), timeout=0.01))
+
+    assert rc == 0
+    terminate_pid_group.assert_called_once_with(4321, timeout=0.01)
+    assert "Stopped gateway pid 4321" in capsys.readouterr().out
+
+
+def test_stop_terminates_recorded_child_process_groups(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(tmp_path)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    state_dir = tunnel_cli._state_dir(data_repo.resolve(), DEFAULT_PROFILE)
+    state_dir.mkdir(parents=True)
+    tunnel_cli._pid_file(state_dir).write_text("4321\n")
+    tunnel_cli._metadata_file(state_dir).write_text('{"pid":4321,"http_pid":111,"tunnel_pid":222}\n')
+    tunnel_cli._ready_file(state_dir).write_text('{"status":"ready","http_pid":111,"tunnel_pid":222}\n')
+
+    with patch("fava_trails.tunnel_cli._is_pid_running", side_effect=[True, False, False]):
+        with patch("fava_trails.tunnel_cli._terminate_pid_group") as terminate_pid_group:
+            rc = cmd_stop(_args(data_repo=str(data_repo), timeout=0.01))
+
+    assert rc == 0
+    assert [call.args[0] for call in terminate_pid_group.call_args_list] == [4321, 222, 111]
+    assert not tunnel_cli._ready_file(state_dir).exists()
+
+
+def test_run_cleans_children_when_interrupted(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    args = _args(data_repo=str(data_repo))
+
+    http_process = MagicMock()
+    http_process.poll.return_value = None
+    http_process.pid = 111
+    tunnel_process = MagicMock()
+    tunnel_process.wait.side_effect = KeyboardInterrupt
+    tunnel_process.poll.return_value = None
+    tunnel_process.pid = 222
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            with patch("fava_trails.tunnel_cli._check_port_available"):
+                with patch("fava_trails.tunnel_cli._start_http_runtime", return_value=http_process):
+                    with patch("fava_trails.tunnel_cli._wait_for_health"):
+                        with patch("subprocess.run", return_value=MagicMock(returncode=0)):
+                            with patch("fava_trails.tunnel_cli._start_tunnel_client", return_value=tunnel_process):
+                                with patch("fava_trails.tunnel_cli._terminate_process") as terminate_process:
+                                    rc = cmd_run(args)
+
+    assert rc == 0
+    assert [call.args[0] for call in terminate_process.call_args_list] == [
+        tunnel_process,
+        http_process,
+    ]
 
 
 def test_tunnel_cli_help_mentions_start():
