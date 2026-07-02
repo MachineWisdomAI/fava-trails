@@ -188,7 +188,7 @@ def _runtime_env(config: GatewayConfig) -> dict[str, str]:
     env = os.environ.copy()
     env["FAVA_TRAILS_DATA_REPO"] = str(config.data_repo)
     env.setdefault("FAVA_TRAILS_SCOPE_HINT", "")
-    env.setdefault("FAVA_TRAILS_LOG_DIR", str(config.data_repo / "logs"))
+    env.setdefault("FAVA_TRAILS_LOG_DIR", str(Path.home() / ".fava-trails" / "logs"))
     return env
 
 
@@ -390,7 +390,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         _wait_for_health(config.health_url, http_process, timeout=args.ready_timeout)
         print("  Private MCP runtime: ready")
 
-        if not getattr(args, "skip_tunnel_doctor", False):
+        if getattr(args, "tunnel_doctor", False):
             _run_tunnel_doctor(config)
             print("  tunnel-client doctor: ok")
 
@@ -472,6 +472,8 @@ def cmd_start(args: argparse.Namespace) -> int:
             "--state-dir",
             str(state_dir),
         ]
+        if getattr(args, "tunnel_doctor", False):
+            command.append("--tunnel-doctor")
         process = subprocess.Popen(
             command,
             stdout=log,
@@ -598,7 +600,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common_args(p_run)
     p_run.add_argument("--tunnel-client", default="tunnel-client", help="Path to tunnel-client binary")
     p_run.add_argument("--ready-timeout", type=float, default=20.0, help="Seconds to wait for local MCP readiness")
-    p_run.add_argument("--skip-tunnel-doctor", action="store_true", help="Skip tunnel-client doctor before run")
+    p_run.add_argument("--tunnel-doctor", action="store_true", help="Run tunnel-client doctor before starting the tunnel")
     p_run.add_argument("--state-dir", default=None, help=argparse.SUPPRESS)
     p_run.set_defaults(func=cmd_run)
 
@@ -606,6 +608,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common_args(p_start)
     p_start.add_argument("--tunnel-client", default="tunnel-client", help="Path to tunnel-client binary")
     p_start.add_argument("--ready-timeout", type=float, default=20.0, help="Seconds to wait for local MCP readiness")
+    p_start.add_argument("--tunnel-doctor", action="store_true", help="Run tunnel-client doctor before starting the tunnel")
     p_start.set_defaults(func=cmd_start)
 
     p_stop = subparsers.add_parser("stop", help="Stop a detached gateway")
