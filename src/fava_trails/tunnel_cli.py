@@ -379,6 +379,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             try:
                 _ready_file(state_dir).unlink()
             except FileNotFoundError:
+                # The ready marker is absent on first startup or after previous cleanup.
                 pass
             _write_metadata(state_dir, config, pid=os.getpid())
             _pid_file(state_dir).write_text(f"{os.getpid()}\n")
@@ -423,10 +424,12 @@ def cmd_run(args: argparse.Namespace) -> int:
             try:
                 _pid_file(state_dir).unlink()
             except FileNotFoundError:
+                # Shutdown may race with earlier cleanup that already removed the PID file.
                 pass
             try:
                 _ready_file(state_dir).unlink()
             except FileNotFoundError:
+                # The ready marker may already be absent during shutdown cleanup.
                 pass
         signal.signal(signal.SIGINT, original_sigint)
         signal.signal(signal.SIGTERM, original_sigterm)
@@ -447,6 +450,7 @@ def cmd_start(args: argparse.Namespace) -> int:
         try:
             _ready_file(state_dir).unlink()
         except FileNotFoundError:
+            # The ready marker is absent on first startup or after previous cleanup.
             pass
         log_path = _log_file(state_dir)
         log = log_path.open("ab")
@@ -555,10 +559,12 @@ def cmd_stop(args: argparse.Namespace) -> int:
         try:
             pid_path.unlink()
         except FileNotFoundError:
+            # Stop is idempotent; another cleanup path may already have removed it.
             pass
         try:
             _ready_file(state_dir).unlink()
         except FileNotFoundError:
+            # Stop is idempotent; the ready marker may already be absent.
             pass
         print(f"Stopped gateway pid {pid}")
         return 0
