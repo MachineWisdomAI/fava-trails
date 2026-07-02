@@ -8,10 +8,12 @@ import os
 import platform
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from importlib import resources as importlib_resources
@@ -807,6 +809,207 @@ def cmd_rich_view_generate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_rich_view_serve(args: argparse.Namespace) -> int:
+    """Generate or locate a reader and serve it through a loopback-only Astro dev server."""
+    try:
+        _validate_loopback_host(args.host)
+        trails_dir = Path(args.trails_dir).expanduser().resolve() if args.trails_dir else get_trails_dir()
+        output_dir = _resolve_reader_output_dir(args.out)
+
+        from .rich_views import generate_reader_for_scopes, is_generated_reader_output_dir
+
+        if args.no_generate:
+            if not is_generated_reader_output_dir(output_dir):
+                print(f"Error: {output_dir} is not a generated FAVA reader.", file=sys.stderr)
+                return 1
+            result = None
+        else:
+            result = generate_reader_for_scopes(
+                trails_dir=trails_dir,
+                scopes=args.scope,
+                output_dir=output_dir,
+            )
+
+        _ensure_reader_node_modules(output_dir, skip_install=args.no_install)
+        url = _reader_server_url(args.host, args.port)
+        command = [
+            "npm",
+            "run",
+            "dev",
+            "--",
+            "--host",
+            args.host,
+            "--port",
+            str(args.port),
+            "--strictPort",
+        ]
+        process = _start_reader_process(command, output_dir)
+        try:
+            _wait_for_reader_server(url, process)
+        except Exception:
+            _stop_reader_process(process)
+            raise
+
+        scopes = ", ".join(result.scopes) if result is not None else "existing generated reader"
+        print("Serving local private FAVA data.")
+        print(f"  URL: {url}")
+        print(f"  Reader: {output_dir}")
+        print(f"  Scopes: {scopes}")
+        print("  Press Ctrl-C to stop.")
+        _run_reader_process(process)
+    except KeyboardInterrupt:
+        print("\nStopped local FAVA reader.")
+        return 0
+    except (OSError, ValueError, subprocess.SubprocessError, yaml.YAMLError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    return 0
+
+
+def _resolve_reader_output_dir(value: str | None) -> Path:
+    if value:
+        return Path(value).expanduser().resolve()
+    cache_home = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+    return cache_home / "fava-trails" / "rich-view-reader"
+
+
+def _validate_loopback_host(host: str) -> None:
+    if host not in {"127.0.0.1", "localhost", "::1"}:
+        raise ValueError("rich-view serve must bind to a loopback host: 127.0.0.1, localhost, or ::1")
+
+
+def _reader_server_url(host: str, port: int) -> str:
+    if host == "::1":
+        return f"http://[::1]:{port}/"
+    return f"http://{host}:{port}/"
+
+
+def _ensure_reader_node_modules(output_dir: Path, *, skip_install: bool) -> None:
+    if (output_dir / "node_modules").is_dir():
+        return
+    if skip_install:
+        raise ValueError(f"{output_dir}/node_modules is missing; rerun without --no-install")
+    result = subprocess.run(["npm", "install"], cwd=str(output_dir), check=False)
+    if result.returncode != 0:
+        raise subprocess.SubprocessError("npm install failed for generated FAVA reader")
+
+
+def _start_reader_process(command: list[str], output_dir: Path) -> subprocess.Popen:
+    return subprocess.Popen(command, cwd=str(output_dir), **_reader_process_popen_kwargs())
+
+
+def _reader_process_popen_kwargs() -> dict[str, object]:
+    if os.name == "nt":
+        creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        return {"creationflags": creationflags} if creationflags else {}
+    return {"start_new_session": True}
+
+
+def _wait_for_reader_server(url: str, process: subprocess.Popen, *, timeout: float = 20.0) -> None:
+    deadline = time.monotonic() + timeout
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise subprocess.SubprocessError("Astro dev server exited before becoming ready")
+        try:
+            with urllib.request.urlopen(url, timeout=0.5):
+                return
+        except (OSError, urllib.error.URLError) as e:
+            last_error = e
+            time.sleep(0.1)
+    raise TimeoutError(f"Timed out waiting for local FAVA reader at {url}: {last_error}")
+
+
+def _run_reader_process(process: subprocess.Popen) -> None:
+    try:
+        process.wait()
+    finally:
+        _stop_reader_process(process)
+
+
+def _stop_reader_process(process: subprocess.Popen, *, timeout: float = 5.0) -> None:
+    if os.name == "nt":
+        _stop_windows_process_tree(process, timeout=timeout)
+        return
+
+    pid = getattr(process, "pid", None)
+    if isinstance(pid, int) and _signal_posix_process_group(pid, signal.SIGTERM):
+        _wait_for_reader_parent(process, timeout=timeout)
+        if not _wait_for_posix_process_group_exit(pid, timeout=timeout):
+            _signal_posix_process_group(pid, signal.SIGKILL)
+            _wait_for_reader_parent(process, timeout=timeout)
+            _wait_for_posix_process_group_exit(pid, timeout=timeout)
+        return
+
+    _stop_process_parent_only(process, timeout=timeout)
+
+
+def _stop_windows_process_tree(process: subprocess.Popen, *, timeout: float) -> None:
+    pid = getattr(process, "pid", None)
+    if isinstance(pid, int):
+        result = subprocess.run(
+            ["taskkill", "/PID", str(pid), "/T", "/F"],
+            check=False,
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            _wait_for_reader_parent(process, timeout=timeout)
+            return
+
+    _stop_process_parent_only(process, timeout=timeout)
+
+
+def _stop_process_parent_only(process: subprocess.Popen, *, timeout: float) -> None:
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=timeout)
+
+
+def _wait_for_reader_parent(process: subprocess.Popen, *, timeout: float) -> bool:
+    if process.poll() is not None:
+        return True
+    try:
+        process.wait(timeout=timeout)
+        return True
+    except subprocess.TimeoutExpired:
+        return False
+
+
+def _signal_posix_process_group(pgid: int, sig: int) -> bool:
+    try:
+        os.killpg(pgid, sig)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return False
+    return True
+
+
+def _wait_for_posix_process_group_exit(pgid: int, *, timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not _posix_process_group_exists(pgid):
+            return True
+        time.sleep(0.05)
+    return not _posix_process_group_exists(pgid)
+
+
+def _posix_process_group_exists(pgid: int) -> bool:
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 # ─── Protocol setup commands ──────────────────────────────────────────────────
 
 
@@ -1225,6 +1428,33 @@ def cmd_integrate_codev(args: argparse.Namespace) -> int:
 # ─── Argument parser ──────────────────────────────────────────────────────────
 
 
+def _add_rich_view_scope_arg(parser: argparse.ArgumentParser, *, required: bool, repeated: bool) -> None:
+    if repeated:
+        parser.add_argument(
+            "--scope",
+            action="append",
+            default=None,
+            help="Input FAVA scope path; may be repeated. Defaults to all discovered scopes.",
+        )
+        return
+    parser.add_argument("--scope", required=required, help="Input FAVA scope path")
+
+
+def _add_rich_view_out_arg(parser: argparse.ArgumentParser, *, required: bool) -> None:
+    help_text = "Output directory for the generated reader"
+    if not required:
+        help_text += " (default: user cache directory)"
+    parser.add_argument("--out", required=required, default=None, help=help_text)
+
+
+def _add_rich_view_trails_dir_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--trails-dir",
+        default=None,
+        help="Directory containing FAVA trails (default: configured data repo trails directory)",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     try:
         from importlib.metadata import version
@@ -1322,14 +1552,40 @@ def build_parser() -> argparse.ArgumentParser:
         "generate",
         help="Generate a minimal plain-Astro FAVA reader from source records",
     )
-    p_rich_view_generate.add_argument("--scope", required=True, help="Input FAVA scope path")
-    p_rich_view_generate.add_argument("--out", required=True, help="Output directory for the generated reader")
-    p_rich_view_generate.add_argument(
-        "--trails-dir",
-        default=None,
-        help="Directory containing FAVA trails (default: configured data repo trails directory)",
-    )
+    _add_rich_view_scope_arg(p_rich_view_generate, required=True, repeated=False)
+    _add_rich_view_out_arg(p_rich_view_generate, required=True)
+    _add_rich_view_trails_dir_arg(p_rich_view_generate)
     p_rich_view_generate.set_defaults(func=cmd_rich_view_generate)
+
+    p_rich_view_serve = rich_view_sub.add_parser(
+        "serve",
+        help="Serve the generated FAVA reader locally on a loopback-only Astro dev server",
+    )
+    _add_rich_view_scope_arg(p_rich_view_serve, required=False, repeated=True)
+    _add_rich_view_out_arg(p_rich_view_serve, required=False)
+    _add_rich_view_trails_dir_arg(p_rich_view_serve)
+    p_rich_view_serve.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Loopback host to bind (default: 127.0.0.1)",
+    )
+    p_rich_view_serve.add_argument(
+        "--port",
+        type=int,
+        default=4321,
+        help="Local port for the Astro dev server (default: 4321)",
+    )
+    p_rich_view_serve.add_argument(
+        "--no-generate",
+        action="store_true",
+        help="Serve an existing generated reader without regenerating it",
+    )
+    p_rich_view_serve.add_argument(
+        "--no-install",
+        action="store_true",
+        help="Do not run npm install when node_modules is missing",
+    )
+    p_rich_view_serve.set_defaults(func=cmd_rich_view_serve)
 
     p_rich_view.set_defaults(func=lambda args: (p_rich_view.print_help(), 0)[1])
 

@@ -37,6 +37,7 @@ class ReaderThought:
     confidence: float
     tags: tuple[str, ...]
     route: str
+    scope: str
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,7 @@ class GenerationResult:
     generated_at: datetime
     thought_count: int
     routes: tuple[str, ...]
+    scopes: tuple[str, ...]
 
 
 def generate_reader(
@@ -75,16 +77,60 @@ def generate_reader(
         generated_at=timestamp,
         thought_count=len(thoughts),
         routes=tuple(thought.route for thought in thoughts),
+        scopes=(safe_scope,),
+    )
+
+
+def generate_reader_for_scopes(
+    *,
+    trails_dir: Path | str,
+    scopes: list[str] | tuple[str, ...] | None,
+    output_dir: Path | str,
+    generated_at: datetime | None = None,
+) -> GenerationResult:
+    """Generate a minimal plain-Astro reader for selected or all discovered scopes."""
+
+    source_root = Path(trails_dir)
+    destination = Path(output_dir)
+    timestamp = generated_at or datetime.now(UTC)
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=UTC)
+
+    safe_scopes = tuple(_resolve_reader_scopes(source_root, scopes))
+    all_thoughts: list[ReaderThought] = []
+    seen: dict[str, Path] = {}
+    for scope in safe_scopes:
+        for thought, source_path in _load_reader_thoughts_with_sources(source_root, scope):
+            if thought.thought_id in seen:
+                raise ValueError(f"Duplicate thought_id {thought.thought_id} in {source_path} and {seen[thought.thought_id]}")
+            seen[thought.thought_id] = source_path
+            all_thoughts.append(thought)
+
+    display_scope = safe_scopes[0] if len(safe_scopes) == 1 else "all scopes"
+    all_thoughts = sorted(all_thoughts, key=lambda thought: (thought.scope, thought.thought_id))
+    _write_reader(destination, display_scope, timestamp, all_thoughts, input_scopes=safe_scopes)
+
+    return GenerationResult(
+        scope=display_scope,
+        output_dir=destination,
+        generated_at=timestamp,
+        thought_count=len(all_thoughts),
+        routes=tuple(thought.route for thought in all_thoughts),
+        scopes=safe_scopes,
     )
 
 
 def _load_reader_thoughts(trails_dir: Path, scope: str) -> list[ReaderThought]:
+    return [thought for thought, _source_path in _load_reader_thoughts_with_sources(trails_dir, scope)]
+
+
+def _load_reader_thoughts_with_sources(trails_dir: Path, scope: str) -> list[tuple[ReaderThought, Path]]:
     thoughts_dir = trails_dir / scope / "thoughts"
     if not thoughts_dir.is_dir():
         raise ValueError(f"No FAVA thoughts found for scope {scope!r} at {thoughts_dir}")
 
     seen: dict[str, Path] = {}
-    thoughts: list[ReaderThought] = []
+    thoughts: list[tuple[ReaderThought, Path]] = []
     for path in sorted(p for p in thoughts_dir.rglob("*.md") if p.name != ".gitkeep"):
         raw_text = path.read_text(encoding="utf-8")
         raw_frontmatter = _read_raw_frontmatter(raw_text)
@@ -101,23 +147,50 @@ def _load_reader_thoughts(trails_dir: Path, scope: str) -> list[ReaderThought]:
             namespace = path.parent.name
         source_path = str(path.relative_to(trails_dir))
         fm = record.frontmatter
-        thoughts.append(
-            ReaderThought(
-                thought_id=thought_id,
-                title=_derive_title(raw_frontmatter, record.content),
-                content=record.content,
-                namespace=namespace,
-                source_path=source_path,
-                source_type=fm.source_type.value,
-                validation_status=fm.validation_status.value,
-                agent_id=fm.agent_id,
-                confidence=fm.confidence,
-                tags=tuple(fm.metadata.tags),
-                route=f"/id/{thought_id}/",
-            )
+        thought = ReaderThought(
+            thought_id=thought_id,
+            title=_derive_title(raw_frontmatter, record.content),
+            content=record.content,
+            namespace=namespace,
+            source_path=source_path,
+            source_type=fm.source_type.value,
+            validation_status=fm.validation_status.value,
+            agent_id=fm.agent_id,
+            confidence=fm.confidence,
+            tags=tuple(fm.metadata.tags),
+            route=f"/id/{thought_id}/",
+            scope=scope,
         )
+        thoughts.append((thought, path))
 
-    return sorted(thoughts, key=lambda thought: thought.thought_id)
+    return sorted(thoughts, key=lambda item: item[0].thought_id)
+
+
+def _resolve_reader_scopes(trails_dir: Path, scopes: list[str] | tuple[str, ...] | None) -> list[str]:
+    if scopes:
+        return sorted(dict.fromkeys(sanitize_scope_path(scope) for scope in scopes))
+    discovered = discover_reader_scopes(trails_dir)
+    if not discovered:
+        raise ValueError(f"No FAVA scopes found under {trails_dir}")
+    return discovered
+
+
+def discover_reader_scopes(trails_dir: Path | str) -> list[str]:
+    """Discover scope paths with a thoughts/ directory under trails_dir."""
+
+    root = Path(trails_dir)
+    scopes: list[str] = []
+    if not root.exists():
+        return scopes
+    for thoughts_dir in sorted(root.rglob("thoughts")):
+        if not thoughts_dir.is_dir():
+            continue
+        try:
+            scope = str(thoughts_dir.parent.relative_to(root))
+        except ValueError:
+            continue
+        scopes.append(scope)
+    return sorted(set(scopes))
 
 
 def _validate_reader_thought_id(thought_id: str, source_path: Path) -> None:
@@ -164,8 +237,16 @@ def _truncate_title(value: str, max_length: int = 80) -> str:
     return value[: max_length - 1].rstrip() + "..."
 
 
-def _write_reader(output_dir: Path, scope: str, generated_at: datetime, thoughts: list[ReaderThought]) -> None:
+def _write_reader(
+    output_dir: Path,
+    scope: str,
+    generated_at: datetime,
+    thoughts: list[ReaderThought],
+    *,
+    input_scopes: tuple[str, ...] | None = None,
+) -> None:
     generated_at_iso = generated_at.isoformat()
+    scopes = input_scopes or (scope,)
 
     _prepare_reader_output_dir(output_dir)
 
@@ -175,8 +256,8 @@ def _write_reader(output_dir: Path, scope: str, generated_at: datetime, thoughts
 
     _write_package_json(output_dir)
     _write_astro_config(output_dir)
-    _write_readme(output_dir, scope, generated_at_iso)
-    _write_generated_metadata(output_dir, scope, generated_at_iso, thoughts)
+    _write_readme(output_dir, scope, generated_at_iso, scopes)
+    _write_generated_metadata(output_dir, scope, generated_at_iso, thoughts, scopes)
     _write_index(output_dir, scope, generated_at_iso, thoughts)
     _write_layout(output_dir)
     for thought in thoughts:
@@ -203,6 +284,12 @@ def _prepare_reader_output_dir(output_dir: Path) -> None:
             shutil.rmtree(p)
         elif p.exists():
             p.unlink(missing_ok=True)
+
+
+def is_generated_reader_output_dir(output_dir: Path | str) -> bool:
+    """Return True when output_dir is a previous FAVA reader generation."""
+
+    return _is_generated_reader_output_dir(Path(output_dir))
 
 
 def _is_generated_reader_output_dir(output_dir: Path) -> bool:
@@ -243,7 +330,8 @@ def _write_astro_config(output_dir: Path) -> None:
     )
 
 
-def _write_readme(output_dir: Path, scope: str, generated_at: str) -> None:
+def _write_readme(output_dir: Path, scope: str, generated_at: str, scopes: tuple[str, ...]) -> None:
+    scope_lines = "\n".join(f"  - {input_scope}" for input_scope in scopes)
     (output_dir / "README.md").write_text(
         f"""# FAVA Reader
 
@@ -252,6 +340,10 @@ It is not a live view. Regenerate it when the trail changes.
 
 - Input scope: {scope}
 - Generated at: {generated_at}
+
+## Included scopes
+
+{scope_lines}
 
 ## Build
 
@@ -265,9 +357,16 @@ npm run preview
     )
 
 
-def _write_generated_metadata(output_dir: Path, scope: str, generated_at: str, thoughts: list[ReaderThought]) -> None:
+def _write_generated_metadata(
+    output_dir: Path,
+    scope: str,
+    generated_at: str,
+    thoughts: list[ReaderThought],
+    scopes: tuple[str, ...],
+) -> None:
     metadata = {
         "inputScope": scope,
+        "inputScopes": list(scopes),
         "generatedAt": generated_at,
         "generator": "fava-trails rich-view generate",
         "snapshotNotice": "Static snapshot; not a live view.",
@@ -287,6 +386,7 @@ def _write_index(output_dir: Path, scope: str, generated_at: str, thoughts: list
             "sourceType": thought.source_type,
             "validationStatus": thought.validation_status,
             "sourcePath": thought.source_path,
+            "scope": thought.scope,
         }
         for thought in thoughts
     ]
@@ -386,6 +486,7 @@ const thoughts = {json.dumps(thought_data, indent=2)};
               <span>{{thought.namespace}}</span>
               <span>{{thought.sourceType}}</span>
               <span>{{thought.validationStatus}}</span>
+              <span>{{thought.scope}}</span>
               <span>{{thought.sourcePath}}</span>
             </div>
           </li>
@@ -507,6 +608,7 @@ def _write_thought_page(output_dir: Path, scope: str, generated_at: str, thought
         f"title: {_yaml_string(thought.title)}",
         f"thoughtId: {_yaml_string(thought.thought_id)}",
         f"inputScope: {_yaml_string(scope)}",
+        f"scope: {_yaml_string(thought.scope)}",
         f"generatedAt: {_yaml_string(generated_at)}",
         f"namespace: {_yaml_string(thought.namespace)}",
         f"sourceType: {_yaml_string(thought.source_type)}",
