@@ -124,7 +124,7 @@ class TestToolMetadata:
         """Every advertised tool must declare an output schema."""
         for td in TOOL_DEFINITIONS:
             assert "outputSchema" in td, td["name"]
-            assert td["outputSchema"]["type"] == "object"
+            assert td["outputSchema"].get("type") == "object" or "anyOf" in td["outputSchema"]
 
     def test_all_tools_have_annotations(self):
         """Every advertised tool must include MCP tool annotations."""
@@ -166,7 +166,12 @@ class TestToolMetadata:
 
         recall = by_name["recall"]
         assert recall.outputSchema
-        assert recall.outputSchema["required"] == ["status", "count", "thoughts", "filters"]
+        assert recall.outputSchema["anyOf"][0]["required"] == [
+            "status",
+            "count",
+            "thoughts",
+            "filters",
+        ]
         assert recall.annotations
         assert recall.annotations.readOnlyHint is True
 
@@ -175,6 +180,24 @@ class TestToolMetadata:
         assert save_thought.annotations
         assert save_thought.annotations.readOnlyHint is False
         assert save_thought.annotations.openWorldHint is True
+
+    def test_all_tool_schemas_accept_common_error_result(self):
+        """Structured error payloads must not be hidden by output validation."""
+        payload = {"status": "error", "message": "simulated failure"}
+
+        for td in TOOL_DEFINITIONS:
+            jsonschema.validate(payload, td["outputSchema"])
+
+    def test_tool_specific_schemas_accept_blocked_result(self):
+        """Blocked/conflict responses should still satisfy structured schemas."""
+        payload = {
+            "status": "blocked",
+            "message": "operation blocked",
+            "conflicts": [{"file": "thoughts/example.md", "description": "conflict"}],
+        }
+
+        for td in TOOL_DEFINITIONS:
+            jsonschema.validate(payload, td["outputSchema"])
 
     @pytest.mark.asyncio
     async def test_list_scopes_returns_structured_schema_valid_result(self, tmp_path, monkeypatch):

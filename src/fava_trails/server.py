@@ -282,6 +282,16 @@ STRUCTURED_RESULT_SCHEMA: dict[str, Any] = {
     "additionalProperties": True,
 }
 
+
+def _structured_or_common_error(success_schema: dict[str, Any]) -> dict[str, Any]:
+    """Allow a precise success shape while preserving structured error responses."""
+    return {
+        "anyOf": [
+            success_schema,
+            STRUCTURED_RESULT_SCHEMA,
+        ]
+    }
+
 THOUGHT_SUMMARY_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -346,10 +356,10 @@ USAGE_GUIDE_OUTPUT_SCHEMA: dict[str, Any] = {
 }
 
 TOOL_OUTPUT_SCHEMAS: dict[str, dict[str, Any]] = {
-    "list_scopes": LIST_SCOPES_OUTPUT_SCHEMA,
-    "list_trails": LIST_SCOPES_OUTPUT_SCHEMA,
-    "recall": RECALL_OUTPUT_SCHEMA,
-    "get_usage_guide": USAGE_GUIDE_OUTPUT_SCHEMA,
+    "list_scopes": _structured_or_common_error(LIST_SCOPES_OUTPUT_SCHEMA),
+    "list_trails": _structured_or_common_error(LIST_SCOPES_OUTPUT_SCHEMA),
+    "recall": _structured_or_common_error(RECALL_OUTPUT_SCHEMA),
+    "get_usage_guide": _structured_or_common_error(USAGE_GUIDE_OUTPUT_SCHEMA),
 }
 
 READ_ONLY_TOOLS = {
