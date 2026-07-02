@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
 
+from fava_trails import cli
 from fava_trails.cli import cmd_rich_view_serve
 from fava_trails.rich_views import generate_reader, generate_reader_for_scopes
 
@@ -357,28 +359,50 @@ def test_cli_rich_view_serve_generates_all_scopes_and_starts_loopback_server(tmp
 
     with patch("fava_trails.cli._ensure_reader_node_modules") as ensure_node:
         with patch("fava_trails.cli._wait_for_reader_server"):
-            with patch("subprocess.Popen", return_value=process) as popen:
-                rc = cmd_rich_view_serve(
-                    _make_serve_args(
-                        trails_dir=trails_dir,
-                        out=output_dir,
-                        port=4322,
-                        serve_duration=0,
+            with patch("fava_trails.cli._run_reader_process") as run_process:
+                with patch("subprocess.Popen", return_value=process) as popen:
+                    rc = cmd_rich_view_serve(
+                        _make_serve_args(
+                            trails_dir=trails_dir,
+                            out=output_dir,
+                            port=4322,
+                        )
                     )
-                )
 
     assert rc == 0
     ensure_node.assert_called_once_with(output_dir, skip_install=False)
     popen.assert_called_once_with(
         ["npm", "run", "dev", "--", "--host", "127.0.0.1", "--port", "4322", "--strictPort"],
         cwd=str(output_dir),
+        **cli._reader_process_popen_kwargs(),
     )
-    process.terminate.assert_called_once()
+    run_process.assert_called_once_with(process)
     out = capsys.readouterr().out
     assert "Serving local private FAVA data" in out
     assert "http://127.0.0.1:4322/" in out
     assert "Scopes: mw/eng/alpha" in out
     assert (output_dir / "src/pages/id" / f"{EXPLICIT_TITLE_ID}.md").is_file()
+
+
+def test_cli_rich_view_serve_runtime_loop_does_not_depend_on_hidden_duration_arg(tmp_path):
+    trails_dir = tmp_path / "data-repo" / "trails"
+    output_dir = tmp_path / "reader"
+    _write_thought(trails_dir, "mw/eng/alpha", "decisions", EXPLICIT_TITLE_ID, "# Alpha")
+    process = Mock()
+    process.poll.return_value = None
+    process.wait.return_value = 0
+    args = _make_serve_args(trails_dir=trails_dir, out=output_dir, port=4322)
+
+    assert not hasattr(args, "serve_duration")
+
+    with patch("fava_trails.cli._ensure_reader_node_modules"):
+        with patch("fava_trails.cli._wait_for_reader_server"):
+            with patch("fava_trails.cli._run_reader_process") as run_process:
+                with patch("subprocess.Popen", return_value=process):
+                    rc = cmd_rich_view_serve(args)
+
+    assert rc == 0
+    run_process.assert_called_once_with(process)
 
 
 def test_cli_rich_view_serve_scope_filter_narrows_generated_reader(tmp_path):
@@ -392,16 +416,16 @@ def test_cli_rich_view_serve_scope_filter_narrows_generated_reader(tmp_path):
 
     with patch("fava_trails.cli._ensure_reader_node_modules"):
         with patch("fava_trails.cli._wait_for_reader_server"):
-            with patch("subprocess.Popen", return_value=process):
-                rc = cmd_rich_view_serve(
-                    _make_serve_args(
-                        trails_dir=trails_dir,
-                        out=output_dir,
-                        scope=["mw/eng/beta"],
-                        port=4323,
-                        serve_duration=0,
+            with patch("fava_trails.cli._run_reader_process"):
+                with patch("subprocess.Popen", return_value=process):
+                    rc = cmd_rich_view_serve(
+                        _make_serve_args(
+                            trails_dir=trails_dir,
+                            out=output_dir,
+                            scope=["mw/eng/beta"],
+                            port=4323,
+                        )
                     )
-                )
 
     assert rc == 0
     assert not (output_dir / "src/pages/id" / f"{EXPLICIT_TITLE_ID}.md").exists()
@@ -414,7 +438,6 @@ def test_cli_rich_view_serve_rejects_non_loopback_host(tmp_path, capsys):
             trails_dir=tmp_path / "trails",
             out=tmp_path / "reader",
             host="0.0.0.0",
-            serve_duration=0,
         )
     )
 
@@ -428,7 +451,6 @@ def test_cli_rich_view_serve_no_generate_requires_existing_reader(tmp_path, caps
             trails_dir=tmp_path / "trails",
             out=tmp_path / "not-reader",
             no_generate=True,
-            serve_duration=0,
         )
     )
 
@@ -446,16 +468,16 @@ def test_cli_rich_view_serve_formats_ipv6_loopback_url(tmp_path, capsys):
 
     with patch("fava_trails.cli._ensure_reader_node_modules"):
         with patch("fava_trails.cli._wait_for_reader_server"):
-            with patch("subprocess.Popen", return_value=process):
-                rc = cmd_rich_view_serve(
-                    _make_serve_args(
-                        trails_dir=trails_dir,
-                        out=output_dir,
-                        host="::1",
-                        port=4324,
-                        serve_duration=0,
+            with patch("fava_trails.cli._run_reader_process"):
+                with patch("subprocess.Popen", return_value=process):
+                    rc = cmd_rich_view_serve(
+                        _make_serve_args(
+                            trails_dir=trails_dir,
+                            out=output_dir,
+                            host="::1",
+                            port=4324,
+                        )
                     )
-                )
 
     assert rc == 0
     assert "http://[::1]:4324/" in capsys.readouterr().out
@@ -477,12 +499,57 @@ def test_cli_rich_view_serve_stops_process_when_readiness_fails(tmp_path):
                         trails_dir=trails_dir,
                         out=output_dir,
                         port=4325,
-                        serve_duration=0,
                     )
                 )
 
     assert rc == 1
     process.terminate.assert_called_once()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process-group cleanup is covered on Unix-like CI")
+def test_stop_reader_process_cleans_child_process_after_parent_exits(tmp_path):
+    pid_file = tmp_path / "child.pid"
+    parent_script = (
+        "import subprocess, sys\n"
+        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+        "open(sys.argv[1], 'w', encoding='utf-8').write(str(child.pid))\n"
+    )
+    process = cli._start_reader_process([sys.executable, "-c", parent_script, str(pid_file)], tmp_path)
+    child_pid: int | None = None
+
+    try:
+        process.wait(timeout=5)
+        child_pid = _read_pid_file(pid_file)
+        assert _pid_exists(child_pid)
+
+        cli._stop_reader_process(process, timeout=0.5)
+
+        deadline = time.monotonic() + 5
+        while _pid_exists(child_pid) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert not _pid_exists(child_pid)
+    finally:
+        if child_pid is not None and _pid_exists(child_pid):
+            cli.os.kill(child_pid, 9)
+
+
+def _read_pid_file(path: Path) -> int:
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if path.exists():
+            return int(path.read_text(encoding="utf-8"))
+        time.sleep(0.05)
+    raise AssertionError(f"{path} was not written")
+
+
+def _pid_exists(pid: int) -> bool:
+    try:
+        cli.os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
 
 
 def _make_serve_args(
@@ -494,7 +561,6 @@ def _make_serve_args(
     port: int = 4321,
     no_generate: bool = False,
     no_install: bool = False,
-    serve_duration: float | None = None,
 ):
     return type(
         "Args",
@@ -507,6 +573,5 @@ def _make_serve_args(
             "port": port,
             "no_generate": no_generate,
             "no_install": no_install,
-            "serve_duration": serve_duration,
         },
     )()

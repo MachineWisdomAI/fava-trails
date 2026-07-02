@@ -8,6 +8,7 @@ import os
 import platform
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tarfile
@@ -829,10 +830,6 @@ def cmd_rich_view_serve(args: argparse.Namespace) -> int:
                 output_dir=output_dir,
             )
 
-        if not is_generated_reader_output_dir(output_dir):
-            print(f"Error: {output_dir} is not a generated FAVA reader.", file=sys.stderr)
-            return 1
-
         _ensure_reader_node_modules(output_dir, skip_install=args.no_install)
         url = _reader_server_url(args.host, args.port)
         command = [
@@ -846,7 +843,7 @@ def cmd_rich_view_serve(args: argparse.Namespace) -> int:
             str(args.port),
             "--strictPort",
         ]
-        process = subprocess.Popen(command, cwd=str(output_dir))
+        process = _start_reader_process(command, output_dir)
         try:
             _wait_for_reader_server(url, process)
         except Exception:
@@ -859,7 +856,7 @@ def cmd_rich_view_serve(args: argparse.Namespace) -> int:
         print(f"  Reader: {output_dir}")
         print(f"  Scopes: {scopes}")
         print("  Press Ctrl-C to stop.")
-        _run_reader_process(process, serve_duration=getattr(args, "serve_duration", None))
+        _run_reader_process(process)
     except KeyboardInterrupt:
         print("\nStopped local FAVA reader.")
         return 0
@@ -898,6 +895,17 @@ def _ensure_reader_node_modules(output_dir: Path, *, skip_install: bool) -> None
         raise subprocess.SubprocessError("npm install failed for generated FAVA reader")
 
 
+def _start_reader_process(command: list[str], output_dir: Path) -> subprocess.Popen:
+    return subprocess.Popen(command, cwd=str(output_dir), **_reader_process_popen_kwargs())
+
+
+def _reader_process_popen_kwargs() -> dict[str, object]:
+    if os.name == "nt":
+        creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        return {"creationflags": creationflags} if creationflags else {}
+    return {"start_new_session": True}
+
+
 def _wait_for_reader_server(url: str, process: subprocess.Popen, *, timeout: float = 20.0) -> None:
     deadline = time.monotonic() + timeout
     last_error: Exception | None = None
@@ -913,25 +921,93 @@ def _wait_for_reader_server(url: str, process: subprocess.Popen, *, timeout: flo
     raise TimeoutError(f"Timed out waiting for local FAVA reader at {url}: {last_error}")
 
 
-def _run_reader_process(process: subprocess.Popen, *, serve_duration: float | None = None) -> None:
+def _run_reader_process(process: subprocess.Popen) -> None:
     try:
-        if serve_duration is None:
-            process.wait()
-        else:
-            time.sleep(serve_duration)
+        process.wait()
     finally:
         _stop_reader_process(process)
 
 
-def _stop_reader_process(process: subprocess.Popen) -> None:
+def _stop_reader_process(process: subprocess.Popen, *, timeout: float = 5.0) -> None:
+    if os.name == "nt":
+        _stop_windows_process_tree(process, timeout=timeout)
+        return
+
+    pid = getattr(process, "pid", None)
+    if isinstance(pid, int) and _signal_posix_process_group(pid, signal.SIGTERM):
+        _wait_for_reader_parent(process, timeout=timeout)
+        if not _wait_for_posix_process_group_exit(pid, timeout=timeout):
+            _signal_posix_process_group(pid, signal.SIGKILL)
+            _wait_for_reader_parent(process, timeout=timeout)
+            _wait_for_posix_process_group_exit(pid, timeout=timeout)
+        return
+
+    _stop_process_parent_only(process, timeout=timeout)
+
+
+def _stop_windows_process_tree(process: subprocess.Popen, *, timeout: float) -> None:
+    pid = getattr(process, "pid", None)
+    if isinstance(pid, int):
+        result = subprocess.run(
+            ["taskkill", "/PID", str(pid), "/T", "/F"],
+            check=False,
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            _wait_for_reader_parent(process, timeout=timeout)
+            return
+
+    _stop_process_parent_only(process, timeout=timeout)
+
+
+def _stop_process_parent_only(process: subprocess.Popen, *, timeout: float) -> None:
     if process.poll() is not None:
         return
     process.terminate()
     try:
-        process.wait(timeout=5)
+        process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         process.kill()
-        process.wait(timeout=5)
+        process.wait(timeout=timeout)
+
+
+def _wait_for_reader_parent(process: subprocess.Popen, *, timeout: float) -> bool:
+    if process.poll() is not None:
+        return True
+    try:
+        process.wait(timeout=timeout)
+        return True
+    except subprocess.TimeoutExpired:
+        return False
+
+
+def _signal_posix_process_group(pgid: int, sig: int) -> bool:
+    try:
+        os.killpg(pgid, sig)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return False
+    return True
+
+
+def _wait_for_posix_process_group_exit(pgid: int, *, timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not _posix_process_group_exists(pgid):
+            return True
+        time.sleep(0.05)
+    return not _posix_process_group_exists(pgid)
+
+
+def _posix_process_group_exists(pgid: int) -> bool:
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
 
 
 # ─── Protocol setup commands ──────────────────────────────────────────────────
@@ -1352,6 +1428,33 @@ def cmd_integrate_codev(args: argparse.Namespace) -> int:
 # ─── Argument parser ──────────────────────────────────────────────────────────
 
 
+def _add_rich_view_scope_arg(parser: argparse.ArgumentParser, *, required: bool, repeated: bool) -> None:
+    if repeated:
+        parser.add_argument(
+            "--scope",
+            action="append",
+            default=None,
+            help="Input FAVA scope path; may be repeated. Defaults to all discovered scopes.",
+        )
+        return
+    parser.add_argument("--scope", required=required, help="Input FAVA scope path")
+
+
+def _add_rich_view_out_arg(parser: argparse.ArgumentParser, *, required: bool) -> None:
+    help_text = "Output directory for the generated reader"
+    if not required:
+        help_text += " (default: user cache directory)"
+    parser.add_argument("--out", required=required, default=None, help=help_text)
+
+
+def _add_rich_view_trails_dir_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--trails-dir",
+        default=None,
+        help="Directory containing FAVA trails (default: configured data repo trails directory)",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     try:
         from importlib.metadata import version
@@ -1449,35 +1552,18 @@ def build_parser() -> argparse.ArgumentParser:
         "generate",
         help="Generate a minimal plain-Astro FAVA reader from source records",
     )
-    p_rich_view_generate.add_argument("--scope", required=True, help="Input FAVA scope path")
-    p_rich_view_generate.add_argument("--out", required=True, help="Output directory for the generated reader")
-    p_rich_view_generate.add_argument(
-        "--trails-dir",
-        default=None,
-        help="Directory containing FAVA trails (default: configured data repo trails directory)",
-    )
+    _add_rich_view_scope_arg(p_rich_view_generate, required=True, repeated=False)
+    _add_rich_view_out_arg(p_rich_view_generate, required=True)
+    _add_rich_view_trails_dir_arg(p_rich_view_generate)
     p_rich_view_generate.set_defaults(func=cmd_rich_view_generate)
 
     p_rich_view_serve = rich_view_sub.add_parser(
         "serve",
         help="Serve the generated FAVA reader locally on a loopback-only Astro dev server",
     )
-    p_rich_view_serve.add_argument(
-        "--scope",
-        action="append",
-        default=None,
-        help="Input FAVA scope path; may be repeated. Defaults to all discovered scopes.",
-    )
-    p_rich_view_serve.add_argument(
-        "--out",
-        default=None,
-        help="Output directory for the generated reader (default: user cache directory)",
-    )
-    p_rich_view_serve.add_argument(
-        "--trails-dir",
-        default=None,
-        help="Directory containing FAVA trails (default: configured data repo trails directory)",
-    )
+    _add_rich_view_scope_arg(p_rich_view_serve, required=False, repeated=True)
+    _add_rich_view_out_arg(p_rich_view_serve, required=False)
+    _add_rich_view_trails_dir_arg(p_rich_view_serve)
     p_rich_view_serve.add_argument(
         "--host",
         default="127.0.0.1",
