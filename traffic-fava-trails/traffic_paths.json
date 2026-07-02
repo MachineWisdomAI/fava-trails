@@ -2,49 +2,61 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 28,
-    "uniques": 17
+    "count": 27,
+    "uniques": 15
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pulls",
     "title": "/pulls",
-    "count": 7,
+    "count": 13,
     "uniques": 5
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pull/48",
     "title": "/pull/48",
+    "count": 6,
+    "uniques": 2
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pull/50",
+    "title": "/pull/50",
+    "count": 5,
+    "uniques": 2
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pull/61",
+    "title": "/pull/61",
+    "count": 5,
+    "uniques": 2
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pull/61/changes",
+    "title": "/pull/61/changes",
+    "count": 5,
+    "uniques": 2
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/issues/51",
+    "title": "/issues/51",
     "count": 4,
     "uniques": 1
   },
   {
     "path": "/MachineWisdomAI/fava-trails/issues",
     "title": "/issues",
-    "count": 2,
+    "count": 3,
     "uniques": 2
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pull/48/changes",
     "title": "/pull/48/changes",
-    "count": 2,
-    "uniques": 1
+    "count": 3,
+    "uniques": 2
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/.gitignore",
-    "title": "/blob/main/.gitignore",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/issues/41",
-    "title": "/issues/41",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/stargazers",
-    "title": "/stargazers",
-    "count": 1,
-    "uniques": 1
+    "path": "/MachineWisdomAI/fava-trails/pull/50/changes",
+    "title": "/pull/50/changes",
+    "count": 3,
+    "uniques": 2
   }
 ]
