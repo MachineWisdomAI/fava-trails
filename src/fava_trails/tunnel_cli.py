@@ -376,11 +376,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         _check_port_available(config.host, config.port)
         state_dir = Path(args.state_dir).expanduser().resolve() if getattr(args, "state_dir", None) else None
         if state_dir:
-            try:
-                _ready_file(state_dir).unlink()
-            except FileNotFoundError:
-                # The ready marker is absent on first startup or after previous cleanup.
-                pass
+            # The ready marker is absent on first startup or after previous cleanup.
+            _ready_file(state_dir).unlink(missing_ok=True)
             _write_metadata(state_dir, config, pid=os.getpid())
             _pid_file(state_dir).write_text(f"{os.getpid()}\n")
         _print_startup(config, state_dir=state_dir)
@@ -421,16 +418,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         state_dir_value = getattr(args, "state_dir", None)
         if state_dir_value:
             state_dir = Path(state_dir_value).expanduser().resolve()
-            try:
-                _pid_file(state_dir).unlink()
-            except FileNotFoundError:
-                # Shutdown may race with earlier cleanup that already removed the PID file.
-                pass
-            try:
-                _ready_file(state_dir).unlink()
-            except FileNotFoundError:
-                # The ready marker may already be absent during shutdown cleanup.
-                pass
+            # Shutdown may race with earlier cleanup that already removed state files.
+            _pid_file(state_dir).unlink(missing_ok=True)
+            _ready_file(state_dir).unlink(missing_ok=True)
         signal.signal(signal.SIGINT, original_sigint)
         signal.signal(signal.SIGTERM, original_sigterm)
 
@@ -447,11 +437,8 @@ def cmd_start(args: argparse.Namespace) -> int:
             return 0
 
         state_dir.mkdir(parents=True, exist_ok=True)
-        try:
-            _ready_file(state_dir).unlink()
-        except FileNotFoundError:
-            # The ready marker is absent on first startup or after previous cleanup.
-            pass
+        # The ready marker is absent on first startup or after previous cleanup.
+        _ready_file(state_dir).unlink(missing_ok=True)
         log_path = _log_file(state_dir)
         log = log_path.open("ab")
         command = [
@@ -556,16 +543,9 @@ def cmd_stop(args: argparse.Namespace) -> int:
                 _terminate_pid_group(child_pid, timeout=args.timeout)
         if _is_pid_running(pid):
             _terminate_pid_group(pid, timeout=0)
-        try:
-            pid_path.unlink()
-        except FileNotFoundError:
-            # Stop is idempotent; another cleanup path may already have removed it.
-            pass
-        try:
-            _ready_file(state_dir).unlink()
-        except FileNotFoundError:
-            # Stop is idempotent; the ready marker may already be absent.
-            pass
+        # Stop is idempotent; another cleanup path may already have removed state files.
+        pid_path.unlink(missing_ok=True)
+        _ready_file(state_dir).unlink(missing_ok=True)
         print(f"Stopped gateway pid {pid}")
         return 0
     except (OSError, ValueError) as exc:
