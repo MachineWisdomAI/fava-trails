@@ -1,14 +1,16 @@
 """Tests for MCP server instructions field and tool description enhancements."""
 
-import json
-
+import jsonschema
 import pytest
 from mcp.types import TextContent
 
+from fava_trails.config import ConfigStore
 from fava_trails.server import (
     TOOL_DEFINITIONS,
     _build_server_instructions,
     _load_usage_guide,
+    handle_call_tool,
+    handle_list_tools,
     server,
     with_tool_timeout,
 )
@@ -115,6 +117,98 @@ class TestToolDescriptionEnhancements:
         assert "new to fava-trails" in desc or "unsure how to use" in desc
 
 
+class TestToolMetadata:
+    """Tests for ChatGPT-facing tool schemas and annotations."""
+
+    def test_all_tools_have_output_schema(self):
+        """Every advertised tool must declare an output schema."""
+        for td in TOOL_DEFINITIONS:
+            assert "outputSchema" in td, td["name"]
+            assert td["outputSchema"]["type"] == "object"
+
+    def test_all_tools_have_annotations(self):
+        """Every advertised tool must include MCP tool annotations."""
+        for td in TOOL_DEFINITIONS:
+            annotations = td.get("annotations")
+            assert isinstance(annotations, dict), td["name"]
+            assert "readOnlyHint" in annotations
+            assert "destructiveHint" in annotations
+            assert "openWorldHint" in annotations
+
+    def test_read_only_tools_are_annotated(self):
+        """Read-only query tools must be marked read-only for ChatGPT."""
+        read_only = {
+            "conflicts",
+            "diff",
+            "get_thought",
+            "get_usage_guide",
+            "list_scopes",
+            "list_trails",
+            "recall",
+        }
+        for td in TOOL_DEFINITIONS:
+            if td["name"] in read_only:
+                assert td["annotations"]["readOnlyHint"] is True
+                assert td["annotations"]["idempotentHint"] is True
+
+    def test_destructive_tools_are_annotated(self):
+        """Mutation tools with replacement/rollback semantics must be flagged."""
+        destructive = {"change_scope", "forget", "rollback", "supersede", "update_thought"}
+        for td in TOOL_DEFINITIONS:
+            if td["name"] in destructive:
+                assert td["annotations"]["destructiveHint"] is True
+
+    @pytest.mark.asyncio
+    async def test_handle_list_tools_passes_metadata_to_mcp_tool(self):
+        """ListTools responses must expose schemas and annotations."""
+        tools = await handle_list_tools()
+        by_name = {tool.name: tool for tool in tools}
+
+        recall = by_name["recall"]
+        assert recall.outputSchema
+        assert recall.outputSchema["required"] == ["status", "count", "thoughts", "filters"]
+        assert recall.annotations
+        assert recall.annotations.readOnlyHint is True
+
+        save_thought = by_name["save_thought"]
+        assert save_thought.outputSchema
+        assert save_thought.annotations
+        assert save_thought.annotations.readOnlyHint is False
+        assert save_thought.annotations.openWorldHint is True
+
+    @pytest.mark.asyncio
+    async def test_list_scopes_returns_structured_schema_valid_result(self, tmp_path, monkeypatch):
+        """JSON tools return structured dicts matching their output schema."""
+        data_repo = tmp_path / "fava-trails-data"
+        thoughts_dir = data_repo / "trails" / "mwai" / "eng" / "demo" / "thoughts"
+        thoughts_dir.mkdir(parents=True)
+        monkeypatch.setenv("FAVA_TRAILS_DATA_REPO", str(data_repo))
+        ConfigStore.reset()
+
+        result = await handle_call_tool("list_scopes", {"prefix": "mwai/eng"})
+
+        assert result["status"] == "ok"
+        assert result["scopes"] == [{"path": "mwai/eng/demo"}]
+        jsonschema.validate(
+            result,
+            next(td["outputSchema"] for td in TOOL_DEFINITIONS if td["name"] == "list_scopes"),
+        )
+
+    @pytest.mark.asyncio
+    async def test_usage_guide_returns_text_and_structured_content(self):
+        """Markdown guide keeps text content and adds structured content."""
+        content, structured = await handle_call_tool("get_usage_guide", {})
+
+        assert len(content) == 1
+        assert isinstance(content[0], TextContent)
+        assert structured["status"] == "ok"
+        assert structured["content"] == content[0].text
+        jsonschema.validate(
+            structured,
+            next(td["outputSchema"] for td in TOOL_DEFINITIONS if td["name"] == "get_usage_guide"),
+        )
+
+
 class TestGetUsageGuide:
     """Tests for the get_usage_guide tool."""
 
@@ -183,10 +277,9 @@ class TestWithToolTimeout:
 
         wrapped = with_tool_timeout(_hanging_handler)
         result = await wrapped("sync", {})
-        payload = json.loads(result[0].text)
-        assert payload["status"] == "error"
-        assert "timed out" in payload["message"].lower()
-        assert "sync" in payload["message"]
+        assert result["status"] == "error"
+        assert "timed out" in result["message"].lower()
+        assert "sync" in result["message"]
 
     @pytest.mark.asyncio
     async def test_disabled_when_zero(self):
