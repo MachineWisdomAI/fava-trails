@@ -259,6 +259,8 @@ def test_bootstrap_prints_integration_hint(tmp_path, capsys):
     assert rc == 0
     captured = capsys.readouterr()
     assert "fava-trails integrate codev" in captured.out
+    assert "fava-trails-tunnel start" in captured.out
+    assert "tunnel-client init" in captured.out
 
 
 def test_bootstrap_with_remote(tmp_path):

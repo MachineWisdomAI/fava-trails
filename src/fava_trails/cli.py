@@ -322,6 +322,9 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     print(f"\nData repo ready: {target}")
     print("\nSet this in your MCP server config:")
     print(f"  FAVA_TRAILS_DATA_REPO={target}")
+    print("\nFor ChatGPT via OpenAI Secure MCP Tunnel:")
+    print("  tunnel-client init --profile fava-trails --mcp-server-url http://127.0.0.1:8765/mcp --tunnel-id <tunnel_id>")
+    print(f"  fava-trails-tunnel start --data-repo {target} --profile fava-trails")
     if remote_url:
         print("\nPush to remote:")
         print(f"  cd {target} && jj git push -b main")
@@ -392,6 +395,9 @@ def cmd_clone(args: argparse.Namespace) -> int:
     print(f"\nData repo ready: {target}")
     print("\nSet this in your MCP server config:")
     print(f"  FAVA_TRAILS_DATA_REPO={target}")
+    print("\nFor ChatGPT via OpenAI Secure MCP Tunnel:")
+    print("  tunnel-client init --profile fava-trails --mcp-server-url http://127.0.0.1:8765/mcp --tunnel-id <tunnel_id>")
+    print(f"  fava-trails-tunnel start --data-repo {target} --profile fava-trails")
     return 0
 
 
