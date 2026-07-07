@@ -57,3 +57,5 @@ af-config.json
 # Codev VS Code extension settings (shared)
 !.vscode/
 !.vscode/settings.json
+# Local MachineWisdom agent/review artifacts
+.wise-agents/
