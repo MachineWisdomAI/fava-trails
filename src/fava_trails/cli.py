@@ -585,6 +585,81 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 1 if any_failed else 0
 
 
+def _scope_thought_files(scope_dir: Path) -> list[Path]:
+    thoughts_dir = scope_dir / "thoughts"
+    if not thoughts_dir.exists():
+        return []
+    return sorted(
+        path for path in thoughts_dir.rglob("*.md")
+        if path.name != ".gitkeep"
+    )
+
+
+def _remove_empty_scope_scaffold(scope_dir: Path, trails_dir: Path) -> None:
+    thoughts_dir = scope_dir / "thoughts"
+    if thoughts_dir.exists():
+        shutil.rmtree(thoughts_dir)
+    (scope_dir / ".fava-trails.yaml").unlink(missing_ok=True)
+
+    current = scope_dir
+    while current != trails_dir:
+        try:
+            next(current.iterdir())
+        except StopIteration:
+            current.rmdir()
+            current = current.parent
+        else:
+            break
+
+
+def cmd_cleanup_empty_scopes(args: argparse.Namespace) -> int:
+    """Remove scaffolding-only scopes after verifying they contain no thoughts."""
+    try:
+        trails_dir = get_trails_dir()
+    except (OSError, ValueError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if not trails_dir.exists():
+        print(f"Error: trails directory not found at {trails_dir}", file=sys.stderr)
+        return 1
+
+    scopes = getattr(args, "scope", None) or []
+    if not scopes:
+        print("Error: provide at least one --scope to clean", file=sys.stderr)
+        return 1
+
+    apply = getattr(args, "apply", False)
+    removable: list[str] = []
+    skipped: list[dict[str, str | int]] = []
+
+    for raw_scope in scopes:
+        try:
+            scope = sanitize_scope_path(raw_scope)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        scope_dir = trails_dir / scope
+        if not scope_dir.exists():
+            skipped.append({"scope": scope, "reason": "missing", "thought_count": 0})
+            continue
+        thought_files = _scope_thought_files(scope_dir)
+        if thought_files:
+            skipped.append({"scope": scope, "reason": "contains thoughts", "thought_count": len(thought_files)})
+            continue
+        removable.append(scope)
+        if apply:
+            _remove_empty_scope_scaffold(scope_dir, trails_dir)
+
+    action = "removed" if apply else "would remove"
+    for scope in removable:
+        print(f"{action}: {scope}")
+    for item in skipped:
+        print(f"skipped: {item['scope']} ({item['reason']}, thoughts={item['thought_count']})")
+
+    return 0
+
+
 # ─── install-jj ───────────────────────────────────────────────────────────────
 
 JJ_DEFAULT_VERSION = "0.28.0"
@@ -1517,6 +1592,24 @@ def build_parser() -> argparse.ArgumentParser:
     # doctor
     p_doctor = subparsers.add_parser("doctor", help="Check JJ, data repo, OpenRouter key, and scope configuration")
     p_doctor.set_defaults(func=cmd_doctor)
+
+    # cleanup-empty-scopes
+    p_cleanup = subparsers.add_parser(
+        "cleanup-empty-scopes",
+        help="Remove scaffolding-only scopes after explicit verification",
+    )
+    p_cleanup.add_argument(
+        "--scope",
+        action="append",
+        required=True,
+        help="Exact scope path to inspect and clean if it contains no thought files",
+    )
+    p_cleanup.add_argument(
+        "--apply",
+        action="store_true",
+        help="Delete verified empty scope scaffolding; omit for dry-run output",
+    )
+    p_cleanup.set_defaults(func=cmd_cleanup_empty_scopes)
 
     # install-jj
     p_install_jj = subparsers.add_parser("install-jj", help="Download and install the Jujutsu (JJ) binary")

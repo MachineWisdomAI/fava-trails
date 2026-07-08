@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
@@ -40,12 +43,24 @@ def create_streamable_http_app() -> Starlette:
     async def healthz(request) -> JSONResponse:
         data_repo = get_data_repo_root()
         trails_dir = get_trails_dir()
+        sync_state = {}
+        health_file = os.environ.get("FAVA_TRAILS_TUNNEL_HEALTH_FILE")
+        if health_file:
+            try:
+                payload = json.loads(Path(health_file).read_text())
+                if isinstance(payload, dict):
+                    sync_state = payload
+            except (OSError, json.JSONDecodeError):
+                sync_state = {"status": "unknown", "message": "health file unreadable"}
+        sync_status = sync_state.get("status")
+        degraded = sync_status not in (None, "ok", "disabled")
         return JSONResponse(
             {
-                "status": "ok",
+                "status": "degraded" if degraded else "ok",
                 "runtime": "fava-trails-tunnel",
                 "data_repo": str(data_repo),
                 "trails_dir": str(trails_dir),
+                "sync": sync_state,
             }
         )
 

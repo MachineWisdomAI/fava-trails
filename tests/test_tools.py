@@ -27,6 +27,49 @@ async def test_save_and_get_thought(trail_manager):
 
 
 @pytest.mark.asyncio
+async def test_read_only_recall_does_not_create_missing_scope(tmp_fava_home):
+    """Read-only MCP calls should not initialize guessed scope paths."""
+    from fava_trails import server as fava_server
+
+    fava_server._trail_managers.clear()
+
+    result = await fava_server.handle_call_tool(
+        "recall",
+        {"trail_name": "missing/scope", "query": "anything"},
+    )
+
+    assert result["status"] == "error"
+    assert not (tmp_fava_home / "trails" / "missing" / "scope").exists()
+
+
+@pytest.mark.asyncio
+async def test_get_thought_finds_exact_ulid_in_other_scope(tmp_fava_home):
+    """Exact ULID retrieval should recover when ChatGPT guesses the wrong scope."""
+    from fava_trails import server as fava_server
+    from fava_trails.trail import TrailManager
+    from fava_trails.vcs.jj_backend import JjBackend
+
+    fava_server._trail_managers.clear()
+    real_path = tmp_fava_home / "trails" / "headspace" / "2026h2-ai" / "makers-org-chart"
+    real_manager = TrailManager(
+        "headspace/2026h2-ai/makers-org-chart",
+        vcs=JjBackend(repo_root=tmp_fava_home, trail_path=real_path),
+    )
+    await real_manager.init()
+    record = await real_manager.save_thought(content="Makers org chart", agent_id="test")
+
+    result = await fava_server.handle_call_tool(
+        "get_thought",
+        {"trail_name": "mw/headspace", "thought_id": record.thought_id},
+    )
+
+    assert result["status"] == "ok"
+    assert result["thought"]["thought_id"] == record.thought_id
+    assert result["thought"]["source_trail"] == "headspace/2026h2-ai/makers-org-chart"
+    assert not (tmp_fava_home / "trails" / "mw" / "headspace").exists()
+
+
+@pytest.mark.asyncio
 async def test_save_thought_defaults_to_drafts(trail_manager):
     """save_thought should default to drafts/ namespace."""
     record = await trail_manager.save_thought(

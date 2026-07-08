@@ -23,6 +23,11 @@ Resolve in priority order:
 2. `.fava-trails.yaml` `scope` field (committed project default)
 3. Ask the user
 
+Read-only lookups do not create missing scopes. If a scope is uncertain, call
+`list_scopes` first and use an exact returned path. If you have a full ULID,
+`get_thought` can find the unique matching thought in another existing scope and
+returns `source_trail` for follow-up calls.
+
 ## Agent Identity
 
 Set `agent_id` to a stable role identifier that describes what you are:

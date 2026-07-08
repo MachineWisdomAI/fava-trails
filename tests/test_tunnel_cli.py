@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -37,6 +38,9 @@ def _args(**overrides):
         "ready_timeout": 0.1,
         "tunnel_doctor": False,
         "state_dir": None,
+        "sync_interval_seconds": 60.0,
+        "sync_timeout_seconds": 30.0,
+        "json": False,
     }
     values.update(overrides)
     return argparse.Namespace(**values)
@@ -109,6 +113,20 @@ def test_runtime_env_uses_user_log_dir_by_default(tmp_path, monkeypatch):
     assert env["FAVA_TRAILS_LOG_DIR"] == str(Path.home() / ".fava-trails" / "logs")
 
 
+def test_runtime_env_passes_health_file(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(tmp_path)
+    health_file = tmp_path / "health.json"
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            config = _load_gateway_config(_args(data_repo=str(data_repo)))
+
+    env = _runtime_env(config, health_file=health_file)
+
+    assert env["FAVA_TRAILS_TUNNEL_HEALTH_FILE"] == str(health_file)
+
+
 def test_run_starts_http_and_runs_tunnel_without_doctor_by_default(tmp_path, monkeypatch):
     data_repo = _make_data_repo(tmp_path)
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
@@ -127,15 +145,17 @@ def test_run_starts_http_and_runs_tunnel_without_doctor_by_default(tmp_path, mon
             with patch("fava_trails.tunnel_cli._check_port_available"):
                 with patch("fava_trails.tunnel_cli._start_http_runtime", return_value=http_process) as start_http:
                     with patch("fava_trails.tunnel_cli._wait_for_health") as wait_health:
-                        with patch("subprocess.run") as run:
-                            with patch("fava_trails.tunnel_cli._start_tunnel_client", return_value=tunnel_process) as start_tunnel:
-                                rc = cmd_run(args)
+                        with patch("fava_trails.tunnel_cli._sync_data_repo", return_value={"status": "ok"}) as sync:
+                            with patch("subprocess.run") as run:
+                                with patch("fava_trails.tunnel_cli._start_tunnel_client", return_value=tunnel_process) as start_tunnel:
+                                    rc = cmd_run(args)
 
     assert rc == 0
     start_http.assert_called_once()
     wait_health.assert_called_once()
     run.assert_not_called()
     start_tunnel.assert_called_once()
+    sync.assert_called_once()
 
 
 def test_run_checks_doctor_when_requested(tmp_path, monkeypatch):
@@ -156,9 +176,10 @@ def test_run_checks_doctor_when_requested(tmp_path, monkeypatch):
             with patch("fava_trails.tunnel_cli._check_port_available"):
                 with patch("fava_trails.tunnel_cli._start_http_runtime", return_value=http_process):
                     with patch("fava_trails.tunnel_cli._wait_for_health"):
-                        with patch("subprocess.run", return_value=MagicMock(returncode=0)) as run:
-                            with patch("fava_trails.tunnel_cli._start_tunnel_client", return_value=tunnel_process):
-                                rc = cmd_run(args)
+                        with patch("fava_trails.tunnel_cli._sync_data_repo", return_value={"status": "ok"}):
+                            with patch("subprocess.run", return_value=MagicMock(returncode=0)) as run:
+                                with patch("fava_trails.tunnel_cli._start_tunnel_client", return_value=tunnel_process):
+                                    rc = cmd_run(args)
 
     assert rc == 0
     run.assert_called_once()
@@ -224,6 +245,146 @@ def test_start_passes_tunnel_doctor_to_supervisor_when_requested(tmp_path, monke
     assert rc == 0
 
 
+def test_detached_startup_timeout_includes_sync_budget_and_grace():
+    enabled = _args(ready_timeout=2.0, sync_interval_seconds=60.0, sync_timeout_seconds=3.0)
+    disabled = _args(ready_timeout=2.0, sync_interval_seconds=0.0, sync_timeout_seconds=3.0)
+
+    assert tunnel_cli._detached_startup_timeout(enabled) == 2.0 + 3.0 + tunnel_cli.DETACHED_STARTUP_GRACE_SECONDS
+    assert tunnel_cli._detached_startup_timeout(disabled) == 2.0 + tunnel_cli.DETACHED_STARTUP_GRACE_SECONDS
+
+
+def test_start_waits_for_startup_sync_before_ready_timeout(tmp_path, monkeypatch, capsys):
+    data_repo = _make_data_repo(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    args = _args(data_repo=str(data_repo), ready_timeout=0.1, sync_timeout_seconds=0.5)
+
+    process = MagicMock()
+    process.pid = 4321
+    process.poll.return_value = None
+    state_dir = tunnel_cli._state_dir(data_repo.resolve(), DEFAULT_PROFILE)
+    clock = {"now": 0.0}
+
+    def fake_popen(*args, **kwargs):
+        state_dir.mkdir(parents=True, exist_ok=True)
+        return process
+
+    def fake_sleep(seconds):
+        clock["now"] += 0.06
+        if clock["now"] > 0.1:
+            tunnel_cli._ready_file(state_dir).write_text('{"status":"ready"}\n')
+
+    monkeypatch.setattr(tunnel_cli.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr(tunnel_cli.time, "sleep", fake_sleep)
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            with patch("fava_trails.tunnel_cli._check_port_available"):
+                with patch("subprocess.Popen", side_effect=fake_popen):
+                    rc = cmd_start(args)
+
+    assert rc == 0
+    assert "Supervisor PID: 4321" in capsys.readouterr().out
+
+
+def test_start_cleans_state_when_supervisor_exits_during_startup(tmp_path, monkeypatch, capsys):
+    data_repo = _make_data_repo(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    args = _args(data_repo=str(data_repo))
+
+    process = MagicMock()
+    process.pid = 4321
+    process.poll.return_value = 1
+    state_dir = tunnel_cli._state_dir(data_repo.resolve(), DEFAULT_PROFILE)
+
+    def fake_popen(*args, **kwargs):
+        state_dir.mkdir(parents=True, exist_ok=True)
+        tunnel_cli._ready_file(state_dir).write_text('{"status":"stale"}\n')
+        return process
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            with patch("fava_trails.tunnel_cli._check_port_available"):
+                with patch("subprocess.Popen", side_effect=fake_popen):
+                    with patch("fava_trails.tunnel_cli._terminate_pid_group") as terminate:
+                        rc = cmd_start(args)
+
+    assert rc == 1
+    terminate.assert_not_called()
+    assert not tunnel_cli._pid_file(state_dir).exists()
+    assert not tunnel_cli._ready_file(state_dir).exists()
+    assert "gateway exited during startup" in capsys.readouterr().err
+
+
+def test_start_timeout_terminates_supervisor_and_cleans_stale_state(tmp_path, monkeypatch, capsys):
+    data_repo = _make_data_repo(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    args = _args(data_repo=str(data_repo), ready_timeout=0.1, sync_timeout_seconds=0.2)
+
+    process = MagicMock()
+    process.pid = 4321
+    process.poll.return_value = None
+    state_dir = tunnel_cli._state_dir(data_repo.resolve(), DEFAULT_PROFILE)
+    clock = {"now": 0.0}
+
+    def fake_popen(*args, **kwargs):
+        state_dir.mkdir(parents=True, exist_ok=True)
+        return process
+
+    def fake_sleep(seconds):
+        clock["now"] += 0.2
+
+    monkeypatch.setattr(tunnel_cli.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr(tunnel_cli.time, "sleep", fake_sleep)
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            with patch("fava_trails.tunnel_cli._check_port_available"):
+                with patch("subprocess.Popen", side_effect=fake_popen):
+                    with patch("fava_trails.tunnel_cli._terminate_pid_group") as terminate:
+                        rc = cmd_start(args)
+
+    assert rc == 1
+    terminate.assert_called_once_with(4321)
+    assert not tunnel_cli._pid_file(state_dir).exists()
+    assert not tunnel_cli._ready_file(state_dir).exists()
+    assert tunnel_cli._metadata_file(state_dir).exists()
+    assert "timed out waiting for gateway startup" in capsys.readouterr().err
+
+
+def test_start_post_launch_failure_terminates_supervisor_and_cleans_state(tmp_path, monkeypatch, capsys):
+    data_repo = _make_data_repo(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    args = _args(data_repo=str(data_repo))
+
+    process = MagicMock()
+    process.pid = 4321
+    process.poll.return_value = None
+    state_dir = tunnel_cli._state_dir(data_repo.resolve(), DEFAULT_PROFILE)
+
+    def fake_popen(*args, **kwargs):
+        state_dir.mkdir(parents=True, exist_ok=True)
+        tunnel_cli._ready_file(state_dir).write_text('{"status":"stale"}\n')
+        return process
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            with patch("fava_trails.tunnel_cli._check_port_available"):
+                with patch("subprocess.Popen", side_effect=fake_popen):
+                    with patch("fava_trails.tunnel_cli._write_metadata", side_effect=OSError("metadata failed")):
+                        with patch("fava_trails.tunnel_cli._terminate_pid_group") as terminate:
+                            rc = cmd_start(args)
+
+    assert rc == 1
+    terminate.assert_called_once_with(4321)
+    assert not tunnel_cli._pid_file(state_dir).exists()
+    assert not tunnel_cli._ready_file(state_dir).exists()
+    assert "metadata failed" in capsys.readouterr().err
+
+
 def test_status_reports_not_running_for_missing_pid(tmp_path, monkeypatch, capsys):
     data_repo = _make_data_repo(tmp_path)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
@@ -234,6 +395,23 @@ def test_status_reports_not_running_for_missing_pid(tmp_path, monkeypatch, capsy
 
     assert rc == 1
     assert "not running" in capsys.readouterr().out
+
+
+def test_status_json_reports_health(tmp_path, monkeypatch, capsys):
+    data_repo = _make_data_repo(tmp_path)
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    state_dir = tunnel_cli._state_dir(data_repo.resolve(), DEFAULT_PROFILE)
+    state_dir.mkdir(parents=True)
+    tunnel_cli._pid_file(state_dir).write_text("4321\n")
+    tunnel_cli._health_file(state_dir).write_text('{"status":"blocked","message":"dirty working copy"}\n')
+
+    with patch("fava_trails.tunnel_cli._is_pid_running", return_value=True):
+        rc = cmd_status(_args(data_repo=str(data_repo), json=True))
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["running"] is True
+    assert payload["health"]["status"] == "blocked"
 
 
 def test_stop_does_not_require_startup_only_environment(tmp_path, monkeypatch, capsys):
@@ -294,7 +472,8 @@ def test_run_cleans_children_when_interrupted(tmp_path, monkeypatch):
                         with patch("subprocess.run", return_value=MagicMock(returncode=0)):
                             with patch("fava_trails.tunnel_cli._start_tunnel_client", return_value=tunnel_process):
                                 with patch("fava_trails.tunnel_cli._terminate_process") as terminate_process:
-                                    rc = cmd_run(args)
+                                    with patch("fava_trails.tunnel_cli._sync_data_repo", return_value={"status": "ok"}):
+                                        rc = cmd_run(args)
 
     assert rc == 0
     assert [call.args[0] for call in terminate_process.call_args_list] == [
@@ -329,3 +508,26 @@ def test_http_runtime_healthz_reports_data_repo(tmp_path, monkeypatch):
     assert payload["runtime"] == "fava-trails-tunnel"
     assert payload["data_repo"] == str(data_repo)
     assert payload["trails_dir"] == str(data_repo / "trails")
+    assert payload["sync"] == {}
+
+
+def test_http_runtime_healthz_reports_sync_degraded(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(tmp_path)
+    health_file = tmp_path / "health.json"
+    health_file.write_text('{"status":"blocked","message":"dirty working copy"}\n')
+    monkeypatch.setenv("FAVA_TRAILS_DATA_REPO", str(data_repo))
+    monkeypatch.setenv("FAVA_TRAILS_TUNNEL_HEALTH_FILE", str(health_file))
+    ConfigStore.reset()
+
+    async def noop_init_server():
+        return None
+
+    with patch("fava_trails.server._init_server", new=noop_init_server):
+        app = create_streamable_http_app()
+        with TestClient(app) as client:
+            response = client.get("/healthz")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "degraded"
+    assert payload["sync"]["status"] == "blocked"

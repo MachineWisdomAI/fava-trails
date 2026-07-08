@@ -32,6 +32,19 @@ FAVA_TRAILS_SCOPE=mwai/eng/fava-trails/0001a-my-epic
 scope: mwai/eng/fava-trails
 ```
 
+## Scope Lookup Discipline
+
+Read-only tool calls do not create missing scopes. If you are unsure which scope
+contains a thought, call `list_scopes(prefix="<likely-prefix>", include_stats=true)`
+first and use the returned `path` as `trail_name`. Do not guess root or umbrella
+paths such as `mw`, `headspace`, or `mw/headspace` unless `list_scopes` returned
+that exact path and it is the intended scope.
+
+If you have a full 26-character ULID, call `get_thought` with your best known
+scope. When that ULID exists uniquely in another scope, `get_thought` returns
+the thought and includes `source_trail`; use that `source_trail` for follow-up
+`recall`, `get_thought`, `supersede`, or `change_scope` calls.
+
 ## At Session Start
 
 1. **Determine your trail_name** — follow the three-layer resolution above
@@ -128,4 +141,3 @@ If your work contradicts a persisted thought, use `supersede` to create a clear 
 - A better approach has been validated through implementation
 
 **Don't supersede on a hunch.** Save a new thought with your hypothesis and let it coexist until evidence settles it.
-

@@ -20,6 +20,7 @@ from fava_trails.cli import (
     _write_project_yaml,
     cmd_ace_setup,
     cmd_bootstrap,
+    cmd_cleanup_empty_scopes,
     cmd_doctor,
     cmd_init,
     cmd_install_jj,
@@ -31,6 +32,12 @@ from fava_trails.cli import (
     cmd_secom_warmup,
 )
 from fava_trails.config import ConfigStore
+
+
+def _cleanup_args(**overrides):
+    values = {"scope": [], "apply": False}
+    values.update(overrides)
+    return argparse.Namespace(**values)
 
 # ─── _update_env_file ─────────────────────────────────────────────────────────
 
@@ -388,6 +395,58 @@ def test_scope_list_empty(tmp_path, capsys):
     assert rc == 0
     out = capsys.readouterr().out
     assert "No scopes" in out
+
+
+# ─── cmd_cleanup_empty_scopes ─────────────────────────────────────────────────
+
+
+def test_cleanup_empty_scopes_dry_run_preserves_files(tmp_path, capsys):
+    trails_dir = tmp_path / "trails"
+    scope_dir = trails_dir / "mw" / "headspace"
+    (scope_dir / "thoughts" / "observations").mkdir(parents=True)
+    (scope_dir / "thoughts" / "observations" / ".gitkeep").write_text("")
+    (scope_dir / ".fava-trails.yaml").write_text("name: mw/headspace\n")
+
+    with patch("fava_trails.cli.get_trails_dir", return_value=trails_dir):
+        rc = cmd_cleanup_empty_scopes(_cleanup_args(scope=["mw/headspace"]))
+
+    assert rc == 0
+    assert "would remove: mw/headspace" in capsys.readouterr().out
+    assert scope_dir.exists()
+
+
+def test_cleanup_empty_scopes_apply_removes_scaffold(tmp_path, capsys):
+    trails_dir = tmp_path / "trails"
+    scope_dir = trails_dir / "mw" / "headspace"
+    child_dir = trails_dir / "mw" / "headspace" / "child"
+    (scope_dir / "thoughts" / "observations").mkdir(parents=True)
+    (scope_dir / "thoughts" / "observations" / ".gitkeep").write_text("")
+    (scope_dir / ".fava-trails.yaml").write_text("name: mw/headspace\n")
+    (child_dir / "thoughts" / "observations").mkdir(parents=True)
+
+    with patch("fava_trails.cli.get_trails_dir", return_value=trails_dir):
+        rc = cmd_cleanup_empty_scopes(_cleanup_args(scope=["mw/headspace"], apply=True))
+
+    assert rc == 0
+    assert "removed: mw/headspace" in capsys.readouterr().out
+    assert not (scope_dir / "thoughts").exists()
+    assert not (scope_dir / ".fava-trails.yaml").exists()
+    assert child_dir.exists()
+
+
+def test_cleanup_empty_scopes_skips_real_thoughts(tmp_path, capsys):
+    trails_dir = tmp_path / "trails"
+    scope_dir = trails_dir / "headspace" / "2026h2-ai"
+    (scope_dir / "thoughts" / "observations").mkdir(parents=True)
+    (scope_dir / "thoughts" / "observations" / "01KWYM52CX3HDFZ3KZN3EDE8WT.md").write_text("---\n---\nbody")
+    (scope_dir / ".fava-trails.yaml").write_text("name: headspace/2026h2-ai\n")
+
+    with patch("fava_trails.cli.get_trails_dir", return_value=trails_dir):
+        rc = cmd_cleanup_empty_scopes(_cleanup_args(scope=["headspace/2026h2-ai"], apply=True))
+
+    assert rc == 0
+    assert "skipped: headspace/2026h2-ai (contains thoughts, thoughts=1)" in capsys.readouterr().out
+    assert scope_dir.exists()
 
 
 # ─── .env idempotency ─────────────────────────────────────────────────────────

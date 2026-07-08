@@ -187,6 +187,34 @@ fava-trails clone https://github.com/YOUR-ORG/fava-trails-data.git fava-trails-d
 
 Both machines push/pull through the same git remote. Use the `sync` MCP tool to pull latest thoughts from other machines.
 
+### ChatGPT tunnel freshness
+
+`fava-trails-tunnel start` runs the private MCP runtime behind the OpenAI Secure
+MCP Tunnel and keeps the data repo fresh by syncing on startup and every 60
+seconds by default:
+
+```bash
+fava-trails-tunnel start --data-repo /path/to/fava-trails-data --profile fava-trails
+```
+
+Use `--sync-interval-seconds N` to adjust the interval, or `0` to disable
+tunnel-managed sync. Use `--sync-timeout-seconds N` to bound each sync attempt.
+The health endpoint and status command report whether the tunnel is fresh or
+degraded:
+
+```bash
+curl http://127.0.0.1:8765/healthz
+fava-trails-tunnel status --data-repo /path/to/fava-trails-data --profile fava-trails --json
+```
+
+If ChatGPT guessed scopes before the read-only guard was installed, remove only
+verified scaffolding-only scopes with an explicit dry run first:
+
+```bash
+fava-trails cleanup-empty-scopes --scope mw/headspace --scope mw
+fava-trails cleanup-empty-scopes --scope mw/headspace --scope mw --apply
+```
+
 ### Manual push (if auto-push is off)
 
 > **Note:** Most users never need these commands. The `sync` MCP tool and `push_strategy: immediate` handle everything automatically. These are for advanced manual intervention only.

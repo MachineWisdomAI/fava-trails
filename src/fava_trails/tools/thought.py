@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..models import SourceType
+from ..config import get_trails_dir
+from ..models import SourceType, ThoughtRecord
 from ..trail import AmbiguousThoughtID
 
 
@@ -98,11 +99,63 @@ async def handle_get_thought(trail, arguments: dict) -> dict[str, Any]:
         return {"status": "error", "message": str(e), "candidates": e.candidates}
 
     if record is None:
+        global_result = _find_thought_globally(thought_id)
+        if global_result is not None:
+            return global_result
         return {"status": "error", "message": f"Thought {thought_id} not found"}
 
     result = _serialize_thought(record)
     result["content"] = record.content  # Full content for get
     return {"status": "ok", "thought": result}
+
+
+def _find_thought_globally(thought_id: str) -> dict[str, Any] | None:
+    """Find a thought by exact ULID across existing scopes without creating scopes."""
+    matches = []
+    trails_dir = get_trails_dir()
+    if len(thought_id) != 26 or not trails_dir.exists():
+        return None
+
+    for path in trails_dir.glob(f"**/thoughts/**/{thought_id}.md"):
+        try:
+            rel_parts = path.relative_to(trails_dir).parts
+            thoughts_dir_index = rel_parts.index("thoughts")
+        except ValueError:
+            continue
+        scope_parts = rel_parts[:thoughts_dir_index]
+        if not scope_parts:
+            continue
+        try:
+            record = ThoughtRecord.from_markdown(path.read_text())
+        except Exception:
+            continue
+        matches.append((record, "/".join(scope_parts)))
+
+    if not matches:
+        return None
+    if len(matches) > 1:
+        return {
+            "status": "error",
+            "message": f"Thought {thought_id} matched multiple scopes",
+            "candidates": [
+                {
+                    "thought_id": record.thought_id,
+                    "source_trail": source_trail,
+                    "content_preview": record.content[:100] + ("..." if len(record.content) > 100 else ""),
+                }
+                for record, source_trail in matches[:10]
+            ],
+        }
+
+    record, source_trail = matches[0]
+    result = _serialize_thought(record)
+    result["content"] = record.content
+    result["source_trail"] = source_trail
+    return {
+        "status": "ok",
+        "thought": result,
+        "message": f"Thought {thought_id} found in source_trail {source_trail}",
+    }
 
 
 async def handle_forget(trail, arguments: dict) -> dict[str, Any]:
