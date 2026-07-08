@@ -4,9 +4,20 @@ All notable changes to FAVA Trails are documented here.
 
 ## Unreleased
 
+## [0.5.8] — 2026-07-08
+
 ### Added
 - `fava-trails rich-view generate --scope <path> --out <dir>`: generates a minimal plain-Astro static reader from FAVA trail thought records (ULID routes, derived titles, snapshot metadata). Implements #52.
 - `fava-trails rich-view serve`: generates or reuses the local FAVA reader and serves it on a loopback-only Astro dev server, defaulting to all discovered scopes while preserving `/id/<UID>/` routes. Implements #53.
+- `fava-trails-tunnel`: ChatGPT tunnel gateway with a loopback MCP runtime, detached `start`/`stop`/`status` commands, and `/healthz`.
+- MCP tool output schemas for richer client validation and structured responses.
+
+### Fixed
+- Read-only MCP calls no longer create missing scopes.
+- Exact-ULID `get_thought` fallback can find thoughts across scopes and returns `source_trail`.
+- Tunnel sync/freshness semantics no longer assume Git `HEAD`; tunnel-managed autosync is disabled by default and opt-in with a positive `--sync-interval-seconds`.
+- Tunnel startup and cleanup behavior is hardened after timeout or failed launch.
+- Structured MCP errors are preserved across the tunnel gateway.
 
 ## [0.5.7] — 2026-06-30
 
