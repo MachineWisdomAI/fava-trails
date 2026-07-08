@@ -31,6 +31,7 @@ DEFAULT_PROFILE = "fava-trails"
 DEFAULT_MCP_PATH = "/mcp/"
 DEFAULT_SYNC_INTERVAL_SECONDS = 60.0
 DEFAULT_SYNC_TIMEOUT_SECONDS = 30.0
+DETACHED_STARTUP_GRACE_SECONDS = 5.0
 
 
 @dataclass(frozen=True)
@@ -487,6 +488,26 @@ def _write_metadata(
     _metadata_file(state_dir).write_text(json.dumps(payload, indent=2) + "\n")
 
 
+def _cleanup_startup_state(state_dir: Path) -> None:
+    _pid_file(state_dir).unlink(missing_ok=True)
+    _ready_file(state_dir).unlink(missing_ok=True)
+
+
+def _detached_startup_timeout(args: argparse.Namespace) -> float:
+    ready_timeout = max(float(getattr(args, "ready_timeout", 0.0)), 0.0)
+    sync_interval = float(getattr(args, "sync_interval_seconds", DEFAULT_SYNC_INTERVAL_SECONDS))
+    sync_timeout = max(float(getattr(args, "sync_timeout_seconds", DEFAULT_SYNC_TIMEOUT_SECONDS)), 0.0)
+    if sync_interval > 0:
+        return ready_timeout + sync_timeout + DETACHED_STARTUP_GRACE_SECONDS
+    return ready_timeout + DETACHED_STARTUP_GRACE_SECONDS
+
+
+def _cleanup_launched_startup(process: subprocess.Popen, state_dir: Path) -> None:
+    if process.poll() is None:
+        _terminate_pid_group(process.pid)
+    _cleanup_startup_state(state_dir)
+
+
 def _write_ready(state_dir: Path, config: GatewayConfig, *, http_pid: int, tunnel_pid: int) -> None:
     payload = {
         "status": "ready",
@@ -603,6 +624,8 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def cmd_start(args: argparse.Namespace) -> int:
+    process: subprocess.Popen | None = None
+    state_dir: Path | None = None
     try:
         config = _load_gateway_config(args)
         _check_port_available(config.host, config.port)
@@ -648,20 +671,23 @@ def cmd_start(args: argparse.Namespace) -> int:
             "--sync-timeout-seconds",
             str(args.sync_timeout_seconds),
         ])
-        process = subprocess.Popen(
-            command,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            env=_runtime_env(config, health_file=_health_file(state_dir)),
-            start_new_session=os.name != "nt",
-        )
-        log.close()
+        try:
+            process = subprocess.Popen(
+                command,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                env=_runtime_env(config, health_file=_health_file(state_dir)),
+                start_new_session=os.name != "nt",
+            )
+        finally:
+            log.close()
         pid_path.write_text(f"{process.pid}\n")
         _write_metadata(state_dir, config, pid=process.pid)
 
-        deadline = time.monotonic() + args.ready_timeout
+        deadline = time.monotonic() + _detached_startup_timeout(args)
         while time.monotonic() < deadline:
             if process.poll() is not None:
+                _cleanup_startup_state(state_dir)
                 print(f"Error: gateway exited during startup; see {log_path}", file=sys.stderr)
                 return 1
             if _ready_file(state_dir).is_file():
@@ -669,9 +695,12 @@ def cmd_start(args: argparse.Namespace) -> int:
                 print(f"  Supervisor PID: {process.pid}")
                 return 0
             time.sleep(0.1)
+        _cleanup_launched_startup(process, state_dir)
         print(f"Error: timed out waiting for gateway startup; see {log_path}", file=sys.stderr)
         return 1
     except (OSError, ValueError) as exc:
+        if process is not None and state_dir is not None:
+            _cleanup_launched_startup(process, state_dir)
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
