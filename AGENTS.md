@@ -40,6 +40,17 @@ recall(trail_name="<scope>", query="gotcha", scope={"tags": ["gotcha"]})
 
 Use `trail_names` with globs for broader context: `recall(trail_name="<scope>", query="architecture", trail_names=["mw/eng/*"])`
 
+## Scope Lookup Discipline
+
+Read-only calls do not create missing scopes. If you are unsure where a thought
+lives, call `list_scopes(prefix="<likely-prefix>", include_stats=true)` and use
+an exact returned `path` as `trail_name`. Do not probe root/umbrella guesses
+such as `mw`, `headspace`, or `mw/headspace`.
+
+For a full 26-character ULID, call `get_thought`. If the thought is unique in a
+different existing scope, the tool returns it with `source_trail`; use that
+`source_trail` for follow-up calls.
+
 ## Tools Reference
 
 All tools accept a **required** `trail_name` parameter — the scope path (e.g. `mw/eng/fava-trails`). Scope paths are `/`-separated, with each segment validated as a safe slug. Root-level names (no `/`) trigger a non-blocking warning suggesting a scoped path.

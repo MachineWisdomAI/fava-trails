@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import hashlib
 import json
 import os
@@ -11,6 +12,7 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -27,6 +29,8 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 DEFAULT_PROFILE = "fava-trails"
 DEFAULT_MCP_PATH = "/mcp/"
+DEFAULT_SYNC_INTERVAL_SECONDS = 60.0
+DEFAULT_SYNC_TIMEOUT_SECONDS = 30.0
 
 
 @dataclass(frozen=True)
@@ -79,6 +83,10 @@ def _ready_file(state_dir: Path) -> Path:
 
 def _log_file(state_dir: Path) -> Path:
     return state_dir / "gateway.log"
+
+
+def _health_file(state_dir: Path) -> Path:
+    return state_dir / "health.json"
 
 
 def _read_pid(path: Path) -> int | None:
@@ -184,11 +192,13 @@ def _load_gateway_config(args: argparse.Namespace, *, require_tunnel_client: boo
     )
 
 
-def _runtime_env(config: GatewayConfig) -> dict[str, str]:
+def _runtime_env(config: GatewayConfig, *, health_file: Path | None = None) -> dict[str, str]:
     env = os.environ.copy()
     env["FAVA_TRAILS_DATA_REPO"] = str(config.data_repo)
     env.setdefault("FAVA_TRAILS_SCOPE_HINT", "")
     env.setdefault("FAVA_TRAILS_LOG_DIR", str(Path.home() / ".fava-trails" / "logs"))
+    if health_file is not None:
+        env["FAVA_TRAILS_TUNNEL_HEALTH_FILE"] = str(health_file)
     return env
 
 
@@ -208,7 +218,13 @@ def _wait_for_health(url: str, process: subprocess.Popen, *, timeout: float) -> 
     raise TimeoutError(f"timed out waiting for private MCP runtime at {url}: {last_error}")
 
 
-def _start_http_runtime(config: GatewayConfig, *, stdout=None, stderr=None) -> subprocess.Popen:
+def _start_http_runtime(
+    config: GatewayConfig,
+    *,
+    stdout=None,
+    stderr=None,
+    health_file: Path | None = None,
+) -> subprocess.Popen:
     command = [
         sys.executable,
         "-m",
@@ -225,7 +241,7 @@ def _start_http_runtime(config: GatewayConfig, *, stdout=None, stderr=None) -> s
     ]
     return subprocess.Popen(
         command,
-        env=_runtime_env(config),
+        env=_runtime_env(config, health_file=health_file),
         stdout=stdout,
         stderr=stderr,
         start_new_session=os.name != "nt",
@@ -312,6 +328,138 @@ def _read_json_file(path: Path) -> dict:
     return payload if isinstance(payload, dict) else {}
 
 
+def _git_output(data_repo: Path, *args: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(data_repo), *args],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def _repo_revision_state(config: GatewayConfig) -> dict[str, str | bool | None]:
+    local_head = _git_output(config.data_repo, "rev-parse", "HEAD")
+    remote_main = _git_output(config.data_repo, "rev-parse", "origin/main")
+    return {
+        "local_head": local_head,
+        "remote_main": remote_main,
+        "stale": bool(local_head and remote_main and local_head != remote_main),
+    }
+
+
+def _write_health_state(
+    health_path: Path | None,
+    config: GatewayConfig,
+    *,
+    status: str,
+    message: str = "",
+    sync_started_at: float | None = None,
+    sync_finished_at: float | None = None,
+    dirty_paths: list[str] | None = None,
+    case_collisions: list[list[str]] | None = None,
+) -> dict:
+    payload = {
+        "status": status,
+        "message": message,
+        "data_repo": str(config.data_repo),
+        "trails_dir": str(config.trails_dir),
+        "sync_started_at": sync_started_at,
+        "sync_finished_at": sync_finished_at,
+        **_repo_revision_state(config),
+    }
+    if dirty_paths:
+        payload["dirty_paths"] = dirty_paths
+    if case_collisions:
+        payload["case_collisions"] = case_collisions
+    if health_path is not None:
+        health_path.parent.mkdir(parents=True, exist_ok=True)
+        health_path.write_text(json.dumps(payload, indent=2) + "\n")
+    return payload
+
+
+async def _sync_data_repo_async(config: GatewayConfig) -> dict:
+    from .vcs.jj_backend import JjBackend
+
+    backend = JjBackend(repo_root=config.data_repo, trail_path=config.trails_dir)
+    result = await backend.fetch_and_rebase()
+    if getattr(result, "has_case_collisions", False):
+        return {
+            "status": "blocked",
+            "message": result.summary,
+            "case_collisions": result.case_collisions,
+        }
+    if getattr(result, "has_dirty_working_copy", False):
+        return {
+            "status": "blocked",
+            "message": f"dirty working copy: {result.summary}",
+            "dirty_paths": result.dirty_paths,
+        }
+    if result.has_conflicts:
+        return {"status": "conflict", "message": result.summary}
+    return {"status": "ok", "message": result.summary}
+
+
+def _sync_data_repo(config: GatewayConfig, health_path: Path | None, *, timeout: float) -> dict:
+    started = time.time()
+    _write_health_state(
+        health_path,
+        config,
+        status="syncing",
+        message="sync in progress",
+        sync_started_at=started,
+    )
+    try:
+        sync_result = asyncio.run(asyncio.wait_for(_sync_data_repo_async(config), timeout=timeout))
+    except TimeoutError:
+        sync_result = {"status": "error", "message": f"sync timed out after {timeout:g}s"}
+    except Exception as exc:  # noqa: BLE001 - health must fail closed but keep gateway diagnosable
+        sync_result = {"status": "error", "message": str(exc)}
+
+    return _write_health_state(
+        health_path,
+        config,
+        status=str(sync_result.get("status", "error")),
+        message=str(sync_result.get("message", "")),
+        sync_started_at=started,
+        sync_finished_at=time.time(),
+        dirty_paths=sync_result.get("dirty_paths"),
+        case_collisions=sync_result.get("case_collisions"),
+    )
+
+
+def _start_sync_worker(
+    config: GatewayConfig,
+    health_path: Path | None,
+    *,
+    interval: float,
+    timeout: float,
+    stop_event: threading.Event,
+) -> threading.Thread | None:
+    if interval <= 0:
+        _write_health_state(
+            health_path,
+            config,
+            status="disabled",
+            message="tunnel-managed sync disabled",
+        )
+        return None
+
+    def run() -> None:
+        while not stop_event.wait(interval):
+            _sync_data_repo(config, health_path, timeout=timeout)
+
+    thread = threading.Thread(target=run, name="fava-trails-tunnel-sync", daemon=True)
+    thread.start()
+    return thread
+
+
 def _write_metadata(
     state_dir: Path,
     config: GatewayConfig,
@@ -334,6 +482,8 @@ def _write_metadata(
         payload["http_pid"] = http_pid
     if tunnel_pid is not None:
         payload["tunnel_pid"] = tunnel_pid
+    health_path = _health_file(state_dir)
+    payload["health_file"] = str(health_path)
     _metadata_file(state_dir).write_text(json.dumps(payload, indent=2) + "\n")
 
 
@@ -363,6 +513,8 @@ def _print_startup(config: GatewayConfig, *, state_dir: Path | None = None) -> N
 def cmd_run(args: argparse.Namespace) -> int:
     http_process: subprocess.Popen | None = None
     tunnel_process: subprocess.Popen | None = None
+    sync_stop = threading.Event()
+    sync_thread: threading.Thread | None = None
     original_sigint = signal.getsignal(signal.SIGINT)
     original_sigterm = signal.getsignal(signal.SIGTERM)
 
@@ -375,6 +527,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         config = _load_gateway_config(args)
         _check_port_available(config.host, config.port)
         state_dir = Path(args.state_dir).expanduser().resolve() if getattr(args, "state_dir", None) else None
+        health_path = _health_file(state_dir) if state_dir else None
         if state_dir:
             # The ready marker is absent on first startup or after previous cleanup.
             _ready_file(state_dir).unlink(missing_ok=True)
@@ -382,7 +535,28 @@ def cmd_run(args: argparse.Namespace) -> int:
             _pid_file(state_dir).write_text(f"{os.getpid()}\n")
         _print_startup(config, state_dir=state_dir)
 
-        http_process = _start_http_runtime(config)
+        sync_interval = float(getattr(args, "sync_interval_seconds", DEFAULT_SYNC_INTERVAL_SECONDS))
+        sync_timeout = float(getattr(args, "sync_timeout_seconds", DEFAULT_SYNC_TIMEOUT_SECONDS))
+        if sync_interval > 0:
+            sync_state = _sync_data_repo(config, health_path, timeout=sync_timeout)
+            print(f"  Data repo sync: {sync_state['status']}")
+            sync_thread = _start_sync_worker(
+                config,
+                health_path,
+                interval=sync_interval,
+                timeout=sync_timeout,
+                stop_event=sync_stop,
+            )
+        else:
+            _write_health_state(
+                health_path,
+                config,
+                status="disabled",
+                message="tunnel-managed sync disabled",
+            )
+            print("  Data repo sync: disabled")
+
+        http_process = _start_http_runtime(config, health_file=health_path)
         if state_dir:
             _write_metadata(state_dir, config, pid=os.getpid(), http_pid=http_process.pid)
         _wait_for_health(config.health_url, http_process, timeout=args.ready_timeout)
@@ -411,6 +585,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     finally:
+        sync_stop.set()
+        if sync_thread is not None:
+            sync_thread.join(timeout=1.0)
         if tunnel_process is not None:
             _terminate_process(tunnel_process)
         if http_process is not None:
@@ -465,11 +642,17 @@ def cmd_start(args: argparse.Namespace) -> int:
         ]
         if getattr(args, "tunnel_doctor", False):
             command.append("--tunnel-doctor")
+        command.extend([
+            "--sync-interval-seconds",
+            str(args.sync_interval_seconds),
+            "--sync-timeout-seconds",
+            str(args.sync_timeout_seconds),
+        ])
         process = subprocess.Popen(
             command,
             stdout=log,
             stderr=subprocess.STDOUT,
-            env=_runtime_env(config),
+            env=_runtime_env(config, health_file=_health_file(state_dir)),
             start_new_session=os.name != "nt",
         )
         log.close()
@@ -498,10 +681,26 @@ def cmd_status(args: argparse.Namespace) -> int:
         identity = _resolve_gateway_identity(args)
         state_dir = _state_dir(identity.data_repo, identity.profile)
         pid = _read_pid(_pid_file(state_dir))
+        running = bool(pid and _is_pid_running(pid))
+        metadata = _read_json_file(_metadata_file(state_dir))
+        health = _read_json_file(_health_file(state_dir))
+        if getattr(args, "json", False):
+            print(json.dumps({
+                "status": "running" if running else "not_running",
+                "running": running,
+                "pid": pid if running else None,
+                "state_dir": str(state_dir),
+                "log_file": str(_log_file(state_dir)),
+                "metadata": metadata,
+                "health": health,
+            }, indent=2))
+            return 0 if running else 1
         if pid and _is_pid_running(pid):
             print(f"Gateway running (pid {pid})")
             print(f"  State: {state_dir}")
             print(f"  Log:   {_log_file(state_dir)}")
+            if health:
+                print(f"  Sync:  {health.get('status', 'unknown')} ({health.get('message', '')})")
             return 0
         print("Gateway not running")
         print(f"  State: {state_dir}")
@@ -587,6 +786,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--tunnel-client", default="tunnel-client", help="Path to tunnel-client binary")
     p_run.add_argument("--ready-timeout", type=float, default=20.0, help="Seconds to wait for local MCP readiness")
     p_run.add_argument("--tunnel-doctor", action="store_true", help="Run tunnel-client doctor before starting the tunnel")
+    p_run.add_argument("--sync-interval-seconds", type=float, default=DEFAULT_SYNC_INTERVAL_SECONDS, help=f"Seconds between data repo syncs; 0 disables tunnel-managed sync (default: {DEFAULT_SYNC_INTERVAL_SECONDS:g})")
+    p_run.add_argument("--sync-timeout-seconds", type=float, default=DEFAULT_SYNC_TIMEOUT_SECONDS, help=f"Seconds before a data repo sync is marked failed (default: {DEFAULT_SYNC_TIMEOUT_SECONDS:g})")
     p_run.add_argument("--state-dir", default=None, help=argparse.SUPPRESS)
     p_run.set_defaults(func=cmd_run)
 
@@ -595,6 +796,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_start.add_argument("--tunnel-client", default="tunnel-client", help="Path to tunnel-client binary")
     p_start.add_argument("--ready-timeout", type=float, default=20.0, help="Seconds to wait for local MCP readiness")
     p_start.add_argument("--tunnel-doctor", action="store_true", help="Run tunnel-client doctor before starting the tunnel")
+    p_start.add_argument("--sync-interval-seconds", type=float, default=DEFAULT_SYNC_INTERVAL_SECONDS, help=f"Seconds between data repo syncs; 0 disables tunnel-managed sync (default: {DEFAULT_SYNC_INTERVAL_SECONDS:g})")
+    p_start.add_argument("--sync-timeout-seconds", type=float, default=DEFAULT_SYNC_TIMEOUT_SECONDS, help=f"Seconds before a data repo sync is marked failed (default: {DEFAULT_SYNC_TIMEOUT_SECONDS:g})")
     p_start.set_defaults(func=cmd_start)
 
     p_stop = subparsers.add_parser("stop", help="Stop a detached gateway")
@@ -604,6 +807,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_status = subparsers.add_parser("status", help="Show gateway status")
     _add_common_args(p_status)
+    p_status.add_argument("--json", action="store_true", help="Emit machine-readable status including health details")
     p_status.set_defaults(func=cmd_status)
 
     return parser
