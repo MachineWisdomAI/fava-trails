@@ -190,17 +190,17 @@ Both machines push/pull through the same git remote. Use the `sync` MCP tool to 
 ### ChatGPT tunnel freshness
 
 `fava-trails-tunnel start` runs the private MCP runtime behind the OpenAI Secure
-MCP Tunnel and keeps the data repo fresh by syncing on startup and every 60
-seconds by default:
+MCP Tunnel. Tunnel-managed data repo sync is disabled by default; use the
+normal `sync` MCP tool when you want to fetch/rebase shared trail data.
 
 ```bash
 fava-trails-tunnel start --data-repo /path/to/fava-trails-data --profile fava-trails
 ```
 
-Use `--sync-interval-seconds N` to adjust the interval, or `0` to disable
-tunnel-managed sync. Use `--sync-timeout-seconds N` to bound each sync attempt.
-The health endpoint and status command report whether the tunnel is fresh or
-degraded:
+Pass `--sync-interval-seconds N` only if you intentionally want the tunnel to
+sync on startup and every `N` seconds; `0` fully disables the autosync code path.
+Use `--sync-timeout-seconds N` to bound each opt-in sync attempt. The health
+endpoint and status command report the tunnel runtime and any opt-in sync state:
 
 ```bash
 curl http://127.0.0.1:8765/healthz

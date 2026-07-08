@@ -29,7 +29,7 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 DEFAULT_PROFILE = "fava-trails"
 DEFAULT_MCP_PATH = "/mcp/"
-DEFAULT_SYNC_INTERVAL_SECONDS = 60.0
+DEFAULT_SYNC_INTERVAL_SECONDS = 0.0
 DEFAULT_SYNC_TIMEOUT_SECONDS = 30.0
 DETACHED_STARTUP_GRACE_SECONDS = 5.0
 
@@ -329,10 +329,19 @@ def _read_json_file(path: Path) -> dict:
     return payload if isinstance(payload, dict) else {}
 
 
-def _git_output(data_repo: Path, *args: str) -> str | None:
+def _jj_output(data_repo: Path, *args: str) -> str | None:
+    jj_bin = _find_jj_bin() or "jj"
     try:
         result = subprocess.run(
-            ["git", "-C", str(data_repo), *args],
+            [
+                jj_bin,
+                "--repository",
+                str(data_repo),
+                "--ignore-working-copy",
+                "--color=never",
+                "--no-pager",
+                *args,
+            ],
             check=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -346,12 +355,13 @@ def _git_output(data_repo: Path, *args: str) -> str | None:
 
 
 def _repo_revision_state(config: GatewayConfig) -> dict[str, str | bool | None]:
-    local_head = _git_output(config.data_repo, "rev-parse", "HEAD")
-    remote_main = _git_output(config.data_repo, "rev-parse", "origin/main")
+    template = 'commit_id ++ "\n"'
+    local_main = _jj_output(config.data_repo, "log", "--no-graph", "-r", "main", "-T", template)
+    remote_main = _jj_output(config.data_repo, "log", "--no-graph", "-r", "main@origin", "-T", template)
     return {
-        "local_head": local_head,
+        "local_main": local_main,
         "remote_main": remote_main,
-        "stale": bool(local_head and remote_main and local_head != remote_main),
+        "stale": bool(local_main and remote_main and local_main != remote_main),
     }
 
 
@@ -365,6 +375,7 @@ def _write_health_state(
     sync_finished_at: float | None = None,
     dirty_paths: list[str] | None = None,
     case_collisions: list[list[str]] | None = None,
+    include_revision: bool = True,
 ) -> dict:
     payload = {
         "status": status,
@@ -373,8 +384,9 @@ def _write_health_state(
         "trails_dir": str(config.trails_dir),
         "sync_started_at": sync_started_at,
         "sync_finished_at": sync_finished_at,
-        **_repo_revision_state(config),
     }
+    if include_revision:
+        payload.update(_repo_revision_state(config))
     if dirty_paths:
         payload["dirty_paths"] = dirty_paths
     if case_collisions:
@@ -449,6 +461,7 @@ def _start_sync_worker(
             config,
             status="disabled",
             message="tunnel-managed sync disabled",
+            include_revision=False,
         )
         return None
 
@@ -574,6 +587,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 config,
                 status="disabled",
                 message="tunnel-managed sync disabled",
+                include_revision=False,
             )
             print("  Data repo sync: disabled")
 
