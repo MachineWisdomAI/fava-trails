@@ -648,9 +648,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         initial_sync_requested = bool(getattr(args, "sync_on_start", False)) or sync_interval > 0
         if initial_sync_requested:
             sync_state = _sync_data_repo(config, health_path, timeout=sync_timeout)
-            print(f"  Data repo sync: {sync_state['status']}")
-            if sync_state["status"] != "ok":
-                raise ValueError(f"initial data repo sync failed: {sync_state.get('message', '')}")
+            sync_status = sync_state.get("status") if isinstance(sync_state, dict) else None
+            print(f"  Data repo sync: {sync_status or 'invalid'}")
+            if sync_status != "ok":
+                message = sync_state.get("message", "") if isinstance(sync_state, dict) else "missing structured result"
+                raise ValueError(f"initial data repo sync failed: {message}")
 
         if sync_interval > 0:
             sync_thread = _start_sync_worker(
@@ -714,6 +716,27 @@ def cmd_run(args: argparse.Namespace) -> int:
             _ready_file(state_dir).unlink(missing_ok=True)
         signal.signal(signal.SIGINT, original_sigint)
         signal.signal(signal.SIGTERM, original_sigterm)
+
+
+def cmd_preflight(args: argparse.Namespace) -> int:
+    """Validate the private runtime and optional tunnel profile without exposure."""
+    http_process: subprocess.Popen | None = None
+    try:
+        run_doctor = bool(getattr(args, "tunnel_doctor", False))
+        config = _load_gateway_config(args, require_tunnel_client=run_doctor)
+        _check_port_available(config.host, config.port)
+        http_process = _start_http_runtime(config)
+        _wait_for_health(config.health_url, http_process, timeout=args.ready_timeout)
+        if run_doctor:
+            _run_tunnel_doctor(config)
+        print("FAVA Trails tunnel preflight: ok")
+        return 0
+    except (OSError, ValueError, subprocess.SubprocessError, TimeoutError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        if http_process is not None:
+            _terminate_process(http_process)
 
 
 def cmd_start(args: argparse.Namespace) -> int:
@@ -931,6 +954,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_start.add_argument("--sync-interval-seconds", type=float, default=DEFAULT_SYNC_INTERVAL_SECONDS, help=f"Seconds between data repo syncs; 0 disables tunnel-managed sync (default: {DEFAULT_SYNC_INTERVAL_SECONDS:g})")
     p_start.add_argument("--sync-timeout-seconds", type=float, default=DEFAULT_SYNC_TIMEOUT_SECONDS, help=f"Seconds before a data repo sync is marked failed (default: {DEFAULT_SYNC_TIMEOUT_SECONDS:g})")
     p_start.set_defaults(func=cmd_start)
+
+    p_preflight = subparsers.add_parser("preflight", help="Validate the private runtime without starting the external tunnel")
+    _add_common_args(p_preflight)
+    p_preflight.add_argument("--tunnel-client", default="tunnel-client", help="Path to tunnel-client binary")
+    p_preflight.add_argument("--ready-timeout", type=float, default=20.0, help="Seconds to wait for local MCP readiness")
+    p_preflight.add_argument("--tunnel-doctor", action="store_true", help="Run tunnel-client doctor after private readiness succeeds")
+    p_preflight.set_defaults(func=cmd_preflight)
 
     p_stop = subparsers.add_parser("stop", help="Stop a detached gateway")
     _add_common_args(p_stop)
