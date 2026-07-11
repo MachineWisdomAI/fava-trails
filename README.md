@@ -208,10 +208,17 @@ content.
 
 Readiness proves local data readability by the runtime identity. It does **not**
 prove remote freshness, perform a sync, contact the network, or validate that a
-write would succeed. A production deployment that requires fresh startup data
-must perform exactly one separately bounded `sync` before it exposes the tunnel,
-then rely on readiness. Keep `--sync-interval-seconds` at its default `0` for
-that deployment; later synchronization is an explicit MCP operation.
+write would succeed. A deployment that requires fresh startup data can request
+one bounded, fail-closed sync inside the gateway before it exposes the tunnel:
+
+```bash
+fava-trails-tunnel start --data-repo /path/to/fava-trails-data --profile fava-trails --sync-on-start
+```
+
+With `--sync-on-start`, a non-ok result, timeout, or exception prevents HTTP and
+tunnel exposure. Keep `--sync-interval-seconds` at its default `0` when no
+later autosync is wanted; a positive interval additionally starts the recurring
+worker without repeating the initial sync.
 
 The tunnel startup wait and `status` command consume `/healthz`; `status` exits
 non-zero when the supervisor is running but its data is not ready:
