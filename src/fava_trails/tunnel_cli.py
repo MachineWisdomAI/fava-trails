@@ -510,7 +510,7 @@ def _detached_startup_timeout(args: argparse.Namespace) -> float:
     ready_timeout = max(float(getattr(args, "ready_timeout", 0.0)), 0.0)
     sync_interval = float(getattr(args, "sync_interval_seconds", DEFAULT_SYNC_INTERVAL_SECONDS))
     sync_timeout = max(float(getattr(args, "sync_timeout_seconds", DEFAULT_SYNC_TIMEOUT_SECONDS)), 0.0)
-    if sync_interval > 0:
+    if getattr(args, "sync_on_start", False) or sync_interval > 0:
         return ready_timeout + sync_timeout + DETACHED_STARTUP_GRACE_SECONDS
     return ready_timeout + DETACHED_STARTUP_GRACE_SECONDS
 
@@ -571,9 +571,14 @@ def cmd_run(args: argparse.Namespace) -> int:
 
         sync_interval = float(getattr(args, "sync_interval_seconds", DEFAULT_SYNC_INTERVAL_SECONDS))
         sync_timeout = float(getattr(args, "sync_timeout_seconds", DEFAULT_SYNC_TIMEOUT_SECONDS))
-        if sync_interval > 0:
+        initial_sync_requested = bool(getattr(args, "sync_on_start", False)) or sync_interval > 0
+        if initial_sync_requested:
             sync_state = _sync_data_repo(config, health_path, timeout=sync_timeout)
             print(f"  Data repo sync: {sync_state['status']}")
+            if sync_state["status"] != "ok":
+                raise ValueError(f"initial data repo sync failed: {sync_state.get('message', '')}")
+
+        if sync_interval > 0:
             sync_thread = _start_sync_worker(
                 config,
                 health_path,
@@ -679,6 +684,8 @@ def cmd_start(args: argparse.Namespace) -> int:
         ]
         if getattr(args, "tunnel_doctor", False):
             command.append("--tunnel-doctor")
+        if getattr(args, "sync_on_start", False):
+            command.append("--sync-on-start")
         command.extend([
             "--sync-interval-seconds",
             str(args.sync_interval_seconds),
@@ -829,6 +836,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--tunnel-client", default="tunnel-client", help="Path to tunnel-client binary")
     p_run.add_argument("--ready-timeout", type=float, default=20.0, help="Seconds to wait for local MCP readiness")
     p_run.add_argument("--tunnel-doctor", action="store_true", help="Run tunnel-client doctor before starting the tunnel")
+    p_run.add_argument("--sync-on-start", action="store_true", help="Require one successful data repo sync before exposing the gateway")
     p_run.add_argument("--sync-interval-seconds", type=float, default=DEFAULT_SYNC_INTERVAL_SECONDS, help=f"Seconds between data repo syncs; 0 disables tunnel-managed sync (default: {DEFAULT_SYNC_INTERVAL_SECONDS:g})")
     p_run.add_argument("--sync-timeout-seconds", type=float, default=DEFAULT_SYNC_TIMEOUT_SECONDS, help=f"Seconds before a data repo sync is marked failed (default: {DEFAULT_SYNC_TIMEOUT_SECONDS:g})")
     p_run.add_argument("--state-dir", default=None, help=argparse.SUPPRESS)
@@ -839,6 +847,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_start.add_argument("--tunnel-client", default="tunnel-client", help="Path to tunnel-client binary")
     p_start.add_argument("--ready-timeout", type=float, default=20.0, help="Seconds to wait for local MCP readiness")
     p_start.add_argument("--tunnel-doctor", action="store_true", help="Run tunnel-client doctor before starting the tunnel")
+    p_start.add_argument("--sync-on-start", action="store_true", help="Require one successful data repo sync before exposing the gateway")
     p_start.add_argument("--sync-interval-seconds", type=float, default=DEFAULT_SYNC_INTERVAL_SECONDS, help=f"Seconds between data repo syncs; 0 disables tunnel-managed sync (default: {DEFAULT_SYNC_INTERVAL_SECONDS:g})")
     p_start.add_argument("--sync-timeout-seconds", type=float, default=DEFAULT_SYNC_TIMEOUT_SECONDS, help=f"Seconds before a data repo sync is marked failed (default: {DEFAULT_SYNC_TIMEOUT_SECONDS:g})")
     p_start.set_defaults(func=cmd_start)

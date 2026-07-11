@@ -37,6 +37,7 @@ def _args(**overrides):
         "tunnel_client": "tunnel-client",
         "ready_timeout": 0.1,
         "tunnel_doctor": False,
+        "sync_on_start": False,
         "state_dir": None,
         "sync_interval_seconds": 0.0,
         "sync_timeout_seconds": 30.0,
@@ -214,10 +215,10 @@ def test_run_starts_http_and_runs_tunnel_without_doctor_or_autosync_by_default(t
     sync.assert_not_called()
 
 
-def test_run_autosyncs_when_interval_positive(tmp_path, monkeypatch):
+def test_run_syncs_once_when_start_flag_and_interval_both_request_it(tmp_path, monkeypatch):
     data_repo = _make_data_repo(tmp_path)
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
-    args = _args(data_repo=str(data_repo), sync_interval_seconds=60.0)
+    args = _args(data_repo=str(data_repo), sync_on_start=True, sync_interval_seconds=60.0)
 
     http_process = MagicMock()
     http_process.poll.return_value = None
@@ -241,6 +242,75 @@ def test_run_autosyncs_when_interval_positive(tmp_path, monkeypatch):
     assert rc == 0
     sync.assert_called_once()
     start_worker.assert_called_once()
+
+
+def test_run_syncs_once_on_start_without_recurring_worker(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    args = _args(data_repo=str(data_repo), sync_on_start=True, sync_interval_seconds=0.0)
+
+    http_process = MagicMock(pid=111)
+    http_process.poll.return_value = None
+    tunnel_process = MagicMock(pid=222)
+    tunnel_process.wait.return_value = 0
+    tunnel_process.poll.return_value = 0
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            with patch("fava_trails.tunnel_cli._check_port_available"):
+                with patch("fava_trails.tunnel_cli._sync_data_repo", return_value={"status": "ok"}) as sync:
+                    with patch("fava_trails.tunnel_cli._start_sync_worker") as start_worker:
+                        with patch("fava_trails.tunnel_cli._start_http_runtime", return_value=http_process) as start_http:
+                            with patch("fava_trails.tunnel_cli._wait_for_health"):
+                                with patch("fava_trails.tunnel_cli._start_tunnel_client", return_value=tunnel_process) as start_tunnel:
+                                    assert cmd_run(args) == 0
+
+    sync.assert_called_once()
+    start_worker.assert_not_called()
+    start_http.assert_called_once()
+    start_tunnel.assert_called_once()
+
+
+@pytest.mark.parametrize("sync_state", [
+    {"status": "blocked", "message": "dirty working copy"},
+    {"status": "conflict", "message": "merge conflict"},
+    {"status": "error", "message": "sync timed out after 30s"},
+])
+def test_run_does_not_expose_after_initial_sync_failure(tmp_path, monkeypatch, sync_state):
+    data_repo = _make_data_repo(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    args = _args(data_repo=str(data_repo), sync_on_start=True)
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            with patch("fava_trails.tunnel_cli._check_port_available"):
+                with patch("fava_trails.tunnel_cli._sync_data_repo", return_value=sync_state) as sync:
+                    with patch("fava_trails.tunnel_cli._start_sync_worker") as start_worker:
+                        with patch("fava_trails.tunnel_cli._start_http_runtime") as start_http:
+                            with patch("fava_trails.tunnel_cli._start_tunnel_client") as start_tunnel:
+                                assert cmd_run(args) == 1
+
+    sync.assert_called_once()
+    start_worker.assert_not_called()
+    start_http.assert_not_called()
+    start_tunnel.assert_not_called()
+
+
+def test_run_does_not_expose_when_startup_sync_times_out(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    args = _args(data_repo=str(data_repo), sync_on_start=True)
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            with patch("fava_trails.tunnel_cli._check_port_available"):
+                with patch("fava_trails.tunnel_cli._sync_data_repo", side_effect=TimeoutError):
+                    with patch("fava_trails.tunnel_cli._start_http_runtime") as start_http:
+                        with patch("fava_trails.tunnel_cli._start_tunnel_client") as start_tunnel:
+                            assert cmd_run(args) == 1
+
+    start_http.assert_not_called()
+    start_tunnel.assert_not_called()
 
 
 def test_run_checks_doctor_when_requested(tmp_path, monkeypatch):
@@ -330,11 +400,36 @@ def test_start_passes_tunnel_doctor_to_supervisor_when_requested(tmp_path, monke
     assert rc == 0
 
 
+def test_start_forwards_sync_on_start_to_supervisor(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    args = _args(data_repo=str(data_repo), sync_on_start=True)
+
+    process = MagicMock(pid=4321)
+    process.poll.return_value = None
+    state_dir = tunnel_cli._state_dir(data_repo.resolve(), DEFAULT_PROFILE)
+
+    def fake_popen(command, *args, **kwargs):
+        state_dir.mkdir(parents=True, exist_ok=True)
+        tunnel_cli._ready_file(state_dir).write_text('{"status":"ready"}\n')
+        assert "--sync-on-start" in command
+        return process
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            with patch("fava_trails.tunnel_cli._check_port_available"):
+                with patch("subprocess.Popen", side_effect=fake_popen):
+                    assert cmd_start(args) == 0
+
+
 def test_detached_startup_timeout_includes_sync_budget_and_grace():
     enabled = _args(ready_timeout=2.0, sync_interval_seconds=60.0, sync_timeout_seconds=3.0)
+    flagged = _args(ready_timeout=2.0, sync_on_start=True, sync_interval_seconds=0.0, sync_timeout_seconds=3.0)
     disabled = _args(ready_timeout=2.0, sync_interval_seconds=0.0, sync_timeout_seconds=3.0)
 
     assert tunnel_cli._detached_startup_timeout(enabled) == 2.0 + 3.0 + tunnel_cli.DETACHED_STARTUP_GRACE_SECONDS
+    assert tunnel_cli._detached_startup_timeout(flagged) == 2.0 + 3.0 + tunnel_cli.DETACHED_STARTUP_GRACE_SECONDS
     assert tunnel_cli._detached_startup_timeout(disabled) == 2.0 + tunnel_cli.DETACHED_STARTUP_GRACE_SECONDS
 
 
