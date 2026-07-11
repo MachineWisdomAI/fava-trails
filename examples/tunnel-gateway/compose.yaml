@@ -1,0 +1,14 @@
+services:
+  fava-tunnel:
+    image: ${FAVA_TRAILS_IMAGE:?set a reviewed FAVA Trails image reference}
+    command:
+      - fava-trails-tunnel
+      - run
+      - --data-repo
+      - ${FAVA_DATA_REPO:?set the in-container data repository path}
+      - --profile
+      - ${FAVA_TUNNEL_PROFILE:?set the tunnel profile name}
+      - --sync-on-start
+      - --sync-interval-seconds
+      - "0"
+      - --tunnel-doctor

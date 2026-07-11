@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -22,6 +23,7 @@ from fava_trails.tunnel_cli import (
     DEFAULT_PROFILE,
     _load_gateway_config,
     _runtime_env,
+    cmd_preflight,
     cmd_run,
     cmd_start,
     cmd_status,
@@ -336,6 +338,23 @@ def test_run_does_not_expose_when_startup_sync_times_out(tmp_path, monkeypatch):
         with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
             with patch("fava_trails.tunnel_cli._check_port_available"):
                 with patch("fava_trails.tunnel_cli._sync_data_repo", side_effect=TimeoutError):
+                    with patch("fava_trails.tunnel_cli._start_http_runtime") as start_http:
+                        with patch("fava_trails.tunnel_cli._start_tunnel_client") as start_tunnel:
+                            assert cmd_run(args) == 1
+
+    start_http.assert_not_called()
+    start_tunnel.assert_not_called()
+
+
+def test_run_does_not_expose_when_startup_sync_result_is_unstructured(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    args = _args(data_repo=str(data_repo), sync_on_start=True)
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            with patch("fava_trails.tunnel_cli._check_port_available"):
+                with patch("fava_trails.tunnel_cli._sync_data_repo", return_value=None):
                     with patch("fava_trails.tunnel_cli._start_http_runtime") as start_http:
                         with patch("fava_trails.tunnel_cli._start_tunnel_client") as start_tunnel:
                             assert cmd_run(args) == 1
@@ -730,6 +749,77 @@ def test_tunnel_cli_help_mentions_start():
     help_text = parser.format_help()
     assert "start" in help_text
     assert "run" in help_text
+    assert "preflight" in help_text
+
+
+def test_preflight_starts_only_private_runtime_then_cleans_up(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    args = _args(data_repo=str(data_repo), tunnel_doctor=True)
+    http_process = MagicMock(pid=111)
+    http_process.poll.return_value = None
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            with patch("fava_trails.tunnel_cli._check_port_available"):
+                with patch("fava_trails.tunnel_cli._start_http_runtime", return_value=http_process) as start_http:
+                    with patch("fava_trails.tunnel_cli._wait_for_health") as wait_health:
+                        with patch("fava_trails.tunnel_cli._run_tunnel_doctor") as doctor:
+                            with patch("fava_trails.tunnel_cli._start_tunnel_client") as start_tunnel:
+                                with patch("fava_trails.tunnel_cli._terminate_process") as terminate:
+                                    assert cmd_preflight(args) == 0
+
+    start_http.assert_called_once()
+    wait_health.assert_called_once()
+    doctor.assert_called_once()
+    start_tunnel.assert_not_called()
+    terminate.assert_called_once_with(http_process)
+
+
+def test_preflight_cleans_private_runtime_when_doctor_fails(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    args = _args(data_repo=str(data_repo), tunnel_doctor=True)
+    http_process = MagicMock(pid=111)
+    http_process.poll.return_value = None
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            with patch("fava_trails.tunnel_cli._check_port_available"):
+                with patch("fava_trails.tunnel_cli._start_http_runtime", return_value=http_process):
+                    with patch("fava_trails.tunnel_cli._wait_for_health"):
+                        with patch(
+                            "fava_trails.tunnel_cli._run_tunnel_doctor",
+                            side_effect=subprocess.SubprocessError("doctor failed"),
+                        ):
+                            with patch("fava_trails.tunnel_cli._start_tunnel_client") as start_tunnel:
+                                with patch("fava_trails.tunnel_cli._terminate_process") as terminate:
+                                    assert cmd_preflight(args) == 1
+
+    start_tunnel.assert_not_called()
+    terminate.assert_called_once_with(http_process)
+
+
+def test_preflight_cleans_private_runtime_when_readiness_fails(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    args = _args(data_repo=str(data_repo))
+    http_process = MagicMock(pid=111)
+    http_process.poll.return_value = None
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("fava_trails.tunnel_cli._check_port_available"):
+            with patch("fava_trails.tunnel_cli._start_http_runtime", return_value=http_process):
+                with patch(
+                    "fava_trails.tunnel_cli._wait_for_health",
+                    side_effect=TimeoutError("not ready"),
+                ):
+                    with patch("fava_trails.tunnel_cli._start_tunnel_client") as start_tunnel:
+                        with patch("fava_trails.tunnel_cli._terminate_process") as terminate:
+                            assert cmd_preflight(args) == 1
+
+    start_tunnel.assert_not_called()
+    terminate.assert_called_once_with(http_process)
 
 
 def _health_response(data_repo: Path, monkeypatch):
