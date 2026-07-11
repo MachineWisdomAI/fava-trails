@@ -220,16 +220,16 @@ tunnel exposure. Keep `--sync-interval-seconds` at its default `0` when no
 later autosync is wanted; a positive interval additionally starts the recurring
 worker without repeating the initial sync.
 
-Before starting the external tunnel, deployments can validate the same private
-runtime and optionally the tunnel profile without exposing it:
+Before starting the external tunnel, deployments can validate the private
+runtime without exposing it:
 
 ```bash
-fava-trails-tunnel preflight --data-repo /path/to/fava-trails-data --profile fava-trails --tunnel-doctor
+fava-trails-tunnel preflight --data-repo /path/to/fava-trails-data --profile fava-trails
 ```
 
-`preflight` starts only the loopback HTTP runtime, waits for `/healthz`, runs the
-optional doctor, and always stops the private runtime before returning. It never
-starts the external tunnel.
+`preflight` starts only the loopback HTTP runtime, waits for `/healthz`, and
+always stops the private runtime before returning. It never starts the external
+tunnel.
 
 The tunnel startup wait and `status` command consume `/healthz`; `status` exits
 non-zero when the supervisor is running but its data is not ready:

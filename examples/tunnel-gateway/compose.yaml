@@ -11,4 +11,3 @@ services:
       - --sync-on-start
       - --sync-interval-seconds
       - "0"
-      - --tunnel-doctor
