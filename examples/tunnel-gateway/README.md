@@ -8,8 +8,7 @@ Run a non-exposing check before the service is started:
 docker compose run --rm fava-tunnel \
   fava-trails-tunnel preflight \
   --data-repo "$FAVA_DATA_REPO" \
-  --profile "$FAVA_TUNNEL_PROFILE" \
-  --tunnel-doctor
+  --profile "$FAVA_TUNNEL_PROFILE"
 ```
 
 The service performs one startup sync and sets the interval to zero, so it does

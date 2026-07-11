@@ -323,18 +323,6 @@ def _start_http_runtime(
     )
 
 
-def _run_tunnel_doctor(config: GatewayConfig) -> None:
-    result = subprocess.run(
-        [config.tunnel_client, "doctor", "--profile", config.profile, "--explain"],
-        check=False,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise subprocess.SubprocessError(
-            f"tunnel-client doctor failed for profile {config.profile!r}"
-        )
-
-
 def _start_tunnel_client(config: GatewayConfig) -> subprocess.Popen:
     return subprocess.Popen(
         [config.tunnel_client, "run", "--profile", config.profile],
@@ -678,10 +666,6 @@ def cmd_run(args: argparse.Namespace) -> int:
         _wait_for_health(config.health_url, http_process, timeout=args.ready_timeout)
         print("  Private MCP runtime: ready")
 
-        if getattr(args, "tunnel_doctor", False):
-            _run_tunnel_doctor(config)
-            print("  tunnel-client doctor: ok")
-
         tunnel_process = _start_tunnel_client(config)
         if state_dir:
             _write_metadata(
@@ -719,16 +703,13 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def cmd_preflight(args: argparse.Namespace) -> int:
-    """Validate the private runtime and optional tunnel profile without exposure."""
+    """Validate the private runtime without external tunnel exposure."""
     http_process: subprocess.Popen | None = None
     try:
-        run_doctor = bool(getattr(args, "tunnel_doctor", False))
-        config = _load_gateway_config(args, require_tunnel_client=run_doctor)
+        config = _load_gateway_config(args, require_tunnel_client=False)
         _check_port_available(config.host, config.port)
         http_process = _start_http_runtime(config)
         _wait_for_health(config.health_url, http_process, timeout=args.ready_timeout)
-        if run_doctor:
-            _run_tunnel_doctor(config)
         print("FAVA Trails tunnel preflight: ok")
         return 0
     except (OSError, ValueError, subprocess.SubprocessError, TimeoutError) as exc:
@@ -779,8 +760,6 @@ def cmd_start(args: argparse.Namespace) -> int:
             "--state-dir",
             str(state_dir),
         ]
-        if getattr(args, "tunnel_doctor", False):
-            command.append("--tunnel-doctor")
         if getattr(args, "sync_on_start", False):
             command.append("--sync-on-start")
         command.extend([
@@ -938,7 +917,6 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common_args(p_run)
     p_run.add_argument("--tunnel-client", default="tunnel-client", help="Path to tunnel-client binary")
     p_run.add_argument("--ready-timeout", type=float, default=20.0, help="Seconds to wait for local MCP readiness")
-    p_run.add_argument("--tunnel-doctor", action="store_true", help="Run tunnel-client doctor before starting the tunnel")
     p_run.add_argument("--sync-on-start", action="store_true", help="Require one successful data repo sync before exposing the gateway")
     p_run.add_argument("--sync-interval-seconds", type=float, default=DEFAULT_SYNC_INTERVAL_SECONDS, help=f"Seconds between data repo syncs; 0 disables tunnel-managed sync (default: {DEFAULT_SYNC_INTERVAL_SECONDS:g})")
     p_run.add_argument("--sync-timeout-seconds", type=float, default=DEFAULT_SYNC_TIMEOUT_SECONDS, help=f"Seconds before a data repo sync is marked failed (default: {DEFAULT_SYNC_TIMEOUT_SECONDS:g})")
@@ -949,7 +927,6 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common_args(p_start)
     p_start.add_argument("--tunnel-client", default="tunnel-client", help="Path to tunnel-client binary")
     p_start.add_argument("--ready-timeout", type=float, default=20.0, help="Seconds to wait for local MCP readiness")
-    p_start.add_argument("--tunnel-doctor", action="store_true", help="Run tunnel-client doctor before starting the tunnel")
     p_start.add_argument("--sync-on-start", action="store_true", help="Require one successful data repo sync before exposing the gateway")
     p_start.add_argument("--sync-interval-seconds", type=float, default=DEFAULT_SYNC_INTERVAL_SECONDS, help=f"Seconds between data repo syncs; 0 disables tunnel-managed sync (default: {DEFAULT_SYNC_INTERVAL_SECONDS:g})")
     p_start.add_argument("--sync-timeout-seconds", type=float, default=DEFAULT_SYNC_TIMEOUT_SECONDS, help=f"Seconds before a data repo sync is marked failed (default: {DEFAULT_SYNC_TIMEOUT_SECONDS:g})")
@@ -957,9 +934,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_preflight = subparsers.add_parser("preflight", help="Validate the private runtime without starting the external tunnel")
     _add_common_args(p_preflight)
-    p_preflight.add_argument("--tunnel-client", default="tunnel-client", help="Path to tunnel-client binary")
     p_preflight.add_argument("--ready-timeout", type=float, default=20.0, help="Seconds to wait for local MCP readiness")
-    p_preflight.add_argument("--tunnel-doctor", action="store_true", help="Run tunnel-client doctor after private readiness succeeds")
     p_preflight.set_defaults(func=cmd_preflight)
 
     p_stop = subparsers.add_parser("stop", help="Stop a detached gateway")
