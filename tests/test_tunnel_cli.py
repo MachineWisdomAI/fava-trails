@@ -13,6 +13,8 @@ from starlette.testclient import TestClient
 from fava_trails import tunnel_cli
 from fava_trails.config import ConfigStore
 from fava_trails.http_runtime import create_streamable_http_app
+from fava_trails.models import ThoughtFrontmatter, ThoughtRecord
+from fava_trails.readiness import ReadinessFailure, probe_data_repository
 from fava_trails.tunnel_cli import (
     DEFAULT_HOST,
     DEFAULT_MCP_PATH,
@@ -54,6 +56,18 @@ def _make_data_repo(tmp_path: Path, *, openrouter_env: str = "OPENROUTER_API_KEY
         f"trails_dir: trails\nopenrouter_api_key_env: {openrouter_env}\n"
     )
     return data_repo
+
+
+def _write_thought(data_repo: Path, *, thought_id: str = "01KXREADINESS00000000000000") -> Path:
+    thought_path = data_repo / "trails" / "mwai" / "eng" / "thoughts" / "drafts" / f"{thought_id}.md"
+    thought_path.parent.mkdir(parents=True)
+    thought_path.write_text(
+        ThoughtRecord(
+            frontmatter=ThoughtFrontmatter(thought_id=thought_id),
+            content="private representative content",
+        ).to_markdown()
+    )
+    return thought_path
 
 
 def test_load_gateway_config_requires_explicit_data_repo(monkeypatch):
@@ -125,6 +139,23 @@ def test_runtime_env_passes_health_file(tmp_path, monkeypatch):
     env = _runtime_env(config, health_file=health_file)
 
     assert env["FAVA_TRAILS_TUNNEL_HEALTH_FILE"] == str(health_file)
+
+
+def test_startup_wait_requires_strengthened_readiness_result():
+    process = MagicMock()
+    process.poll.return_value = None
+
+    with patch(
+        "fava_trails.tunnel_cli._request_health",
+        side_effect=[
+            (503, {"status": "not_ready", "reason": "trails_unreadable"}),
+            (200, {"status": "ok", "data": {"empty": True}}),
+        ],
+    ) as request_health:
+        with patch("fava_trails.tunnel_cli.time.sleep"):
+            tunnel_cli._wait_for_health("http://127.0.0.1:8765/healthz", process, timeout=1.0)
+
+    assert request_health.call_count == 2
 
 
 def test_repo_revision_state_uses_jj_bookmarks_not_git_head(tmp_path, monkeypatch):
@@ -491,12 +522,44 @@ def test_status_json_reports_health(tmp_path, monkeypatch, capsys):
     tunnel_cli._health_file(state_dir).write_text('{"status":"blocked","message":"dirty working copy"}\n')
 
     with patch("fava_trails.tunnel_cli._is_pid_running", return_value=True):
-        rc = cmd_status(_args(data_repo=str(data_repo), json=True))
+        with patch(
+            "fava_trails.tunnel_cli._status_readiness",
+            return_value={"status": "ok", "data": {"empty": True}},
+        ):
+            rc = cmd_status(_args(data_repo=str(data_repo), json=True))
 
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["running"] is True
+    assert payload["ready"] is True
     assert payload["health"]["status"] == "blocked"
+    assert payload["readiness"]["status"] == "ok"
+
+
+def test_status_returns_failure_when_runtime_is_running_but_data_is_not_ready(tmp_path, monkeypatch, capsys):
+    data_repo = _make_data_repo(tmp_path)
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    state_dir = tunnel_cli._state_dir(data_repo.resolve(), DEFAULT_PROFILE)
+    state_dir.mkdir(parents=True)
+    tunnel_cli._pid_file(state_dir).write_text("4321\n")
+
+    with patch("fava_trails.tunnel_cli._is_pid_running", return_value=True):
+        with patch(
+            "fava_trails.tunnel_cli._status_readiness",
+            return_value={
+                "status": "not_ready",
+                "reason": "trails_unreadable",
+                "message": "trails directory is not accessible",
+            },
+        ):
+            rc = cmd_status(_args(data_repo=str(data_repo), json=True))
+
+    assert rc == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "not_ready"
+    assert payload["running"] is True
+    assert payload["ready"] is False
+    assert payload["readiness"]["reason"] == "trails_unreadable"
 
 
 def test_stop_does_not_require_startup_only_environment(tmp_path, monkeypatch, capsys):
@@ -574,8 +637,7 @@ def test_tunnel_cli_help_mentions_start():
     assert "run" in help_text
 
 
-def test_http_runtime_healthz_reports_data_repo(tmp_path, monkeypatch):
-    data_repo = _make_data_repo(tmp_path)
+def _health_response(data_repo: Path, monkeypatch):
     monkeypatch.setenv("FAVA_TRAILS_DATA_REPO", str(data_repo))
     ConfigStore.reset()
 
@@ -585,34 +647,126 @@ def test_http_runtime_healthz_reports_data_repo(tmp_path, monkeypatch):
     with patch("fava_trails.server._init_server", new=noop_init_server):
         app = create_streamable_http_app()
         with TestClient(app) as client:
-            response = client.get("/healthz")
+            return client.get("/healthz")
+
+
+def test_http_runtime_healthz_reports_valid_empty_repository_ready(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(tmp_path)
+    response = _health_response(data_repo, monkeypatch)
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "ok"
     assert payload["runtime"] == "fava-trails-tunnel"
-    assert payload["data_repo"] == str(data_repo)
-    assert payload["trails_dir"] == str(data_repo / "trails")
-    assert payload["sync"] == {}
+    assert payload["data"] == {
+        "status": "ok",
+        "scopes": 0,
+        "records": 0,
+        "empty": True,
+        "representative_read": False,
+    }
+    assert str(data_repo) not in response.text
 
 
-def test_http_runtime_healthz_reports_sync_degraded(tmp_path, monkeypatch):
+def test_http_runtime_healthz_traverses_scopes_and_parses_representative_record(tmp_path, monkeypatch):
     data_repo = _make_data_repo(tmp_path)
-    health_file = tmp_path / "health.json"
-    health_file.write_text('{"status":"blocked","message":"dirty working copy"}\n')
-    monkeypatch.setenv("FAVA_TRAILS_DATA_REPO", str(data_repo))
-    monkeypatch.setenv("FAVA_TRAILS_TUNNEL_HEALTH_FILE", str(health_file))
-    ConfigStore.reset()
-
-    async def noop_init_server():
-        return None
-
-    with patch("fava_trails.server._init_server", new=noop_init_server):
-        app = create_streamable_http_app()
-        with TestClient(app) as client:
-            response = client.get("/healthz")
+    _write_thought(data_repo)
+    response = _health_response(data_repo, monkeypatch)
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["status"] == "degraded"
-    assert payload["sync"]["status"] == "blocked"
+    assert payload["data"]["scopes"] == 1
+    assert payload["data"]["records"] == 1
+    assert payload["data"]["empty"] is False
+    assert payload["data"]["representative_read"] is True
+    assert "private representative content" not in response.text
+    assert str(data_repo) not in response.text
+
+
+def test_http_runtime_healthz_does_not_treat_prior_sync_state_as_readiness(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(tmp_path)
+    health_file = tmp_path / "health.json"
+    health_file.write_text('{"status":"blocked","message":"dirty working copy"}\n')
+    monkeypatch.setenv("FAVA_TRAILS_TUNNEL_HEALTH_FILE", str(health_file))
+    response = _health_response(data_repo, monkeypatch)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert "dirty working copy" not in response.text
+    assert "sync" not in response.json()
+
+
+def test_http_runtime_healthz_reports_missing_structure_without_path(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(tmp_path)
+    (data_repo / "trails").rmdir()
+    response = _health_response(data_repo, monkeypatch)
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "status": "not_ready",
+        "runtime": "fava-trails-tunnel",
+        "reason": "trails_missing",
+        "message": "trails directory is missing",
+    }
+    assert str(data_repo) not in response.text
+
+
+def test_http_runtime_healthz_reports_malformed_config_without_loading_cached_config(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(tmp_path)
+    (data_repo / "config.yaml").write_text("trails_dir: [not-a-path]\n")
+    response = _health_response(data_repo, monkeypatch)
+
+    assert response.status_code == 503
+    assert response.json()["reason"] == "config_malformed"
+    assert str(data_repo) not in response.text
+
+
+def test_http_runtime_healthz_probes_the_trails_directory_named_by_config(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(tmp_path)
+    (data_repo / "config.yaml").write_text("trails_dir: missing-trails\n")
+    response = _health_response(data_repo, monkeypatch)
+
+    assert response.status_code == 503
+    assert response.json()["reason"] == "trails_missing"
+
+
+def test_http_runtime_healthz_reports_inaccessible_scope_tree(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(tmp_path)
+    with patch("fava_trails.readiness.os.scandir", side_effect=PermissionError("private path")):
+        response = _health_response(data_repo, monkeypatch)
+
+    assert response.status_code == 503
+    assert response.json()["reason"] == "scope_tree_unreadable"
+    assert "private path" not in response.text
+    assert str(data_repo) not in response.text
+
+
+def test_http_runtime_healthz_reports_malformed_representative_without_content(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(tmp_path)
+    thought_path = _write_thought(data_repo)
+    thought_path.write_text("---\nvalidation_status: definitely-invalid\n---\nsecret body")
+    response = _health_response(data_repo, monkeypatch)
+
+    assert response.status_code == 503
+    assert response.json()["reason"] == "thought_malformed"
+    assert "secret body" not in response.text
+    assert str(thought_path) not in response.text
+
+
+def test_data_readiness_probe_has_explicit_time_bound(tmp_path):
+    data_repo = _make_data_repo(tmp_path)
+
+    with pytest.raises(ReadinessFailure, match="time limit") as exc_info:
+        probe_data_repository(data_repo, timeout_seconds=0)
+
+    assert exc_info.value.reason == "probe_timeout"
+
+
+def test_http_runtime_healthz_reports_tree_bound(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(tmp_path)
+    (data_repo / "trails" / "scope").mkdir()
+    monkeypatch.setattr("fava_trails.readiness.MAX_TREE_ENTRIES", 0)
+    response = _health_response(data_repo, monkeypatch)
+
+    assert response.status_code == 503
+    assert response.json()["reason"] == "scope_tree_too_large"

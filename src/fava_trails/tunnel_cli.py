@@ -15,6 +15,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +25,7 @@ import yaml
 
 from .cli import _find_jj_bin
 from .config import ConfigStore
+from .readiness import DEFAULT_READINESS_TIMEOUT_SECONDS
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
@@ -32,6 +34,8 @@ DEFAULT_MCP_PATH = "/mcp/"
 DEFAULT_SYNC_INTERVAL_SECONDS = 0.0
 DEFAULT_SYNC_TIMEOUT_SECONDS = 30.0
 DETACHED_STARTUP_GRACE_SECONDS = 5.0
+MAX_HEALTH_RESPONSE_BYTES = 64 * 1024
+HEALTH_REQUEST_TIMEOUT_SECONDS = DEFAULT_READINESS_TIMEOUT_SECONDS + 0.5
 
 
 @dataclass(frozen=True)
@@ -203,6 +207,74 @@ def _runtime_env(config: GatewayConfig, *, health_file: Path | None = None) -> d
     return env
 
 
+def _request_health(url: str, *, timeout: float) -> tuple[int, dict]:
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            status = response.status
+            raw = response.read(MAX_HEALTH_RESPONSE_BYTES + 1)
+    except urllib.error.HTTPError as exc:
+        status = exc.code
+        raw = exc.read(MAX_HEALTH_RESPONSE_BYTES + 1)
+    if len(raw) > MAX_HEALTH_RESPONSE_BYTES:
+        return status, {}
+    try:
+        payload = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return status, {}
+    return status, payload if isinstance(payload, dict) else {}
+
+
+def _health_diagnostic(payload: dict) -> str:
+    reason = payload.get("reason")
+    message = payload.get("message")
+    if isinstance(reason, str) and isinstance(message, str):
+        return f"{reason}: {message}"[:240]
+    if isinstance(reason, str):
+        return reason[:120]
+    return "readiness endpoint returned a non-ready response"
+
+
+def _safe_readiness_payload(status: int, payload: dict) -> dict:
+    if status == 200 and payload.get("status") == "ok":
+        data = payload.get("data")
+        safe_data = {}
+        if isinstance(data, dict):
+            for key in ("status", "scopes", "records", "empty", "representative_read"):
+                value = data.get(key)
+                if isinstance(value, (str, int, bool)):
+                    safe_data[key] = value
+        return {"status": "ok", "data": safe_data}
+    reason = payload.get("reason")
+    message = payload.get("message")
+    return {
+        "status": "not_ready",
+        "reason": reason[:120] if isinstance(reason, str) else "readiness_failed",
+        "message": message[:240] if isinstance(message, str) else "runtime readiness check failed",
+    }
+
+
+def _status_readiness(args: argparse.Namespace, metadata: dict) -> dict:
+    health_url = metadata.get("health_url")
+    if not isinstance(health_url, str):
+        health_url = f"http://{args.host}:{args.port}/healthz"
+    parsed = urllib.parse.urlparse(health_url)
+    if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
+        return {
+            "status": "not_ready",
+            "reason": "invalid_health_url",
+            "message": "runtime health URL is not loopback-only",
+        }
+    try:
+        status, payload = _request_health(health_url, timeout=HEALTH_REQUEST_TIMEOUT_SECONDS)
+    except (OSError, urllib.error.URLError):
+        return {
+            "status": "not_ready",
+            "reason": "health_unreachable",
+            "message": "runtime readiness endpoint is unreachable",
+        }
+    return _safe_readiness_payload(status, payload)
+
+
 def _wait_for_health(url: str, process: subprocess.Popen, *, timeout: float) -> None:
     deadline = time.monotonic() + timeout
     last_error: Exception | None = None
@@ -210,9 +282,11 @@ def _wait_for_health(url: str, process: subprocess.Popen, *, timeout: float) -> 
         if process.poll() is not None:
             raise subprocess.SubprocessError("private MCP runtime exited before becoming ready")
         try:
-            with urllib.request.urlopen(url, timeout=0.5) as response:
-                if response.status == 200:
-                    return
+            request_timeout = min(HEALTH_REQUEST_TIMEOUT_SECONDS, deadline - time.monotonic())
+            status, payload = _request_health(url, timeout=max(request_timeout, 0.05))
+            if status == 200 and payload.get("status") == "ok":
+                return
+            last_error = RuntimeError(_health_diagnostic(payload))
         except (OSError, urllib.error.URLError) as exc:
             last_error = exc
         time.sleep(0.1)
@@ -727,24 +801,30 @@ def cmd_status(args: argparse.Namespace) -> int:
         running = bool(pid and _is_pid_running(pid))
         metadata = _read_json_file(_metadata_file(state_dir))
         health = _read_json_file(_health_file(state_dir))
+        readiness = _status_readiness(args, metadata) if running else {}
+        ready = bool(running and readiness.get("status") == "ok")
         if getattr(args, "json", False):
             print(json.dumps({
-                "status": "running" if running else "not_running",
+                "status": "ready" if ready else ("not_ready" if running else "not_running"),
                 "running": running,
+                "ready": ready,
                 "pid": pid if running else None,
                 "state_dir": str(state_dir),
                 "log_file": str(_log_file(state_dir)),
                 "metadata": metadata,
                 "health": health,
+                "readiness": readiness,
             }, indent=2))
-            return 0 if running else 1
-        if pid and _is_pid_running(pid):
-            print(f"Gateway running (pid {pid})")
+            return 0 if ready else 1
+        if running:
+            print(f"Gateway {'ready' if ready else 'running but not ready'} (pid {pid})")
             print(f"  State: {state_dir}")
             print(f"  Log:   {_log_file(state_dir)}")
             if health:
                 print(f"  Sync:  {health.get('status', 'unknown')} ({health.get('message', '')})")
-            return 0
+            if not ready:
+                print(f"  Readiness: {readiness.get('reason', 'failed')} ({readiness.get('message', '')})")
+            return 0 if ready else 1
         print("Gateway not running")
         print(f"  State: {state_dir}")
         return 1
