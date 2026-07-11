@@ -197,10 +197,31 @@ normal `sync` MCP tool when you want to fetch/rebase shared trail data.
 fava-trails-tunnel start --data-repo /path/to/fava-trails-data --profile fava-trails
 ```
 
-Pass `--sync-interval-seconds N` only if you intentionally want the tunnel to
-sync on startup and every `N` seconds; `0` fully disables the autosync code path.
-Use `--sync-timeout-seconds N` to bound each opt-in sync attempt. The health
-endpoint and status command report the tunnel runtime and any opt-in sync state:
+The `/healthz` readiness probe is bounded and non-mutating. It validates the
+data repository config and required `trails` directory, traverses at most
+100,000 scope-tree entries within two seconds, and parses one representative
+thought (up to 512 KiB) when records exist. A structurally valid empty repository
+is ready. Missing, unreadable, over-limit, timed-out, or malformed data returns
+HTTP 503 with a stable reason code. The response contains counts and status only;
+it never includes filesystem paths, credentials, thought bodies, or repository
+content.
+
+Readiness proves local data readability by the runtime identity. It does **not**
+prove remote freshness, perform a sync, contact the network, or validate that a
+write would succeed. A deployment that requires fresh startup data can request
+one bounded, fail-closed sync inside the gateway before it exposes the tunnel:
+
+```bash
+fava-trails-tunnel start --data-repo /path/to/fava-trails-data --profile fava-trails --sync-on-start
+```
+
+With `--sync-on-start`, a non-ok result, timeout, or exception prevents HTTP and
+tunnel exposure. Keep `--sync-interval-seconds` at its default `0` when no
+later autosync is wanted; a positive interval additionally starts the recurring
+worker without repeating the initial sync.
+
+The tunnel startup wait and `status` command consume `/healthz`; `status` exits
+non-zero when the supervisor is running but its data is not ready:
 
 ```bash
 curl http://127.0.0.1:8765/healthz

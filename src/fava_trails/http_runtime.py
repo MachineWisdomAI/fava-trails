@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -13,7 +13,8 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
-from .config import ConfigStore, get_data_repo_root, get_trails_dir
+from .config import DEFAULT_FAVA_HOME, ConfigStore
+from .readiness import DEFAULT_READINESS_TIMEOUT_SECONDS, ReadinessFailure, probe_data_repository
 
 
 class _McpASGIApp:
@@ -41,28 +42,51 @@ def create_streamable_http_app() -> Starlette:
             yield
 
     async def healthz(request) -> JSONResponse:
-        data_repo = get_data_repo_root()
-        trails_dir = get_trails_dir()
-        sync_state = {}
-        health_file = os.environ.get("FAVA_TRAILS_TUNNEL_HEALTH_FILE")
-        if health_file:
-            try:
-                payload = json.loads(Path(health_file).read_text())
-                if isinstance(payload, dict):
-                    sync_state = payload
-            except (OSError, json.JSONDecodeError):
-                sync_state = {"status": "unknown", "message": "health file unreadable"}
-        sync_status = sync_state.get("status")
-        degraded = sync_status not in (None, "ok", "disabled")
-        return JSONResponse(
-            {
-                "status": "degraded" if degraded else "ok",
-                "runtime": "fava-trails-tunnel",
-                "data_repo": str(data_repo),
-                "trails_dir": str(trails_dir),
-                "sync": sync_state,
-            }
-        )
+        data_repo = Path(os.environ.get("FAVA_TRAILS_DATA_REPO", DEFAULT_FAVA_HOME)).expanduser()
+        try:
+            data_state = await asyncio.wait_for(
+                asyncio.to_thread(
+                    probe_data_repository,
+                    data_repo,
+                    timeout_seconds=DEFAULT_READINESS_TIMEOUT_SECONDS,
+                ),
+                timeout=DEFAULT_READINESS_TIMEOUT_SECONDS + 0.1,
+            )
+        except ReadinessFailure as exc:
+            return JSONResponse(
+                {
+                    "status": "not_ready",
+                    "runtime": "fava-trails-tunnel",
+                    "reason": exc.reason,
+                    "message": exc.message,
+                },
+                status_code=503,
+            )
+        except TimeoutError:
+            return JSONResponse(
+                {
+                    "status": "not_ready",
+                    "runtime": "fava-trails-tunnel",
+                    "reason": "probe_timeout",
+                    "message": "data readiness probe exceeded its time limit",
+                },
+                status_code=503,
+            )
+        except Exception:  # noqa: BLE001 - readiness must fail closed without leaking internals
+            return JSONResponse(
+                {
+                    "status": "not_ready",
+                    "runtime": "fava-trails-tunnel",
+                    "reason": "readiness_probe_failed",
+                    "message": "data readiness probe failed",
+                },
+                status_code=503,
+            )
+        return JSONResponse({
+            "status": "ok",
+            "runtime": "fava-trails-tunnel",
+            "data": data_state,
+        })
 
     return Starlette(
         lifespan=lifespan,
