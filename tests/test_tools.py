@@ -1191,3 +1191,65 @@ async def test_prefix_match_tool_handler_ambiguous_returns_error(trail_manager):
     assert result["status"] == "error"
     assert "candidates" in result
     assert len(result["candidates"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_supersede_mcp_without_confidence_preserves_original(trail_manager):
+    """MCP supersede without 'confidence' in arguments must retain original thought's confidence.
+    Explicit numeric confidence must override.
+    """
+    from fava_trails.models import SourceType
+    from fava_trails.tools.thought import handle_supersede
+
+    # Create original with specific confidence
+    original = await trail_manager.save_thought(
+        content="Original observation with high confidence.",
+        agent_id="test-mcp-agent",
+        source_type=SourceType.OBSERVATION,
+        namespace="observations",
+        confidence=0.75,
+    )
+    assert original.frontmatter.confidence == 0.75
+
+    # MCP call WITHOUT confidence key (omitted)
+    result = await handle_supersede(
+        trail_manager,
+        {
+            "thought_id": original.thought_id,
+            "content": "Corrected observation after review.",
+            "reason": "MCP regression: omitted confidence must preserve original",
+            "agent_id": "test-mcp-agent",
+            "trail_name": "test/scope",  # present but not used by handler for this
+            # deliberately no "confidence"
+        },
+    )
+    assert result["status"] == "ok"
+    new_thought = result["new_thought"]
+    assert new_thought["confidence"] == 0.75, "omitted confidence must preserve original"
+    assert result["supersedes_thought_id"] == original.thought_id
+
+    # Verify atomic backlink on original
+    refreshed = await trail_manager.get_thought(original.thought_id)
+    assert refreshed.frontmatter.superseded_by == new_thought["thought_id"]
+
+    # Now test explicit override
+    original2 = await trail_manager.save_thought(
+        content="Another with default conf.",
+        agent_id="test-mcp-agent",
+        source_type=SourceType.OBSERVATION,
+        namespace="observations",
+        confidence=0.5,
+    )
+    result2 = await handle_supersede(
+        trail_manager,
+        {
+            "thought_id": original2.thought_id,
+            "content": "Overridden with explicit low confidence.",
+            "reason": "Explicit numeric override test",
+            "agent_id": "test-mcp-agent",
+            "confidence": 0.25,  # explicit
+            "trail_name": "test/scope",
+        },
+    )
+    assert result2["status"] == "ok"
+    assert result2["new_thought"]["confidence"] == 0.25, "explicit numeric must be used"
