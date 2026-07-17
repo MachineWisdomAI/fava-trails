@@ -8,12 +8,6 @@
   {
     "path": "/MachineWisdomAI/fava-trails/pulls",
     "title": "/pulls",
-    "count": 9,
-    "uniques": 2
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pull/68",
-    "title": "/pull/68",
     "count": 6,
     "uniques": 2
   },
@@ -58,5 +52,11 @@
     "title": "/pull/82",
     "count": 3,
     "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pull/79/changes",
+    "title": "/pull/79/changes",
+    "count": 2,
+    "uniques": 2
   }
 ]
