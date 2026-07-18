@@ -8,5 +8,10 @@
     "referrer": "news.ycombinator.com",
     "count": 1,
     "uniques": 1
+  },
+  {
+    "referrer": "perplexity.ai",
+    "count": 1,
+    "uniques": 1
   }
 ]
