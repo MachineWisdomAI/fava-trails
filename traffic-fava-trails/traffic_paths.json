@@ -2,18 +2,18 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 21,
+    "count": 20,
     "uniques": 8
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pulls",
-    "title": "/pulls",
-    "count": 6,
-    "uniques": 2
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pull/78",
     "title": "/pull/78",
+    "count": 5,
+    "uniques": 2
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pulls",
+    "title": "/pulls",
     "count": 5,
     "uniques": 2
   },
