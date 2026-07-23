@@ -2,18 +2,12 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 18,
-    "uniques": 7
+    "count": 14,
+    "uniques": 6
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pull/78",
     "title": "/pull/78",
-    "count": 5,
-    "uniques": 2
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pulls",
-    "title": "/pulls",
     "count": 5,
     "uniques": 2
   },
@@ -27,12 +21,6 @@
     "path": "/MachineWisdomAI/fava-trails/pull/75",
     "title": "/pull/75",
     "count": 4,
-    "uniques": 2
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pull/71",
-    "title": "/pull/71",
-    "count": 3,
     "uniques": 2
   },
   {
@@ -57,6 +45,18 @@
     "path": "/MachineWisdomAI/fava-trails/pull/82",
     "title": "/pull/82",
     "count": 3,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pull/79/changes",
+    "title": "/pull/79/changes",
+    "count": 2,
+    "uniques": 2
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pull/75/changes",
+    "title": "/pull/75/changes",
+    "count": 2,
     "uniques": 1
   }
 ]
