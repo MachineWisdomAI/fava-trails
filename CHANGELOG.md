@@ -4,6 +4,11 @@ All notable changes to FAVA Trails are documented here.
 
 ## Unreleased
 
+## [0.5.9] — 2026-07-29
+
+### Fixed
+- Constrain MCP to the supported 1.x line so a fresh dependency resolution cannot select MCP 2.0 and crash the MCP server before initialization.
+
 ## [0.5.8] — 2026-07-08
 
 ### Added
