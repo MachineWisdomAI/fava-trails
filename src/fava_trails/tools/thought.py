@@ -207,14 +207,18 @@ async def handle_supersede(trail, arguments: dict, target_trail=None) -> dict[st
         return {"status": "error", "message": "reason is required (explain why the thought changed)"}
 
     try:
-        record = await trail.supersede(
-            original_id=original_id,
-            new_content=new_content,
-            reason=reason,
-            agent_id=arguments.get("agent_id", "unknown"),
-            confidence=arguments.get("confidence"),
-            target_trail=target_trail,
-        )
+        agent_id = arguments.get("agent_id", "unknown")
+        confidence = arguments.get("confidence")
+        supersede_kwargs = {
+            "original_id": original_id,
+            "new_content": new_content,
+            "reason": reason,
+            "agent_id": agent_id,
+            "target_trail": target_trail,
+        }
+        if "confidence" in arguments and confidence is not None:
+            supersede_kwargs["confidence"] = confidence
+        record = await trail.supersede(**supersede_kwargs)
     except AmbiguousThoughtID as e:
         return {"status": "error", "message": str(e), "candidates": e.candidates}
     except ValueError as e:
