@@ -4,14 +4,17 @@ import tomllib
 from pathlib import Path
 
 
-def test_mcp_dependency_excludes_incompatible_major_version():
-    """FAVA's current server registration API requires MCP 1.x."""
+def test_all_direct_dependencies_exclude_their_next_major_version():
+    """Named dependencies must not silently cross a major compatibility boundary."""
     pyproject = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())
 
-    mcp_requirement = next(
-        dependency
-        for dependency in pyproject["project"]["dependencies"]
-        if dependency.startswith("mcp")
-    )
+    dependencies = [*pyproject["project"]["dependencies"]]
+    for group in pyproject["project"].get("optional-dependencies", {}).values():
+        dependencies.extend(group)
+    for group in pyproject.get("dependency-groups", {}).values():
+        dependencies.extend(group)
+    dependencies.extend(pyproject["build-system"]["requires"])
 
-    assert "<2.0" in mcp_requirement
+    unbounded = [dependency for dependency in dependencies if "<" not in dependency]
+
+    assert not unbounded, f"missing next-major bound: {', '.join(unbounded)}"

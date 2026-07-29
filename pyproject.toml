@@ -16,26 +16,26 @@ classifiers = [
 ]
 dependencies = [
     "mcp>=1.0.0,<2.0",
-    "pydantic>=2.0.0",
-    "pyyaml>=6.0",
-    "python-ulid>=3.0.0",
-    "any-llm-sdk>=1.10.0",
-    "httpx>=0.27.0",
-    "starlette>=0.52.0",
-    "uvicorn>=0.41.0",
+    "pydantic>=2.0.0,<3.0",
+    "pyyaml>=6.0,<7.0",
+    "python-ulid>=3.0.0,<4.0",
+    "any-llm-sdk>=1.10.0,<2.0",
+    "httpx>=0.27.0,<1.0",
+    "starlette>=0.52.0,<1.0",
+    "uvicorn>=0.41.0,<1.0",
 ]
 
 [project.optional-dependencies]
-bedrock   = ["any-llm-sdk[bedrock]"]
-groq      = ["any-llm-sdk[groq]"]
-anthropic = ["any-llm-sdk[anthropic]"]
-gemini    = ["any-llm-sdk[gemini]"]
-mistral   = ["any-llm-sdk[mistral]"]
-ollama    = ["any-llm-sdk[ollama]"]
+bedrock   = ["any-llm-sdk[bedrock]>=1.10.0,<2.0"]
+groq      = ["any-llm-sdk[groq]>=1.10.0,<2.0"]
+anthropic = ["any-llm-sdk[anthropic]>=1.10.0,<2.0"]
+gemini    = ["any-llm-sdk[gemini]>=1.10.0,<2.0"]
+mistral   = ["any-llm-sdk[mistral]>=1.10.0,<2.0"]
+ollama    = ["any-llm-sdk[ollama]>=1.10.0,<2.0"]
 # Protocol extras: lightweight protocols (1-2 deps) live here as extras.
 # Protocols with heavy dependency trees must be UV workspace members instead.
-secom     = ["llmlingua>=0.2.0"]
-all       = ["any-llm-sdk[bedrock,groq,anthropic,gemini,mistral,ollama]", "llmlingua>=0.2.0"]
+secom     = ["llmlingua>=0.2.0,<1.0"]
+all       = ["any-llm-sdk[bedrock,groq,anthropic,gemini,mistral,ollama]>=1.10.0,<2.0", "llmlingua>=0.2.0,<1.0"]
 
 [project.urls]
 Homepage = "https://github.com/MachineWisdomAI/fava-trails"
@@ -48,7 +48,7 @@ fava-trails = "fava_trails.cli:main"
 fava-trails-tunnel = "fava_trails.tunnel_cli:main"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.0,<2.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
@@ -86,7 +86,7 @@ ignore = ["E501", "B008"]
 
 [dependency-groups]
 dev = [
-    "pytest>=9.0.2",
-    "pytest-asyncio>=1.3.0",
-    "ruff>=0.8.0",
+    "pytest>=9.0.2,<10.0",
+    "pytest-asyncio>=1.3.0,<2.0",
+    "ruff>=0.8.0,<1.0",
 ]
