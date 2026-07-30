@@ -49,9 +49,12 @@ trust_gate_timeout_secs: 240
 tool_timeout_secs: 300
 ```
 
-Then export the key named by `trust_gate_api_key_env` (do not hardcode host, port,
-model, or credentials in the engine). There is **no automatic fallback** to OpenRouter
-if the local provider fails — Trust Gate stays fail-closed.
+Unsloth Studio generates local API keys (`sk-unsloth-…`) under **Settings → API**.
+`unsloth run` can also auto-create and print a key. Copy that value into the env
+var named by `trust_gate_api_key_env` (see [Unsloth API docs](https://unsloth.ai/docs/basics/api)).
+Do not hardcode host, port, model, or credentials in the engine. There is **no
+automatic fallback** to OpenRouter if the local provider fails — Trust Gate stays
+fail-closed.
 
 FAVA Trails uses [any-llm-sdk](https://github.com/mozilla-ai/any-llm) for the provider seam.
 

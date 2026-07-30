@@ -55,6 +55,9 @@ def _make_data_repo(
     openrouter_env: str | None = "OPENROUTER_API_KEY",
     trust_gate_api_key_env: str | None = None,
     trust_gate_provider: str | None = None,
+    trust_gate_model: str | None = None,
+    trust_gate_api_base: str | None = None,
+    extra_lines: list[str] | None = None,
 ) -> Path:
     data_repo = tmp_path / "fava-trails-data"
     data_repo.mkdir()
@@ -66,6 +69,12 @@ def _make_data_repo(
         lines.append(f"trust_gate_api_key_env: {trust_gate_api_key_env}")
     if trust_gate_provider is not None:
         lines.append(f"trust_gate_provider: {trust_gate_provider}")
+    if trust_gate_model is not None:
+        lines.append(f"trust_gate_model: {trust_gate_model}")
+    if trust_gate_api_base is not None:
+        lines.append(f"trust_gate_api_base: {trust_gate_api_base}")
+    if extra_lines:
+        lines.extend(extra_lines)
     (data_repo / "config.yaml").write_text("\n".join(lines) + "\n")
     return data_repo
 
@@ -106,6 +115,8 @@ def test_load_gateway_config_uses_trust_gate_api_key_env(tmp_path, monkeypatch):
         openrouter_env="OPENROUTER_API_KEY",
         trust_gate_api_key_env="UNSLOTH_API_KEY",
         trust_gate_provider="openai",
+        trust_gate_model="studio-local-model",
+        trust_gate_api_base="http://127.0.0.1:8000/v1",
     )
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.delenv("UNSLOTH_API_KEY", raising=False)
@@ -120,6 +131,49 @@ def test_load_gateway_config_uses_trust_gate_api_key_env(tmp_path, monkeypatch):
         with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
             config = _load_gateway_config(_args(data_repo=str(data_repo)))
     assert config.trust_gate_env == "UNSLOTH_API_KEY"
+
+
+def test_load_gateway_config_rejects_blank_provider(tmp_path, monkeypatch):
+    """Blank trust_gate_provider fails tunnel preflight via GlobalConfig validation."""
+    data_repo = _make_data_repo(tmp_path, extra_lines=["trust_gate_provider: ''"])
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            with pytest.raises(ValueError, match="invalid Trust Gate configuration"):
+                _load_gateway_config(_args(data_repo=str(data_repo)))
+
+
+def test_load_gateway_config_rejects_local_provider_without_api_base(tmp_path, monkeypatch):
+    """Local/non-OpenRouter provider must declare an API base at gateway startup."""
+    data_repo = _make_data_repo(
+        tmp_path,
+        trust_gate_api_key_env="UNSLOTH_API_KEY",
+        trust_gate_provider="openai",
+        trust_gate_model="studio-local-model",
+    )
+    monkeypatch.setenv("UNSLOTH_API_KEY", "local-key")
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            with pytest.raises(ValueError, match="trust_gate_api_base"):
+                _load_gateway_config(_args(data_repo=str(data_repo)))
+
+
+def test_load_gateway_config_rejects_invalid_api_base(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(
+        tmp_path,
+        trust_gate_api_key_env="UNSLOTH_API_KEY",
+        trust_gate_provider="openai",
+        trust_gate_model="studio-local-model",
+        trust_gate_api_base="not-a-url",
+    )
+    monkeypatch.setenv("UNSLOTH_API_KEY", "local-key")
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            with pytest.raises(ValueError, match="invalid Trust Gate configuration"):
+                _load_gateway_config(_args(data_repo=str(data_repo)))
 
 
 def test_load_gateway_config_builds_loopback_mcp_url(tmp_path, monkeypatch):

@@ -81,18 +81,22 @@ class LLMClient:
     ) -> LLMResponse:
         """Send a chat completion request.
 
-        Resolves model aliases, routes via any-llm-sdk with the configured
-        provider/api_base, strips temperature for models that don't support it,
-        and retries on transient errors.
+        Routes via any-llm-sdk with the configured provider/api_base. OpenRouter
+        (default, no custom api_base) still resolves friendly aliases through the
+        bundled registry. Non-OpenRouter providers and custom api_base targets
+        forward the exact configured model identifier so local servers (e.g.
+        Unsloth Studio) receive the ID they actually expose.
         """
         if not self._api_key:
             raise LLMError("LLM API key required but not provided")
 
-        registry = get_registry()
-        info = registry.resolve(model)
-
-        if info is not None:
-            resolved_model = info.model_name
+        # OpenRouter-oriented alias registry must not rewrite local/custom IDs
+        # (e.g. gpt-4.1-mini -> openai/gpt-4.1-mini breaks a Studio serve path).
+        use_openrouter_aliases = self._provider == "openrouter" and self._api_base is None
+        info = None
+        if use_openrouter_aliases:
+            info = get_registry().resolve(model)
+            resolved_model = info.model_name if info is not None else model
         else:
             resolved_model = model
 

@@ -102,7 +102,9 @@ class ThoughtRecord(BaseModel):
             fm["validation_status"] = str(fm["validation_status"])
         # Convert relationships
         if "relationships" in fm:
-            fm["relationships"] = [{"type": str(r["type"]), "target_id": r["target_id"]} for r in fm["relationships"]]
+            fm["relationships"] = [
+                {"type": str(r["type"]), "target_id": r["target_id"]} for r in fm["relationships"]
+            ]
 
         yaml_str = yaml.dump(fm, default_flow_style=False, sort_keys=False, allow_unicode=True)
         return f"---\n{yaml_str}---\n{self.content}"
@@ -127,18 +129,16 @@ class ThoughtRecord(BaseModel):
         return cls(frontmatter=frontmatter, content=content)
 
 
-KNOWN_HOOKS = frozenset(
-    {
-        "before_save",
-        "after_save",
-        "before_propose",
-        "after_propose",
-        "after_supersede",
-        "on_recall",
-        "on_recall_mix",
-        "on_startup",
-    }
-)
+KNOWN_HOOKS = frozenset({
+    "before_save",
+    "after_save",
+    "before_propose",
+    "after_propose",
+    "after_supersede",
+    "on_recall",
+    "on_recall_mix",
+    "on_startup",
+})
 
 
 class HookEntry(BaseModel):
@@ -203,7 +203,10 @@ class TrailConfig(BaseModel):
     @classmethod
     def hooks_not_yet_supported(cls, v: list[HookEntry]) -> list[HookEntry]:
         if v:
-            raise ValueError("Per-trail hook overrides not yet supported — define hooks in global config.yaml")
+            raise ValueError(
+                "Per-trail hook overrides not yet supported — "
+                "define hooks in global config.yaml"
+            )
         return v
 
 
@@ -245,6 +248,34 @@ class GlobalConfig(BaseModel):
             return self.trust_gate_api_key_env
         return self.openrouter_api_key_env
 
+    @field_validator("trust_gate_provider", "trust_gate_model", "openrouter_api_key_env")
+    @classmethod
+    def non_empty_trust_gate_str(cls, v: str) -> str:
+        if not isinstance(v, str) or not v.strip():
+            raise ValueError("must be a non-empty string")
+        return v.strip()
+
+    @field_validator("trust_gate_api_key_env")
+    @classmethod
+    def normalize_trust_gate_api_key_env(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if not isinstance(v, str) or not v.strip():
+            raise ValueError("trust_gate_api_key_env must be a non-empty string when set")
+        return v.strip()
+
+    @field_validator("trust_gate_api_base")
+    @classmethod
+    def normalize_trust_gate_api_base(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if not isinstance(v, str) or not v.strip():
+            raise ValueError("trust_gate_api_base must be a non-empty URL when set")
+        base = v.strip()
+        if not (base.startswith("http://") or base.startswith("https://")):
+            raise ValueError("trust_gate_api_base must start with http:// or https://")
+        return base
+
     @model_validator(mode="after")
     def trust_gate_timeout_within_tool_timeout(self) -> GlobalConfig:
         """Ensure Trust Gate timeout fires before the outer tool timeout.
@@ -262,3 +293,33 @@ class GlobalConfig(BaseModel):
                 "before the outer tool timeout. Set either to 0 to disable it."
             )
         return self
+
+    def validate_trust_gate_runtime(self) -> str:
+        """Validate Trust Gate provider configuration for startup/preflight.
+
+        Returns the resolved API-key environment variable name. Raises
+        ``ValueError`` when the typed provider/model/base/key-env contract is
+        incomplete for ``llm-oneshot``.
+        """
+        if self.trust_gate != "llm-oneshot":
+            return self.resolve_trust_gate_api_key_env()
+
+        provider = self.trust_gate_provider
+        model = self.trust_gate_model
+        if not provider:
+            raise ValueError("trust_gate_provider must be a non-empty string")
+        if not model:
+            raise ValueError("trust_gate_model must be a non-empty string")
+
+        # Local / custom OpenAI-compatible endpoints need an explicit API base.
+        # Hosted OpenRouter keeps the historical default (no api_base).
+        if provider != "openrouter" and not self.trust_gate_api_base:
+            raise ValueError(
+                f"trust_gate_api_base is required when trust_gate_provider is {provider!r} "
+                "(set the OpenAI-compatible base URL, e.g. http://127.0.0.1:<port>/v1)"
+            )
+
+        key_env = self.resolve_trust_gate_api_key_env()
+        if not key_env:
+            raise ValueError("Trust Gate API key environment variable name is empty")
+        return key_env

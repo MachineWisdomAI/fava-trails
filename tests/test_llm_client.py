@@ -211,6 +211,47 @@ async def test_custom_provider_and_api_base_forwarded():
     assert result.model == "local-gguf"
 
 
+@pytest.mark.asyncio
+async def test_local_provider_preserves_registry_colliding_model_id():
+    """Local/custom endpoints must not rewrite IDs that collide with OpenRouter aliases.
+
+    Regression for #85: gpt-4.1-mini is an OpenRouter alias for openai/gpt-4.1-mini,
+    but a local Studio may serve the bare ID exactly.
+    """
+    client = LLMClient(
+        api_key="local-key",
+        provider="openai",
+        api_base="http://127.0.0.1:9999/v1",
+    )
+    mock_resp = _mock_completion("ok", model="gpt-4.1-mini")
+
+    with patch("fava_trails.llm.client.any_llm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        mock_acompletion.return_value = mock_resp
+        await client.chat(
+            messages=[{"role": "user", "content": "hi"}],
+            model="gpt-4.1-mini",
+        )
+
+    assert mock_acompletion.call_args.kwargs["model"] == "gpt-4.1-mini"
+    assert mock_acompletion.call_args.kwargs["provider"] == "openai"
+
+
+@pytest.mark.asyncio
+async def test_openrouter_still_resolves_aliases(client):
+    """Default OpenRouter path continues to expand friendly aliases."""
+    mock_resp = _mock_completion("ok", model="openai/gpt-4.1-mini")
+
+    with patch("fava_trails.llm.client.any_llm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        mock_acompletion.return_value = mock_resp
+        await client.chat(
+            messages=[{"role": "user", "content": "hi"}],
+            model="gpt-4.1-mini",
+        )
+
+    assert mock_acompletion.call_args.kwargs["model"] == "openai/gpt-4.1-mini"
+    assert mock_acompletion.call_args.kwargs["provider"] == "openrouter"
+
+
 def test_chatcompletion_accepts_nonstandard_service_tier():
     """Importing fava_trails.llm.client patches ChatCompletion to accept any service_tier string."""
     data = {

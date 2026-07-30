@@ -363,3 +363,28 @@ def test_global_config_local_openai_compatible_fields():
     assert config.trust_gate_provider == "openai"
     assert config.trust_gate_api_base == "http://127.0.0.1:8000/v1"
     assert config.resolve_trust_gate_api_key_env() == "UNSLOTH_API_KEY"
+    assert config.validate_trust_gate_runtime() == "UNSLOTH_API_KEY"
+
+
+def test_global_config_rejects_blank_provider():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        GlobalConfig(trust_gate_provider="   ")
+
+
+def test_global_config_rejects_invalid_api_base_scheme():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        GlobalConfig(trust_gate_api_base="ftp://localhost/v1")
+
+
+def test_global_config_validate_runtime_requires_api_base_for_non_openrouter():
+    config = GlobalConfig(
+        trust_gate_provider="openai",
+        trust_gate_model="local",
+        trust_gate_api_key_env="UNSLOTH_API_KEY",
+    )
+    with pytest.raises(ValueError, match="trust_gate_api_base"):
+        config.validate_trust_gate_runtime()

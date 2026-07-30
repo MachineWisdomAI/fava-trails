@@ -247,6 +247,32 @@ async def test_local_client_auth_failure_fail_closed(local_client, openai_server
     assert result.provider == "openai"
 
 
+def _local_trust_gate_config(
+    tmp_fava_home: Path,
+    *,
+    api_base: str,
+    model: str = "fixture-local-model",
+    key_env: str = "UNSLOTH_API_KEY",
+    timeout_secs: int = 30,
+    tool_timeout_secs: int = 60,
+) -> ConfigStore:
+    """Shared ConfigStore scaffold for local OpenAI-compatible Trust Gate tests."""
+    cfg = ConfigStore.__new__(ConfigStore)
+    cfg.global_config = GlobalConfig(
+        trust_gate="llm-oneshot",
+        trust_gate_provider="openai",
+        trust_gate_model=model,
+        trust_gate_api_base=api_base,
+        trust_gate_api_key_env=key_env,
+        trust_gate_timeout_secs=timeout_secs,
+        tool_timeout_secs=tool_timeout_secs,
+    )
+    cfg.data_repo_root = tmp_fava_home
+    cfg.trails_dir = tmp_fava_home / "trails"
+    ConfigStore.override(cfg)
+    return cfg
+
+
 @pytest.mark.asyncio
 async def test_local_client_timeout_via_propose_truth(trail_manager, tmp_fava_home, openai_server):
     """handle_propose_truth times out against a slow local endpoint (fail-closed)."""
@@ -263,19 +289,7 @@ async def test_local_client_timeout_via_propose_truth(trail_manager, tmp_fava_ho
     cache = MagicMock(spec=TrustGatePromptCache)
     cache.resolve_prompt.return_value = "You are a reviewer. Reply JSON."
 
-    cfg = ConfigStore.__new__(ConfigStore)
-    cfg.global_config = GlobalConfig(
-        trust_gate="llm-oneshot",
-        trust_gate_provider="openai",
-        trust_gate_model="fixture-local-model",
-        trust_gate_api_base=base_url,
-        trust_gate_api_key_env="UNSLOTH_API_KEY",
-        trust_gate_timeout_secs=1,
-        tool_timeout_secs=30,
-    )
-    cfg.data_repo_root = tmp_fava_home
-    cfg.trails_dir = tmp_fava_home / "trails"
-    ConfigStore.override(cfg)
+    _local_trust_gate_config(tmp_fava_home, api_base=base_url, timeout_secs=1, tool_timeout_secs=30)
 
     with patch.dict("os.environ", {"UNSLOTH_API_KEY": "test-local-key"}, clear=False):
         result = await handle_propose_truth(
@@ -303,19 +317,7 @@ async def test_propose_truth_local_approve_and_provenance(trail_manager, tmp_fav
     cache = MagicMock(spec=TrustGatePromptCache)
     cache.resolve_prompt.return_value = "You are a reviewer. Reply with JSON verdict."
 
-    cfg = ConfigStore.__new__(ConfigStore)
-    cfg.global_config = GlobalConfig(
-        trust_gate="llm-oneshot",
-        trust_gate_provider="openai",
-        trust_gate_model="fixture-local-model",
-        trust_gate_api_base=base_url,
-        trust_gate_api_key_env="UNSLOTH_API_KEY",
-        trust_gate_timeout_secs=30,
-        tool_timeout_secs=60,
-    )
-    cfg.data_repo_root = tmp_fava_home
-    cfg.trails_dir = tmp_fava_home / "trails"
-    ConfigStore.override(cfg)
+    _local_trust_gate_config(tmp_fava_home, api_base=base_url)
 
     with patch.dict("os.environ", {"UNSLOTH_API_KEY": "test-local-key"}, clear=False):
         result = await handle_propose_truth(
@@ -353,18 +355,7 @@ async def test_propose_truth_local_reject(trail_manager, tmp_fava_home, openai_s
     cache = MagicMock(spec=TrustGatePromptCache)
     cache.resolve_prompt.return_value = "You are a reviewer."
 
-    cfg = ConfigStore.__new__(ConfigStore)
-    cfg.global_config = GlobalConfig(
-        trust_gate_provider="openai",
-        trust_gate_model="fixture-local-model",
-        trust_gate_api_base=base_url,
-        trust_gate_api_key_env="UNSLOTH_API_KEY",
-        trust_gate_timeout_secs=30,
-        tool_timeout_secs=60,
-    )
-    cfg.data_repo_root = tmp_fava_home
-    cfg.trails_dir = tmp_fava_home / "trails"
-    ConfigStore.override(cfg)
+    _local_trust_gate_config(tmp_fava_home, api_base=base_url)
 
     with patch.dict("os.environ", {"UNSLOTH_API_KEY": "test-local-key"}, clear=False):
         result = await handle_propose_truth(
@@ -391,16 +382,7 @@ async def test_propose_truth_missing_configured_key(trail_manager, tmp_fava_home
     cache = MagicMock(spec=TrustGatePromptCache)
     cache.resolve_prompt.return_value = "You are a reviewer."
 
-    cfg = ConfigStore.__new__(ConfigStore)
-    cfg.global_config = GlobalConfig(
-        trust_gate_provider="openai",
-        trust_gate_model="fixture-local-model",
-        trust_gate_api_base=base_url,
-        trust_gate_api_key_env="UNSLOTH_API_KEY",
-    )
-    cfg.data_repo_root = tmp_fava_home
-    cfg.trails_dir = tmp_fava_home / "trails"
-    ConfigStore.override(cfg)
+    _local_trust_gate_config(tmp_fava_home, api_base=base_url)
 
     with patch.dict("os.environ", {}, clear=False):
         # Ensure the configured key is absent
@@ -415,6 +397,21 @@ async def test_propose_truth_missing_configured_key(trail_manager, tmp_fava_home
 
     assert result["status"] == "error"
     assert "UNSLOTH_API_KEY" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_local_client_forwards_registry_colliding_model_id(local_client, openai_server):
+    """End-to-end: bare gpt-4.1-mini is sent to the local server, not openai/gpt-4.1-mini."""
+    _, handler = openai_server
+    handler.response_mode = "approve"
+
+    await local_client.chat(
+        messages=[{"role": "user", "content": "ping"}],
+        model="gpt-4.1-mini",
+    )
+
+    assert handler.last_body is not None
+    assert handler.last_body.get("model") == "gpt-4.1-mini"
 
 
 @pytest.mark.asyncio
