@@ -37,16 +37,37 @@ class LLMResponse:
     content: str
     model: str
     usage: dict | None = None
+    provider: str | None = None
 
 
 class LLMClient:
-    """Async LLM client that routes requests through OpenRouter via any-llm-sdk."""
+    """Async LLM client that routes requests via any-llm-sdk.
+
+    Defaults to OpenRouter for backward compatibility. Operators can point the
+    Trust Gate at any OpenAI-compatible endpoint (e.g. Unsloth Studio) by
+    setting provider + api_base + api_key.
+    """
 
     def __init__(
         self,
+        *,
+        api_key: str | None = None,
+        provider: str = "openrouter",
+        api_base: str | None = None,
         openrouter_api_key: str | None = None,
     ) -> None:
-        self._openrouter_api_key = openrouter_api_key
+        # openrouter_api_key is retained as a backward-compatible alias.
+        self._api_key = api_key if api_key is not None else openrouter_api_key
+        self._provider = provider
+        self._api_base = api_base
+
+    @property
+    def provider(self) -> str:
+        return self._provider
+
+    @property
+    def api_base(self) -> str | None:
+        return self._api_base
 
     async def chat(
         self,
@@ -60,12 +81,12 @@ class LLMClient:
     ) -> LLMResponse:
         """Send a chat completion request.
 
-        Resolves model aliases, routes to OpenRouter via any-llm-sdk, strips
-        temperature for models that don't support it, and retries on
-        transient errors.
+        Resolves model aliases, routes via any-llm-sdk with the configured
+        provider/api_base, strips temperature for models that don't support it,
+        and retries on transient errors.
         """
-        if not self._openrouter_api_key:
-            raise LLMError("OpenRouter API key required but not provided")
+        if not self._api_key:
+            raise LLMError("LLM API key required but not provided")
 
         registry = get_registry()
         info = registry.resolve(model)
@@ -88,6 +109,9 @@ class LLMClient:
         if max_output_tokens is not None:
             kwargs["max_tokens"] = max_output_tokens
 
+        if self._api_base is not None:
+            kwargs["api_base"] = self._api_base
+
         async def _do_call() -> LLMResponse:
             # Use explicit httpx.Timeout phases to ensure all timeout types are set.
             # A scalar timeout only sets the total/read timeout; connect and pool
@@ -100,9 +124,9 @@ class LLMClient:
             )
             response = await any_llm.acompletion(
                 model=resolved_model,
-                provider="openrouter",
+                provider=self._provider,
                 messages=messages,
-                api_key=self._openrouter_api_key,
+                api_key=self._api_key,
                 client_args={"timeout": httpx_timeout},
                 **kwargs,
             )
@@ -121,6 +145,7 @@ class LLMClient:
                 content=content or "",
                 model=response.model or resolved_model,
                 usage=usage_dict,
+                provider=self._provider,
             )
 
         return await async_retry(_do_call)

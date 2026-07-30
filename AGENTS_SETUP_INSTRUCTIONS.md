@@ -33,7 +33,27 @@ The Trust Gate reviews thoughts before promotion using an LLM. By default, FAVA 
 
 The default model (`google/gemini-2.5-flash`) costs ~$0.001 per review.
 
-**Other providers:** FAVA Trails uses [any-llm-sdk](https://github.com/mozilla-ai/any-llm) for unified LLM access, enabling support for additional providers (Anthropic, OpenAI, Bedrock, etc.). Configuration for provider selection will be available in future versions via `config.yaml`.
+**Local OpenAI-compatible endpoint (e.g. Unsloth Studio):**
+
+Unsloth Studio (and similar local servers) expose authenticated OpenAI-compatible
+`/v1/chat/completions` endpoints. Point Trust Gate at them via `config.yaml`:
+
+```yaml
+trust_gate: llm-oneshot
+trust_gate_provider: openai
+trust_gate_model: <exact-model-id-served-by-studio>
+trust_gate_api_base: http://127.0.0.1:<studio-api-port>/v1
+trust_gate_api_key_env: UNSLOTH_API_KEY
+# Slow quantized local models may need more time; keep this below tool_timeout_secs.
+trust_gate_timeout_secs: 240
+tool_timeout_secs: 300
+```
+
+Then export the key named by `trust_gate_api_key_env` (do not hardcode host, port,
+model, or credentials in the engine). There is **no automatic fallback** to OpenRouter
+if the local provider fails — Trust Gate stays fail-closed.
+
+FAVA Trails uses [any-llm-sdk](https://github.com/mozilla-ai/any-llm) for the provider seam.
 
 ## Creating the Data Repo
 
@@ -127,8 +147,13 @@ push_strategy: immediate                  # manual | immediate
 
 # Trust Gate
 trust_gate: llm-oneshot                   # llm-oneshot | human (future)
-trust_gate_model: google/gemini-2.5-flash # model for LLM-based review
-openrouter_api_key_env: OPENROUTER_API_KEY # env var name for API key
+trust_gate_provider: openrouter           # any-llm provider id (openrouter | openai | ...)
+trust_gate_model: google/gemini-2.5-flash # exact model id for LLM-based review
+trust_gate_api_base: null                 # optional; set for OpenAI-compatible local endpoints
+trust_gate_api_key_env: OPENROUTER_API_KEY # env var name holding the API key
+# openrouter_api_key_env: OPENROUTER_API_KEY  # deprecated alias for trust_gate_api_key_env
+trust_gate_timeout_secs: 120              # LLM wait; raise for slow local models (< tool_timeout_secs)
+tool_timeout_secs: 300
 
 # Lifecycle hooks (optional, loaded at startup)
 hooks:
@@ -151,8 +176,13 @@ trails:
 | `remote_url` | string | `null` | Git remote URL for sync |
 | `push_strategy` | string | `manual` | `immediate` auto-pushes after writes; `manual` requires explicit sync |
 | `trust_gate` | string | `llm-oneshot` | Global trust gate policy |
-| `trust_gate_model` | string | `google/gemini-2.5-flash` | Model for LLM-based trust review |
-| `openrouter_api_key_env` | string | `OPENROUTER_API_KEY` | Env var name holding the API key for OpenRouter (default provider) |
+| `trust_gate_provider` | string | `openrouter` | any-llm provider id (`openrouter`, `openai`, …) |
+| `trust_gate_model` | string | `google/gemini-2.5-flash` | Exact model id for LLM-based trust review |
+| `trust_gate_api_base` | string | `null` | Optional OpenAI-compatible API base (e.g. Unsloth Studio `http://127.0.0.1:<port>/v1`) |
+| `trust_gate_api_key_env` | string | `OPENROUTER_API_KEY` (via alias) | Env var name holding the API key |
+| `openrouter_api_key_env` | string | `OPENROUTER_API_KEY` | Deprecated alias for `trust_gate_api_key_env` |
+| `trust_gate_timeout_secs` | int | `120` | Trust Gate LLM timeout; raise for slow local models, keep below `tool_timeout_secs` |
+| `tool_timeout_secs` | int | `300` | Outer MCP tool timeout |
 | `hooks` | list | `[]` | Lifecycle hook entries (see [Lifecycle Hooks](#lifecycle-hooks)) |
 
 ### Per-Trail Config

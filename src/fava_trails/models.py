@@ -102,9 +102,7 @@ class ThoughtRecord(BaseModel):
             fm["validation_status"] = str(fm["validation_status"])
         # Convert relationships
         if "relationships" in fm:
-            fm["relationships"] = [
-                {"type": str(r["type"]), "target_id": r["target_id"]} for r in fm["relationships"]
-            ]
+            fm["relationships"] = [{"type": str(r["type"]), "target_id": r["target_id"]} for r in fm["relationships"]]
 
         yaml_str = yaml.dump(fm, default_flow_style=False, sort_keys=False, allow_unicode=True)
         return f"---\n{yaml_str}---\n{self.content}"
@@ -129,16 +127,18 @@ class ThoughtRecord(BaseModel):
         return cls(frontmatter=frontmatter, content=content)
 
 
-KNOWN_HOOKS = frozenset({
-    "before_save",
-    "after_save",
-    "before_propose",
-    "after_propose",
-    "after_supersede",
-    "on_recall",
-    "on_recall_mix",
-    "on_startup",
-})
+KNOWN_HOOKS = frozenset(
+    {
+        "before_save",
+        "after_save",
+        "before_propose",
+        "after_propose",
+        "after_supersede",
+        "on_recall",
+        "on_recall_mix",
+        "on_startup",
+    }
+)
 
 
 class HookEntry(BaseModel):
@@ -203,10 +203,7 @@ class TrailConfig(BaseModel):
     @classmethod
     def hooks_not_yet_supported(cls, v: list[HookEntry]) -> list[HookEntry]:
         if v:
-            raise ValueError(
-                "Per-trail hook overrides not yet supported — "
-                "define hooks in global config.yaml"
-            )
+            raise ValueError("Per-trail hook overrides not yet supported — define hooks in global config.yaml")
         return v
 
 
@@ -217,11 +214,19 @@ class GlobalConfig(BaseModel):
     remote_url: str | None = None
     push_strategy: str = "manual"  # manual | immediate
     trust_gate: str = "llm-oneshot"  # llm-oneshot | human (future)
-    openrouter_api_key_env: str = "OPENROUTER_API_KEY"
+    # Provider-neutral Trust Gate LLM settings (default: OpenRouter).
+    trust_gate_provider: str = "openrouter"
     trust_gate_model: str = "google/gemini-2.5-flash"
+    trust_gate_api_base: str | None = None
+    # Preferred env-var name for the Trust Gate API key. When unset, falls back
+    # to openrouter_api_key_env for backward compatibility with existing configs.
+    trust_gate_api_key_env: str | None = None
+    # Deprecated alias for trust_gate_api_key_env (OpenRouter default).
+    openrouter_api_key_env: str = "OPENROUTER_API_KEY"
     # Timeout for the Trust Gate LLM call (asyncio.wait_for guard).
     # Should be well above a normal slow response (e.g. 60-90s) but short enough
     # to recover from a hung provider before the session times out. 0 = disabled.
+    # Slow local quantized models may need a higher value; keep it below tool_timeout_secs.
     trust_gate_timeout_secs: NonNegativeInt = 120
     # Timeout for an entire MCP tool call (outermost guard covering all tools).
     # Catches jj hangs, slow syncs, and any other unanticipated blocking.
@@ -229,6 +234,16 @@ class GlobalConfig(BaseModel):
     tool_timeout_secs: NonNegativeInt = 300
     trails: dict[str, TrailConfig] = Field(default_factory=dict)
     hooks: list[HookEntry] = Field(default_factory=list)
+
+    def resolve_trust_gate_api_key_env(self) -> str:
+        """Return the env var name that holds the Trust Gate API key.
+
+        Prefers ``trust_gate_api_key_env`` when set; otherwise the legacy
+        ``openrouter_api_key_env`` alias (default ``OPENROUTER_API_KEY``).
+        """
+        if self.trust_gate_api_key_env:
+            return self.trust_gate_api_key_env
+        return self.openrouter_api_key_env
 
     @model_validator(mode="after")
     def trust_gate_timeout_within_tool_timeout(self) -> GlobalConfig:

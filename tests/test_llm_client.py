@@ -11,7 +11,7 @@ from fava_trails.llm.client import LLMClient, LLMError, LLMResponse
 
 @pytest.fixture
 def client():
-    return LLMClient(openrouter_api_key="or-key")
+    return LLMClient(api_key="or-key")
 
 
 def _mock_completion(content: str = '{"verdict":"approve"}', model: str = "test-model"):
@@ -140,10 +140,10 @@ async def test_no_retry_on_auth_error(client):
 
 
 @pytest.mark.asyncio
-async def test_missing_openrouter_key():
-    """Missing OpenRouter key raises LLMError on chat()."""
-    client = LLMClient(openrouter_api_key=None)
-    with pytest.raises(LLMError, match="OpenRouter API key"):
+async def test_missing_api_key():
+    """Missing API key raises LLMError on chat()."""
+    client = LLMClient(api_key=None)
+    with pytest.raises(LLMError, match="API key required"):
         await client.chat(
             messages=[{"role": "user", "content": "hi"}],
             model="google/gemini-2.5-flash",
@@ -151,8 +151,25 @@ async def test_missing_openrouter_key():
 
 
 @pytest.mark.asyncio
+async def test_openrouter_api_key_alias():
+    """openrouter_api_key remains a working constructor alias."""
+    client = LLMClient(openrouter_api_key="legacy-key")
+    mock_resp = _mock_completion("ok")
+
+    with patch("fava_trails.llm.client.any_llm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        mock_acompletion.return_value = mock_resp
+        await client.chat(
+            messages=[{"role": "user", "content": "hi"}],
+            model="google/gemini-2.5-flash",
+        )
+
+    assert mock_acompletion.call_args.kwargs["api_key"] == "legacy-key"
+    assert mock_acompletion.call_args.kwargs["provider"] == "openrouter"
+
+
+@pytest.mark.asyncio
 async def test_api_key_passed_to_acompletion(client):
-    """The openrouter_api_key is forwarded to acompletion."""
+    """The api_key is forwarded to acompletion."""
     mock_resp = _mock_completion("ok")
 
     with patch("fava_trails.llm.client.any_llm.acompletion", new_callable=AsyncMock) as mock_acompletion:
@@ -166,6 +183,32 @@ async def test_api_key_passed_to_acompletion(client):
     call_kwargs = mock_acompletion.call_args.kwargs
     assert call_kwargs["api_key"] == "or-key"
     assert call_kwargs["provider"] == "openrouter"
+
+
+@pytest.mark.asyncio
+async def test_custom_provider_and_api_base_forwarded():
+    """provider and api_base are forwarded through any-llm-sdk."""
+    client = LLMClient(
+        api_key="local-key",
+        provider="openai",
+        api_base="http://127.0.0.1:9999/v1",
+    )
+    mock_resp = _mock_completion("ok", model="local-gguf")
+
+    with patch("fava_trails.llm.client.any_llm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        mock_acompletion.return_value = mock_resp
+        result = await client.chat(
+            messages=[{"role": "user", "content": "hi"}],
+            model="local-gguf",
+        )
+
+    call_kwargs = mock_acompletion.call_args.kwargs
+    assert call_kwargs["provider"] == "openai"
+    assert call_kwargs["api_base"] == "http://127.0.0.1:9999/v1"
+    assert call_kwargs["api_key"] == "local-key"
+    assert call_kwargs["model"] == "local-gguf"
+    assert result.provider == "openai"
+    assert result.model == "local-gguf"
 
 
 def test_chatcompletion_accepts_nonstandard_service_tier():

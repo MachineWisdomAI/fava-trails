@@ -168,7 +168,10 @@ def _load_gateway_config(args: argparse.Namespace, *, require_tunnel_client: boo
         raise ValueError("jj not found. Install with: fava-trails install-jj")
 
     trust_gate = config_data.get("trust_gate", "llm-oneshot")
-    trust_gate_env = config_data.get("openrouter_api_key_env", "OPENROUTER_API_KEY")
+    # Prefer provider-neutral trust_gate_api_key_env; fall back to legacy alias.
+    trust_gate_env = (
+        config_data.get("trust_gate_api_key_env") or config_data.get("openrouter_api_key_env") or "OPENROUTER_API_KEY"
+    )
     if trust_gate == "llm-oneshot" and not os.environ.get(trust_gate_env):
         raise ValueError(f"Trust Gate provider config missing: set {trust_gate_env}")
 
@@ -762,12 +765,14 @@ def cmd_start(args: argparse.Namespace) -> int:
         ]
         if getattr(args, "sync_on_start", False):
             command.append("--sync-on-start")
-        command.extend([
-            "--sync-interval-seconds",
-            str(args.sync_interval_seconds),
-            "--sync-timeout-seconds",
-            str(args.sync_timeout_seconds),
-        ])
+        command.extend(
+            [
+                "--sync-interval-seconds",
+                str(args.sync_interval_seconds),
+                "--sync-timeout-seconds",
+                str(args.sync_timeout_seconds),
+            ]
+        )
         try:
             process = subprocess.Popen(
                 command,
@@ -813,17 +818,22 @@ def cmd_status(args: argparse.Namespace) -> int:
         readiness = _status_readiness(args, metadata) if running else {}
         ready = bool(running and readiness.get("status") == "ok")
         if getattr(args, "json", False):
-            print(json.dumps({
-                "status": "ready" if ready else ("not_ready" if running else "not_running"),
-                "running": running,
-                "ready": ready,
-                "pid": pid if running else None,
-                "state_dir": str(state_dir),
-                "log_file": str(_log_file(state_dir)),
-                "metadata": metadata,
-                "health": health,
-                "readiness": readiness,
-            }, indent=2))
+            print(
+                json.dumps(
+                    {
+                        "status": "ready" if ready else ("not_ready" if running else "not_running"),
+                        "running": running,
+                        "ready": ready,
+                        "pid": pid if running else None,
+                        "state_dir": str(state_dir),
+                        "log_file": str(_log_file(state_dir)),
+                        "metadata": metadata,
+                        "health": health,
+                        "readiness": readiness,
+                    },
+                    indent=2,
+                )
+            )
             return 0 if ready else 1
         if running:
             print(f"Gateway {'ready' if ready else 'running but not ready'} (pid {pid})")
@@ -900,9 +910,15 @@ def cmd_serve_http(args: argparse.Namespace) -> int:
 
 def _add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--data-repo", default=None, help="FAVA Trails data repo path (required if env is unset)")
-    parser.add_argument("--profile", default=DEFAULT_PROFILE, help=f"tunnel-client profile (default: {DEFAULT_PROFILE})")
-    parser.add_argument("--host", default=DEFAULT_HOST, help=f"Loopback host for private MCP runtime (default: {DEFAULT_HOST})")
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"Port for private MCP runtime (default: {DEFAULT_PORT})")
+    parser.add_argument(
+        "--profile", default=DEFAULT_PROFILE, help=f"tunnel-client profile (default: {DEFAULT_PROFILE})"
+    )
+    parser.add_argument(
+        "--host", default=DEFAULT_HOST, help=f"Loopback host for private MCP runtime (default: {DEFAULT_HOST})"
+    )
+    parser.add_argument(
+        "--port", type=int, default=DEFAULT_PORT, help=f"Port for private MCP runtime (default: {DEFAULT_PORT})"
+    )
     parser.add_argument("--mcp-path", default=DEFAULT_MCP_PATH, help=f"MCP path (default: {DEFAULT_MCP_PATH})")
 
 
@@ -917,9 +933,21 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common_args(p_run)
     p_run.add_argument("--tunnel-client", default="tunnel-client", help="Path to tunnel-client binary")
     p_run.add_argument("--ready-timeout", type=float, default=20.0, help="Seconds to wait for local MCP readiness")
-    p_run.add_argument("--sync-on-start", action="store_true", help="Require one successful data repo sync before exposing the gateway")
-    p_run.add_argument("--sync-interval-seconds", type=float, default=DEFAULT_SYNC_INTERVAL_SECONDS, help=f"Seconds between data repo syncs; 0 disables tunnel-managed sync (default: {DEFAULT_SYNC_INTERVAL_SECONDS:g})")
-    p_run.add_argument("--sync-timeout-seconds", type=float, default=DEFAULT_SYNC_TIMEOUT_SECONDS, help=f"Seconds before a data repo sync is marked failed (default: {DEFAULT_SYNC_TIMEOUT_SECONDS:g})")
+    p_run.add_argument(
+        "--sync-on-start", action="store_true", help="Require one successful data repo sync before exposing the gateway"
+    )
+    p_run.add_argument(
+        "--sync-interval-seconds",
+        type=float,
+        default=DEFAULT_SYNC_INTERVAL_SECONDS,
+        help=f"Seconds between data repo syncs; 0 disables tunnel-managed sync (default: {DEFAULT_SYNC_INTERVAL_SECONDS:g})",
+    )
+    p_run.add_argument(
+        "--sync-timeout-seconds",
+        type=float,
+        default=DEFAULT_SYNC_TIMEOUT_SECONDS,
+        help=f"Seconds before a data repo sync is marked failed (default: {DEFAULT_SYNC_TIMEOUT_SECONDS:g})",
+    )
     p_run.add_argument("--state-dir", default=None, help=argparse.SUPPRESS)
     p_run.set_defaults(func=cmd_run)
 
@@ -927,14 +955,30 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common_args(p_start)
     p_start.add_argument("--tunnel-client", default="tunnel-client", help="Path to tunnel-client binary")
     p_start.add_argument("--ready-timeout", type=float, default=20.0, help="Seconds to wait for local MCP readiness")
-    p_start.add_argument("--sync-on-start", action="store_true", help="Require one successful data repo sync before exposing the gateway")
-    p_start.add_argument("--sync-interval-seconds", type=float, default=DEFAULT_SYNC_INTERVAL_SECONDS, help=f"Seconds between data repo syncs; 0 disables tunnel-managed sync (default: {DEFAULT_SYNC_INTERVAL_SECONDS:g})")
-    p_start.add_argument("--sync-timeout-seconds", type=float, default=DEFAULT_SYNC_TIMEOUT_SECONDS, help=f"Seconds before a data repo sync is marked failed (default: {DEFAULT_SYNC_TIMEOUT_SECONDS:g})")
+    p_start.add_argument(
+        "--sync-on-start", action="store_true", help="Require one successful data repo sync before exposing the gateway"
+    )
+    p_start.add_argument(
+        "--sync-interval-seconds",
+        type=float,
+        default=DEFAULT_SYNC_INTERVAL_SECONDS,
+        help=f"Seconds between data repo syncs; 0 disables tunnel-managed sync (default: {DEFAULT_SYNC_INTERVAL_SECONDS:g})",
+    )
+    p_start.add_argument(
+        "--sync-timeout-seconds",
+        type=float,
+        default=DEFAULT_SYNC_TIMEOUT_SECONDS,
+        help=f"Seconds before a data repo sync is marked failed (default: {DEFAULT_SYNC_TIMEOUT_SECONDS:g})",
+    )
     p_start.set_defaults(func=cmd_start)
 
-    p_preflight = subparsers.add_parser("preflight", help="Validate the private runtime without starting the external tunnel")
+    p_preflight = subparsers.add_parser(
+        "preflight", help="Validate the private runtime without starting the external tunnel"
+    )
     _add_common_args(p_preflight)
-    p_preflight.add_argument("--ready-timeout", type=float, default=20.0, help="Seconds to wait for local MCP readiness")
+    p_preflight.add_argument(
+        "--ready-timeout", type=float, default=20.0, help="Seconds to wait for local MCP readiness"
+    )
     p_preflight.set_defaults(func=cmd_preflight)
 
     p_stop = subparsers.add_parser("stop", help="Stop a detached gateway")
