@@ -380,11 +380,19 @@ def test_global_config_rejects_invalid_api_base_scheme():
         GlobalConfig(trust_gate_api_base="ftp://localhost/v1")
 
 
-def test_global_config_validate_runtime_requires_api_base_for_non_openrouter():
+def test_global_config_validate_runtime_api_base_optional_for_hosted_providers():
+    """Issue #85: api_base is optional; hosted OpenAI/Anthropic need no custom base."""
     config = GlobalConfig(
         trust_gate_provider="openai",
-        trust_gate_model="local",
-        trust_gate_api_key_env="UNSLOTH_API_KEY",
+        trust_gate_model="gpt-4.1-mini",
+        trust_gate_api_key_env="OPENAI_API_KEY",
     )
-    with pytest.raises(ValueError, match="trust_gate_api_base"):
-        config.validate_trust_gate_runtime()
+    assert config.trust_gate_api_base is None
+    assert config.validate_trust_gate_runtime() == "OPENAI_API_KEY"
+
+    anthropic = GlobalConfig(
+        trust_gate_provider="anthropic",
+        trust_gate_model="claude-sonnet-4-20250514",
+        trust_gate_api_key_env="ANTHROPIC_API_KEY",
+    )
+    assert anthropic.validate_trust_gate_runtime() == "ANTHROPIC_API_KEY"

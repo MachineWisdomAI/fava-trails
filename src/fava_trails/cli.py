@@ -571,42 +571,49 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         any_failed = True
 
     # Check 3: Trust Gate provider + API key
+    # Share validate_trust_gate_runtime() with tunnel/gateway preflight so doctor
+    # and startup agree on provider/model/key-env (api_base stays optional).
     env_var_name = "OPENROUTER_API_KEY"  # noqa: S105 — env var name, not a secret
     provider = "openrouter"
     model = "google/gemini-2.5-flash"
     api_base = None
     trust_gate_policy = "llm-oneshot"
+    trust_gate_config_ok = True
     try:
         global_config = load_global_config()
-        env_var_name = global_config.resolve_trust_gate_api_key_env()
+        env_var_name = global_config.validate_trust_gate_runtime()
         provider = global_config.trust_gate_provider
         model = global_config.trust_gate_model
         api_base = global_config.trust_gate_api_base
         trust_gate_policy = global_config.trust_gate
-    except (OSError, ValueError):
-        pass  # Use defaults if config can't be loaded
+    except (OSError, ValueError) as e:
+        trust_gate_config_ok = False
+        print(f"Trust Gate:   INVALID ({e})")
+        print("  Fix: check trust_gate_provider / trust_gate_model / trust_gate_api_key_env in config.yaml")
+        any_failed = True
 
-    provider_line = f"Trust Gate:   policy={trust_gate_policy} provider={provider} model={model}"
-    if api_base:
-        provider_line += f" api_base={api_base}"
-    print(provider_line)
+    if trust_gate_config_ok:
+        provider_line = f"Trust Gate:   policy={trust_gate_policy} provider={provider} model={model}"
+        if api_base:
+            provider_line += f" api_base={api_base}"
+        print(provider_line)
 
-    if trust_gate_policy == "llm-oneshot":
-        if os.environ.get(env_var_name):
-            print(f"API key:      {env_var_name} is set")
-        else:
-            print(f"API key:      NOT SET ({env_var_name})")
-            print(f"  Fix: export {env_var_name}=...")
-            if provider == "openrouter":
-                print("  Get a key: https://openrouter.ai/keys")
+        if trust_gate_policy == "llm-oneshot":
+            if os.environ.get(env_var_name):
+                print(f"API key:      {env_var_name} is set")
             else:
-                print(
-                    f"  Configure the API key for provider '{provider}' "
-                    f"(see trust_gate_api_key_env / trust_gate_api_base in config.yaml)."
-                )
-            any_failed = True
-    else:
-        print(f"API key:      skipped (trust_gate={trust_gate_policy})")
+                print(f"API key:      NOT SET ({env_var_name})")
+                print(f"  Fix: export {env_var_name}=...")
+                if provider == "openrouter":
+                    print("  Get a key: https://openrouter.ai/keys")
+                else:
+                    print(
+                        f"  Configure the API key for provider '{provider}' "
+                        f"(see trust_gate_api_key_env / optional trust_gate_api_base in config.yaml)."
+                    )
+                any_failed = True
+        else:
+            print(f"API key:      skipped (trust_gate={trust_gate_policy})")
 
     # Check 4: Scope configured and valid?
     project_dir = Path.cwd()

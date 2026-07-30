@@ -298,8 +298,14 @@ class GlobalConfig(BaseModel):
         """Validate Trust Gate provider configuration for startup/preflight.
 
         Returns the resolved API-key environment variable name. Raises
-        ``ValueError`` when the typed provider/model/base/key-env contract is
+        ``ValueError`` when the typed provider/model/key-env contract is
         incomplete for ``llm-oneshot``.
+
+        ``trust_gate_api_base`` remains optional at this layer: hosted providers
+        (OpenRouter, OpenAI, Anthropic, etc.) can omit it and rely on any-llm
+        defaults. Local OpenAI-compatible targets (e.g. Unsloth Studio) still
+        need operators to set a base URL in config; that is documented, not
+        hard-required for every non-OpenRouter provider.
         """
         if self.trust_gate != "llm-oneshot":
             return self.resolve_trust_gate_api_key_env()
@@ -310,14 +316,6 @@ class GlobalConfig(BaseModel):
             raise ValueError("trust_gate_provider must be a non-empty string")
         if not model:
             raise ValueError("trust_gate_model must be a non-empty string")
-
-        # Local / custom OpenAI-compatible endpoints need an explicit API base.
-        # Hosted OpenRouter keeps the historical default (no api_base).
-        if provider != "openrouter" and not self.trust_gate_api_base:
-            raise ValueError(
-                f"trust_gate_api_base is required when trust_gate_provider is {provider!r} "
-                "(set the OpenAI-compatible base URL, e.g. http://127.0.0.1:<port>/v1)"
-            )
 
         key_env = self.resolve_trust_gate_api_key_env()
         if not key_env:

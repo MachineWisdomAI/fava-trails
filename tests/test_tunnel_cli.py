@@ -144,20 +144,20 @@ def test_load_gateway_config_rejects_blank_provider(tmp_path, monkeypatch):
                 _load_gateway_config(_args(data_repo=str(data_repo)))
 
 
-def test_load_gateway_config_rejects_local_provider_without_api_base(tmp_path, monkeypatch):
-    """Local/non-OpenRouter provider must declare an API base at gateway startup."""
+def test_load_gateway_config_allows_hosted_provider_without_api_base(tmp_path, monkeypatch):
+    """Hosted non-OpenRouter providers may omit api_base (issue #85 optional contract)."""
     data_repo = _make_data_repo(
         tmp_path,
-        trust_gate_api_key_env="UNSLOTH_API_KEY",
+        trust_gate_api_key_env="OPENAI_API_KEY",
         trust_gate_provider="openai",
-        trust_gate_model="studio-local-model",
+        trust_gate_model="gpt-4.1-mini",
     )
-    monkeypatch.setenv("UNSLOTH_API_KEY", "local-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "hosted-key")
 
     with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
         with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
-            with pytest.raises(ValueError, match="trust_gate_api_base"):
-                _load_gateway_config(_args(data_repo=str(data_repo)))
+            config = _load_gateway_config(_args(data_repo=str(data_repo)))
+    assert config.trust_gate_env == "OPENAI_API_KEY"
 
 
 def test_load_gateway_config_rejects_invalid_api_base(tmp_path, monkeypatch):
