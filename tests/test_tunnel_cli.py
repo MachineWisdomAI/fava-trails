@@ -49,13 +49,33 @@ def _args(**overrides):
     return argparse.Namespace(**values)
 
 
-def _make_data_repo(tmp_path: Path, *, openrouter_env: str = "OPENROUTER_API_KEY") -> Path:
+def _make_data_repo(
+    tmp_path: Path,
+    *,
+    openrouter_env: str | None = "OPENROUTER_API_KEY",
+    trust_gate_api_key_env: str | None = None,
+    trust_gate_provider: str | None = None,
+    trust_gate_model: str | None = None,
+    trust_gate_api_base: str | None = None,
+    extra_lines: list[str] | None = None,
+) -> Path:
     data_repo = tmp_path / "fava-trails-data"
     data_repo.mkdir()
     (data_repo / "trails").mkdir()
-    (data_repo / "config.yaml").write_text(
-        f"trails_dir: trails\nopenrouter_api_key_env: {openrouter_env}\n"
-    )
+    lines = ["trails_dir: trails"]
+    if openrouter_env is not None:
+        lines.append(f"openrouter_api_key_env: {openrouter_env}")
+    if trust_gate_api_key_env is not None:
+        lines.append(f"trust_gate_api_key_env: {trust_gate_api_key_env}")
+    if trust_gate_provider is not None:
+        lines.append(f"trust_gate_provider: {trust_gate_provider}")
+    if trust_gate_model is not None:
+        lines.append(f"trust_gate_model: {trust_gate_model}")
+    if trust_gate_api_base is not None:
+        lines.append(f"trust_gate_api_base: {trust_gate_api_base}")
+    if extra_lines:
+        lines.extend(extra_lines)
+    (data_repo / "config.yaml").write_text("\n".join(lines) + "\n")
     return data_repo
 
 
@@ -85,6 +105,74 @@ def test_load_gateway_config_validates_trust_gate_env(tmp_path, monkeypatch):
     with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
         with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
             with pytest.raises(ValueError, match="OPENROUTER_API_KEY"):
+                _load_gateway_config(_args(data_repo=str(data_repo)))
+
+
+def test_load_gateway_config_uses_trust_gate_api_key_env(tmp_path, monkeypatch):
+    """Tunnel startup honors trust_gate_api_key_env over the OpenRouter alias."""
+    data_repo = _make_data_repo(
+        tmp_path,
+        openrouter_env="OPENROUTER_API_KEY",
+        trust_gate_api_key_env="UNSLOTH_API_KEY",
+        trust_gate_provider="openai",
+        trust_gate_model="studio-local-model",
+        trust_gate_api_base="http://127.0.0.1:8000/v1",
+    )
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("UNSLOTH_API_KEY", raising=False)
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            with pytest.raises(ValueError, match="UNSLOTH_API_KEY"):
+                _load_gateway_config(_args(data_repo=str(data_repo)))
+
+    monkeypatch.setenv("UNSLOTH_API_KEY", "local-key")
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            config = _load_gateway_config(_args(data_repo=str(data_repo)))
+    assert config.trust_gate_env == "UNSLOTH_API_KEY"
+
+
+def test_load_gateway_config_rejects_blank_provider(tmp_path, monkeypatch):
+    """Blank trust_gate_provider fails tunnel preflight via GlobalConfig validation."""
+    data_repo = _make_data_repo(tmp_path, extra_lines=["trust_gate_provider: ''"])
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            with pytest.raises(ValueError, match="invalid Trust Gate configuration"):
+                _load_gateway_config(_args(data_repo=str(data_repo)))
+
+
+def test_load_gateway_config_allows_hosted_provider_without_api_base(tmp_path, monkeypatch):
+    """Hosted non-OpenRouter providers may omit api_base (issue #85 optional contract)."""
+    data_repo = _make_data_repo(
+        tmp_path,
+        trust_gate_api_key_env="OPENAI_API_KEY",
+        trust_gate_provider="openai",
+        trust_gate_model="gpt-4.1-mini",
+    )
+    monkeypatch.setenv("OPENAI_API_KEY", "hosted-key")
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            config = _load_gateway_config(_args(data_repo=str(data_repo)))
+    assert config.trust_gate_env == "OPENAI_API_KEY"
+
+
+def test_load_gateway_config_rejects_invalid_api_base(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(
+        tmp_path,
+        trust_gate_api_key_env="UNSLOTH_API_KEY",
+        trust_gate_provider="openai",
+        trust_gate_model="studio-local-model",
+        trust_gate_api_base="not-a-url",
+    )
+    monkeypatch.setenv("UNSLOTH_API_KEY", "local-key")
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            with pytest.raises(ValueError, match="invalid Trust Gate configuration"):
                 _load_gateway_config(_args(data_repo=str(data_repo)))
 
 
@@ -234,7 +322,9 @@ def test_run_starts_http_and_runs_tunnel_without_autosync_by_default(tmp_path, m
                 with patch("fava_trails.tunnel_cli._start_http_runtime", return_value=http_process) as start_http:
                     with patch("fava_trails.tunnel_cli._wait_for_health") as wait_health:
                         with patch("fava_trails.tunnel_cli._sync_data_repo", return_value={"status": "ok"}) as sync:
-                            with patch("fava_trails.tunnel_cli._start_tunnel_client", return_value=tunnel_process) as start_tunnel:
+                            with patch(
+                                "fava_trails.tunnel_cli._start_tunnel_client", return_value=tunnel_process
+                            ) as start_tunnel:
                                 rc = cmd_run(args)
 
     assert rc == 0
@@ -265,7 +355,9 @@ def test_run_syncs_once_when_start_flag_and_interval_both_request_it(tmp_path, m
                         with patch("fava_trails.tunnel_cli._sync_data_repo", return_value={"status": "ok"}) as sync:
                             with patch("fava_trails.tunnel_cli._start_sync_worker", return_value=None) as start_worker:
                                 with patch("subprocess.run"):
-                                    with patch("fava_trails.tunnel_cli._start_tunnel_client", return_value=tunnel_process):
+                                    with patch(
+                                        "fava_trails.tunnel_cli._start_tunnel_client", return_value=tunnel_process
+                                    ):
                                         rc = cmd_run(args)
 
     assert rc == 0
@@ -289,9 +381,13 @@ def test_run_syncs_once_on_start_without_recurring_worker(tmp_path, monkeypatch)
             with patch("fava_trails.tunnel_cli._check_port_available"):
                 with patch("fava_trails.tunnel_cli._sync_data_repo", return_value={"status": "ok"}) as sync:
                     with patch("fava_trails.tunnel_cli._start_sync_worker") as start_worker:
-                        with patch("fava_trails.tunnel_cli._start_http_runtime", return_value=http_process) as start_http:
+                        with patch(
+                            "fava_trails.tunnel_cli._start_http_runtime", return_value=http_process
+                        ) as start_http:
                             with patch("fava_trails.tunnel_cli._wait_for_health"):
-                                with patch("fava_trails.tunnel_cli._start_tunnel_client", return_value=tunnel_process) as start_tunnel:
+                                with patch(
+                                    "fava_trails.tunnel_cli._start_tunnel_client", return_value=tunnel_process
+                                ) as start_tunnel:
                                     assert cmd_run(args) == 0
 
     sync.assert_called_once()
@@ -300,11 +396,14 @@ def test_run_syncs_once_on_start_without_recurring_worker(tmp_path, monkeypatch)
     start_tunnel.assert_called_once()
 
 
-@pytest.mark.parametrize("sync_state", [
-    {"status": "blocked", "message": "dirty working copy"},
-    {"status": "conflict", "message": "merge conflict"},
-    {"status": "error", "message": "sync timed out after 30s"},
-])
+@pytest.mark.parametrize(
+    "sync_state",
+    [
+        {"status": "blocked", "message": "dirty working copy"},
+        {"status": "conflict", "message": "merge conflict"},
+        {"status": "error", "message": "sync timed out after 30s"},
+    ],
+)
 def test_run_does_not_expose_after_initial_sync_failure(tmp_path, monkeypatch, sync_state):
     data_repo = _make_data_repo(tmp_path)
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")

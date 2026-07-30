@@ -259,9 +259,7 @@ def test_config_store_reads_hooks_from_config_yaml(monkeypatch, tmp_path):
     """ConfigStore parses hooks: key from config.yaml into GlobalConfig."""
     config_path = tmp_path / "config.yaml"
     with open(config_path, "w") as f:
-        yaml.dump({
-            "hooks": [{"path": "./my_hook.py", "points": ["before_save"]}]
-        }, f)
+        yaml.dump({"hooks": [{"path": "./my_hook.py", "points": ["before_save"]}]}, f)
     monkeypatch.setenv("FAVA_TRAILS_DATA_REPO", str(tmp_path))
     monkeypatch.delenv("FAVA_TRAILS_DIR", raising=False)
     store = ConfigStore.get()
@@ -270,6 +268,7 @@ def test_config_store_reads_hooks_from_config_yaml(monkeypatch, tmp_path):
 
 
 # --- Timeout config validation ---
+
 
 def test_global_config_timeout_defaults():
     """Default timeout values are sane and satisfy the ordering constraint."""
@@ -283,6 +282,7 @@ def test_global_config_timeout_validator_rejects_inversion():
     """trust_gate_timeout_secs >= tool_timeout_secs (both > 0) is rejected."""
     import pytest
     from pydantic import ValidationError
+
     with pytest.raises(ValidationError, match="must be less than tool_timeout_secs"):
         GlobalConfig(trust_gate_timeout_secs=300, tool_timeout_secs=120)
 
@@ -290,6 +290,7 @@ def test_global_config_timeout_validator_rejects_inversion():
 def test_global_config_timeout_validator_equal_values_rejected():
     """Equal values are also rejected — inner must fire strictly before outer."""
     from pydantic import ValidationError
+
     with pytest.raises(ValidationError, match="must be less than tool_timeout_secs"):
         GlobalConfig(trust_gate_timeout_secs=120, tool_timeout_secs=120)
 
@@ -316,7 +317,82 @@ def test_global_config_timeout_validator_allows_both_zero():
 def test_global_config_timeout_rejects_negative():
     """Negative timeout values are rejected by NonNegativeInt."""
     from pydantic import ValidationError
+
     with pytest.raises(ValidationError):
         GlobalConfig(trust_gate_timeout_secs=-1)
     with pytest.raises(ValidationError):
         GlobalConfig(tool_timeout_secs=-1)
+
+
+def test_global_config_trust_gate_provider_defaults():
+    """OpenRouter remains the default Trust Gate provider configuration."""
+    config = GlobalConfig()
+    assert config.trust_gate_provider == "openrouter"
+    assert config.trust_gate_model == "google/gemini-2.5-flash"
+    assert config.trust_gate_api_base is None
+    assert config.trust_gate_api_key_env is None
+    assert config.openrouter_api_key_env == "OPENROUTER_API_KEY"
+    assert config.resolve_trust_gate_api_key_env() == "OPENROUTER_API_KEY"
+
+
+def test_global_config_trust_gate_api_key_env_prefers_new_field():
+    """trust_gate_api_key_env wins over the openrouter_api_key_env alias."""
+    config = GlobalConfig(
+        trust_gate_api_key_env="UNSLOTH_API_KEY",
+        openrouter_api_key_env="OPENROUTER_API_KEY",
+    )
+    assert config.resolve_trust_gate_api_key_env() == "UNSLOTH_API_KEY"
+
+
+def test_global_config_legacy_openrouter_key_env_still_loads():
+    """Configs that only set openrouter_api_key_env continue to work."""
+    config = GlobalConfig(openrouter_api_key_env="MY_OR_KEY")
+    assert config.resolve_trust_gate_api_key_env() == "MY_OR_KEY"
+
+
+def test_global_config_local_openai_compatible_fields():
+    """Unsloth-style local provider config is expressible."""
+    config = GlobalConfig(
+        trust_gate_provider="openai",
+        trust_gate_model="my-local-gguf",
+        trust_gate_api_base="http://127.0.0.1:8000/v1",
+        trust_gate_api_key_env="UNSLOTH_API_KEY",
+        trust_gate_timeout_secs=240,
+        tool_timeout_secs=300,
+    )
+    assert config.trust_gate_provider == "openai"
+    assert config.trust_gate_api_base == "http://127.0.0.1:8000/v1"
+    assert config.resolve_trust_gate_api_key_env() == "UNSLOTH_API_KEY"
+    assert config.validate_trust_gate_runtime() == "UNSLOTH_API_KEY"
+
+
+def test_global_config_rejects_blank_provider():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        GlobalConfig(trust_gate_provider="   ")
+
+
+def test_global_config_rejects_invalid_api_base_scheme():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        GlobalConfig(trust_gate_api_base="ftp://localhost/v1")
+
+
+def test_global_config_validate_runtime_api_base_optional_for_hosted_providers():
+    """Issue #85: api_base is optional; hosted OpenAI/Anthropic need no custom base."""
+    config = GlobalConfig(
+        trust_gate_provider="openai",
+        trust_gate_model="gpt-4.1-mini",
+        trust_gate_api_key_env="OPENAI_API_KEY",
+    )
+    assert config.trust_gate_api_base is None
+    assert config.validate_trust_gate_runtime() == "OPENAI_API_KEY"
+
+    anthropic = GlobalConfig(
+        trust_gate_provider="anthropic",
+        trust_gate_model="claude-sonnet-4-20250514",
+        trust_gate_api_key_env="ANTHROPIC_API_KEY",
+    )
+    assert anthropic.validate_trust_gate_runtime() == "ANTHROPIC_API_KEY"

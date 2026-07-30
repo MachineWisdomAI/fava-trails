@@ -4,6 +4,11 @@ All notable changes to FAVA Trails are documented here.
 
 ## Unreleased
 
+### Added
+- Provider-neutral Trust Gate LLM configuration: `trust_gate_provider`, `trust_gate_api_base`, and `trust_gate_api_key_env` (with `openrouter_api_key_env` retained as a backward-compatible alias). OpenRouter remains the default; local OpenAI-compatible endpoints (e.g. Unsloth Studio) are supported via any-llm-sdk without product-specific transport. Implements #85.
+- Trust Gate provenance now records `provider` and returned `model` alongside the existing `reviewer` field.
+- `fava-trails doctor` reports the configured Trust Gate provider/model/api_base and validates the configured key env var (OpenRouter key URL only when provider is openrouter).
+
 ## [0.5.9] — 2026-07-29
 
 ### Fixed

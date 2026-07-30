@@ -63,7 +63,7 @@ def _update_env_file(env_path: Path, key: str, value: str) -> None:
         """Match both `KEY=value` and `export KEY=value` forms."""
         s = line.strip()
         if s.startswith("export "):
-            s = s[len("export "):].lstrip()
+            s = s[len("export ") :].lstrip()
         return s.startswith(prefix)
 
     # Find all indices where this key appears
@@ -98,9 +98,9 @@ def _read_env_value(env_path: Path, key: str) -> str | None:
         stripped = line.strip()
         # Handle optional `export ` prefix
         if stripped.startswith("export "):
-            stripped = stripped[len("export "):].lstrip()
+            stripped = stripped[len("export ") :].lstrip()
         if stripped.startswith(prefix):
-            return stripped[len(prefix):].strip()
+            return stripped[len(prefix) :].strip()
     return None
 
 
@@ -230,7 +230,10 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     # Validate JJ is available
     jj_bin = _find_jj_bin()
     if not jj_bin:
-        print("Error: jj not found. Install with: fava-trails install-jj\n  Or manually: https://jj-vcs.github.io/jj/", file=sys.stderr)
+        print(
+            "Error: jj not found. Install with: fava-trails install-jj\n  Or manually: https://jj-vcs.github.io/jj/",
+            file=sys.stderr,
+        )
         return 1
 
     # Create directory
@@ -299,7 +302,10 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     # Set default description to prevent undescribed commits from external JJ usage
     result = subprocess.run(
         [jj_bin, "config", "set", "--repo", "ui.default-description", "(auto-described)"],
-        cwd=str(target), check=False, capture_output=True, text=True,
+        cwd=str(target),
+        check=False,
+        capture_output=True,
+        text=True,
     )
     if result.returncode != 0:
         print(f"Warning: failed to set ui.default-description: {result.stderr}", file=sys.stderr)
@@ -307,15 +313,24 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     # Initial commit: describe and create new change
     subprocess.run(
         [jj_bin, "describe", "-m", "Bootstrap FAVA Trails data repository"],
-        cwd=str(target), check=False, capture_output=True, text=True,
+        cwd=str(target),
+        check=False,
+        capture_output=True,
+        text=True,
     )
     subprocess.run(
         [jj_bin, "new", "-m", "(new change)"],
-        cwd=str(target), check=False, capture_output=True, text=True,
+        cwd=str(target),
+        check=False,
+        capture_output=True,
+        text=True,
     )
     subprocess.run(
         [jj_bin, "bookmark", "set", "main", "-r", "@-"],
-        cwd=str(target), check=False, capture_output=True, text=True,
+        cwd=str(target),
+        check=False,
+        capture_output=True,
+        text=True,
     )
     print("[6/6] Created initial commit")
 
@@ -323,7 +338,9 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     print("\nSet this in your MCP server config:")
     print(f"  FAVA_TRAILS_DATA_REPO={target}")
     print("\nFor ChatGPT via OpenAI Secure MCP Tunnel:")
-    print("  tunnel-client init --profile fava-trails --mcp-server-url http://127.0.0.1:8765/mcp/ --tunnel-id <tunnel_id>")
+    print(
+        "  tunnel-client init --profile fava-trails --mcp-server-url http://127.0.0.1:8765/mcp/ --tunnel-id <tunnel_id>"
+    )
     print(f"  fava-trails-tunnel start --data-repo {target} --profile fava-trails")
     if remote_url:
         print("\nPush to remote:")
@@ -341,7 +358,10 @@ def cmd_clone(args: argparse.Namespace) -> int:
     # Validate JJ is available
     jj_bin = _find_jj_bin()
     if not jj_bin:
-        print("Error: jj not found. Install with: fava-trails install-jj\n  Or manually: https://jj-vcs.github.io/jj/", file=sys.stderr)
+        print(
+            "Error: jj not found. Install with: fava-trails install-jj\n  Or manually: https://jj-vcs.github.io/jj/",
+            file=sys.stderr,
+        )
         return 1
 
     # Check target doesn't already exist
@@ -396,7 +416,9 @@ def cmd_clone(args: argparse.Namespace) -> int:
     print("\nSet this in your MCP server config:")
     print(f"  FAVA_TRAILS_DATA_REPO={target}")
     print("\nFor ChatGPT via OpenAI Secure MCP Tunnel:")
-    print("  tunnel-client init --profile fava-trails --mcp-server-url http://127.0.0.1:8765/mcp/ --tunnel-id <tunnel_id>")
+    print(
+        "  tunnel-client init --profile fava-trails --mcp-server-url http://127.0.0.1:8765/mcp/ --tunnel-id <tunnel_id>"
+    )
     print(f"  fava-trails-tunnel start --data-repo {target} --profile fava-trails")
     return 0
 
@@ -523,7 +545,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         any_failed = True
 
     # Check 2: Data repo valid?
-    data_repo_source = "FAVA_TRAILS_DATA_REPO" if os.environ.get("FAVA_TRAILS_DATA_REPO") else "default (~/.fava-trails)"
+    data_repo_source = (
+        "FAVA_TRAILS_DATA_REPO" if os.environ.get("FAVA_TRAILS_DATA_REPO") else "default (~/.fava-trails)"
+    )
     try:
         data_repo = get_data_repo_root()
         if not data_repo.exists():
@@ -546,20 +570,50 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print(f"Data repo:    ERROR ({e})")
         any_failed = True
 
-    # Check 3: OpenRouter API key?
+    # Check 3: Trust Gate provider + API key
+    # Share validate_trust_gate_runtime() with tunnel/gateway preflight so doctor
+    # and startup agree on provider/model/key-env (api_base stays optional).
     env_var_name = "OPENROUTER_API_KEY"  # noqa: S105 — env var name, not a secret
+    provider = "openrouter"
+    model = "google/gemini-2.5-flash"
+    api_base = None
+    trust_gate_policy = "llm-oneshot"
+    trust_gate_config_ok = True
     try:
         global_config = load_global_config()
-        env_var_name = global_config.openrouter_api_key_env
-    except (OSError, ValueError):
-        pass  # Use default env var name if config can't be loaded
-    if os.environ.get(env_var_name):
-        print(f"OpenRouter:   {env_var_name} is set")
-    else:
-        print(f"OpenRouter:   NOT SET ({env_var_name})")
-        print(f"  Fix: export {env_var_name}=sk-or-v1-...")
-        print("  Get a key: https://openrouter.ai/keys")
+        env_var_name = global_config.validate_trust_gate_runtime()
+        provider = global_config.trust_gate_provider
+        model = global_config.trust_gate_model
+        api_base = global_config.trust_gate_api_base
+        trust_gate_policy = global_config.trust_gate
+    except (OSError, ValueError) as e:
+        trust_gate_config_ok = False
+        print(f"Trust Gate:   INVALID ({e})")
+        print("  Fix: check trust_gate_provider / trust_gate_model / trust_gate_api_key_env in config.yaml")
         any_failed = True
+
+    if trust_gate_config_ok:
+        provider_line = f"Trust Gate:   policy={trust_gate_policy} provider={provider} model={model}"
+        if api_base:
+            provider_line += f" api_base={api_base}"
+        print(provider_line)
+
+        if trust_gate_policy == "llm-oneshot":
+            if os.environ.get(env_var_name):
+                print(f"API key:      {env_var_name} is set")
+            else:
+                print(f"API key:      NOT SET ({env_var_name})")
+                print(f"  Fix: export {env_var_name}=...")
+                if provider == "openrouter":
+                    print("  Get a key: https://openrouter.ai/keys")
+                else:
+                    print(
+                        f"  Configure the API key for provider '{provider}' "
+                        f"(see trust_gate_api_key_env / optional trust_gate_api_base in config.yaml)."
+                    )
+                any_failed = True
+        else:
+            print(f"API key:      skipped (trust_gate={trust_gate_policy})")
 
     # Check 4: Scope configured and valid?
     project_dir = Path.cwd()
@@ -589,10 +643,7 @@ def _scope_thought_files(scope_dir: Path) -> list[Path]:
     thoughts_dir = scope_dir / "thoughts"
     if not thoughts_dir.exists():
         return []
-    return sorted(
-        path for path in thoughts_dir.rglob("*.md")
-        if path.name != ".gitkeep"
-    )
+    return sorted(path for path in thoughts_dir.rglob("*.md") if path.name != ".gitkeep")
 
 
 def _remove_empty_scope_scaffold(scope_dir: Path, trails_dir: Path) -> None:
@@ -772,7 +823,7 @@ def cmd_install_jj(args: argparse.Namespace) -> int:
         shell_rc = ".zshrc" if "zsh" in os.environ.get("SHELL", "") or sys.platform == "darwin" else ".bashrc"
         print(f"\nWarning: {_JJ_INSTALL_DIR} is not in your PATH.")
         print("Add it with:")
-        print(f'  echo \'export PATH="$HOME/.local/bin:$PATH"\' >> ~/{shell_rc} && source ~/{shell_rc}')
+        print(f"  echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> ~/{shell_rc} && source ~/{shell_rc}")
 
     return 0
 
@@ -806,10 +857,7 @@ def cmd_get(args: argparse.Namespace) -> int:
         if not scope_dir.is_dir():
             print(f"Error: scope '{scope}' not found", file=sys.stderr)
             return 1
-        children = sorted(
-            d.name for d in scope_dir.iterdir()
-            if d.is_dir() and d.name != "thoughts"
-        )
+        children = sorted(d.name for d in scope_dir.iterdir() if d.is_dir() and d.name != "thoughts")
         for child in children:
             print(child)
         return 0
@@ -1178,7 +1226,10 @@ def _cmd_protocol_setup(args: argparse.Namespace, protocol_name: str, module_pat
 
     print(f"{protocol_name} hook added to config.yaml.")
     if not jj_ok:
-        print("Warning: config.yaml was saved but jj commit/push failed — data repo may have uncommitted changes.", file=sys.stderr)
+        print(
+            "Warning: config.yaml was saved but jj commit/push failed — data repo may have uncommitted changes.",
+            file=sys.stderr,
+        )
     print("Hint: restart the MCP server to activate the hook.")
     if protocol_name == "secom":
         print("Hint: run 'fava-trails secom warmup' to pre-download the LLMLingua model.")
@@ -1188,18 +1239,21 @@ def _cmd_protocol_setup(args: argparse.Namespace, protocol_name: str, module_pat
 def cmd_secom_setup(args: argparse.Namespace) -> int:
     """Print or write SECOM hook config to config.yaml."""
     from .protocols.secom import DEFAULT_HOOK_ENTRY
+
     return _cmd_protocol_setup(args, "secom", "fava_trails.protocols.secom", DEFAULT_HOOK_ENTRY)
 
 
 def cmd_ace_setup(args: argparse.Namespace) -> int:
     """Print or write ACE hook config to config.yaml."""
     from .protocols.ace import DEFAULT_HOOK_ENTRY
+
     return _cmd_protocol_setup(args, "ace", "fava_trails.protocols.ace", DEFAULT_HOOK_ENTRY)
 
 
 def cmd_rlm_setup(args: argparse.Namespace) -> int:
     """Print or write RLM hook config to config.yaml."""
     from .protocols.rlm import DEFAULT_HOOK_ENTRY
+
     return _cmd_protocol_setup(args, "rlm", "fava_trails.protocols.rlm", DEFAULT_HOOK_ENTRY)
 
 
@@ -1220,6 +1274,7 @@ def cmd_secom_warmup(args: argparse.Namespace) -> int:
     print("Loading LLMLingua model (may download on first run)...")
     try:
         from .protocols.secom import _get_compressor
+
         _get_compressor()
     except Exception as e:
         print(f"Error: failed to load compressor: {e}", file=sys.stderr)
@@ -1229,6 +1284,7 @@ def cmd_secom_warmup(args: argparse.Namespace) -> int:
     print("Testing compression...")
     try:
         from .protocols.secom import _compress
+
         sample = "The quick brown fox jumps over the lazy dog. " * 20
         compressed, rate = _compress(sample, 0.6)
         print(f"Compression test: {len(sample)} chars → {len(compressed)} chars (rate={rate:.2f})")
@@ -1237,7 +1293,9 @@ def cmd_secom_warmup(args: argparse.Namespace) -> int:
         return 1
 
     # Report HuggingFace cache path
-    hf_cache = os.environ.get("HF_HOME") or os.environ.get("TRANSFORMERS_CACHE") or str(Path.home() / ".cache" / "huggingface")
+    hf_cache = (
+        os.environ.get("HF_HOME") or os.environ.get("TRANSFORMERS_CACHE") or str(Path.home() / ".cache" / "huggingface")
+    )
     print(f"HuggingFace cache: {hf_cache}")
 
     print("SECOM warmup complete.")
@@ -1273,6 +1331,7 @@ def _parse_git_remote_org_repo(cwd: Path | None = None) -> str | None:
     else:
         # HTTPS or other scheme://host/path
         from urllib.parse import urlparse
+
         parsed = urlparse(url)
         path = parsed.path.lstrip("/")
 
@@ -1312,7 +1371,7 @@ def _strip_provenance_header(text: str) -> str:
     idx = text.find(marker)
     if idx == -1:
         return text
-    return text[idx + len(marker):]
+    return text[idx + len(marker) :]
 
 
 def _configure_codev_project(force: bool, scope_override: str | None, cwd: Path | None = None) -> int:
@@ -1331,8 +1390,7 @@ def _configure_codev_project(force: bool, scope_override: str | None, cwd: Path 
         org_repo = _parse_git_remote_org_repo(base)
         if org_repo is None:
             print(
-                "Error: could not derive Org/Repo from git remote. "
-                "Use --scope to specify manually.",
+                "Error: could not derive Org/Repo from git remote. Use --scope to specify manually.",
                 file=sys.stderr,
             )
             return 1
@@ -1422,6 +1480,7 @@ def cmd_integrate_codev(args: argparse.Namespace) -> int:
     # 4. Get package version
     try:
         from importlib.metadata import version
+
         pkg_version = version("fava-trails")
     except Exception:
         pkg_version = "unknown"
@@ -1539,6 +1598,7 @@ def _add_rich_view_trails_dir_arg(parser: argparse.ArgumentParser) -> None:
 def build_parser() -> argparse.ArgumentParser:
     try:
         from importlib.metadata import version
+
         _version = version("fava-trails")
     except Exception:
         _version = "unknown"
@@ -1630,15 +1690,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_get.add_argument("scope", help="Scope path (e.g. mwai/eng/project/codev-assets/specs/17-feature)")
     get_mode = p_get.add_mutually_exclusive_group()
     get_mode.add_argument(
-        "--list", dest="list_children", action="store_true",
+        "--list",
+        dest="list_children",
+        action="store_true",
         help="List child scope names instead of thought content",
     )
     get_mode.add_argument(
-        "--exists", action="store_true",
+        "--exists",
+        action="store_true",
         help="Exit 0 if non-superseded thoughts exist, 1 if not (no output)",
     )
     p_get.add_argument(
-        "--with-frontmatter", action="store_true",
+        "--with-frontmatter",
+        action="store_true",
         help="Include YAML frontmatter in output",
     )
     p_get.set_defaults(func=cmd_get)
@@ -1696,11 +1760,17 @@ def build_parser() -> argparse.ArgumentParser:
         "codev", help="Compose codev trust gate prompt and configure project artifacts"
     )
     integrate_codev_mode = p_integrate_codev.add_mutually_exclusive_group()
-    integrate_codev_mode.add_argument("--check", action="store_true", help="Verify composed file is up to date (CI-friendly)")
+    integrate_codev_mode.add_argument(
+        "--check", action="store_true", help="Verify composed file is up to date (CI-friendly)"
+    )
     integrate_codev_mode.add_argument("--diff", action="store_true", help="Preview changes without writing")
     p_integrate_codev.add_argument("--force", action="store_true", help="Overwrite even if manually edited")
-    p_integrate_codev.add_argument("--scope", type=str, default=None, help="Override auto-derived artifact scope (e.g., codev-artifacts/Org/Repo)")
-    p_integrate_codev.add_argument("--prompt-only", action="store_true", help="Only compose TG prompt, skip project config")
+    p_integrate_codev.add_argument(
+        "--scope", type=str, default=None, help="Override auto-derived artifact scope (e.g., codev-artifacts/Org/Repo)"
+    )
+    p_integrate_codev.add_argument(
+        "--prompt-only", action="store_true", help="Only compose TG prompt, skip project config"
+    )
     p_integrate_codev.set_defaults(func=cmd_integrate_codev)
 
     p_integrate.set_defaults(func=lambda args: (p_integrate.print_help(), 0)[1])
@@ -1759,13 +1829,19 @@ def main(argv: list[str] | None = None) -> None:
             n = len(hints) + 1
             hints.append(f"  {n}. Set up data repo:   fava-trails bootstrap <path>")
         env_var_name = "OPENROUTER_API_KEY"  # noqa: S105 — env var name, not a secret
+        provider = "openrouter"
         try:
-            env_var_name = load_global_config().openrouter_api_key_env
+            cfg = load_global_config()
+            env_var_name = cfg.resolve_trust_gate_api_key_env()
+            provider = cfg.trust_gate_provider
         except (OSError, ValueError):
             pass
         if not os.environ.get(env_var_name):
             n = len(hints) + 1
-            hints.append(f"  {n}. Set OpenRouter key:  export {env_var_name}=sk-or-v1-...")
+            if provider == "openrouter":
+                hints.append(f"  {n}. Set Trust Gate key: export {env_var_name}=sk-or-v1-...")
+            else:
+                hints.append(f"  {n}. Set Trust Gate key: export {env_var_name}=...")
         if hints:
             print("\nQuick start:")
             print("\n".join(hints))

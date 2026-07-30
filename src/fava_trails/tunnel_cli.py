@@ -22,9 +22,11 @@ from pathlib import Path
 from typing import NoReturn
 
 import yaml
+from pydantic import ValidationError
 
 from .cli import _find_jj_bin
 from .config import ConfigStore
+from .models import GlobalConfig
 from .readiness import DEFAULT_READINESS_TIMEOUT_SECONDS
 
 DEFAULT_HOST = "127.0.0.1"
@@ -167,10 +169,27 @@ def _load_gateway_config(args: argparse.Namespace, *, require_tunnel_client: boo
     if _find_jj_bin() is None:
         raise ValueError("jj not found. Install with: fava-trails install-jj")
 
-    trust_gate = config_data.get("trust_gate", "llm-oneshot")
-    trust_gate_env = config_data.get("openrouter_api_key_env", "OPENROUTER_API_KEY")
-    if trust_gate == "llm-oneshot" and not os.environ.get(trust_gate_env):
-        raise ValueError(f"Trust Gate provider config missing: set {trust_gate_env}")
+    # Reuse the typed GlobalConfig seam so provider/model/api_base/key-env are
+    # validated the same way as doctor and propose_truth (no duplicated alias logic).
+    try:
+        if not isinstance(config_data, dict):
+            raise ValueError("config must be a mapping")
+        global_config = GlobalConfig(**config_data)
+        trust_gate_env = global_config.validate_trust_gate_runtime()
+    except (ValidationError, ValueError, TypeError) as exc:
+        raise ValueError(f"invalid Trust Gate configuration: {exc}") from exc
+
+    if global_config.trust_gate == "llm-oneshot" and not os.environ.get(trust_gate_env):
+        raise ValueError(
+            f"Trust Gate provider config missing: set {trust_gate_env} "
+            f"(provider={global_config.trust_gate_provider}, model={global_config.trust_gate_model}"
+            + (
+                f", api_base={global_config.trust_gate_api_base}"
+                if global_config.trust_gate_api_base
+                else ""
+            )
+            + ")"
+        )
 
     host = getattr(args, "host", DEFAULT_HOST)
     port = getattr(args, "port", DEFAULT_PORT)

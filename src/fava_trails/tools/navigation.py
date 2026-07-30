@@ -45,10 +45,7 @@ async def handle_list_scopes(arguments: dict) -> dict[str, Any]:
                         continue
                     entry: dict[str, Any] = {"path": scope_name}
                     if include_stats:
-                        md_count = sum(
-                            1 for _ in thoughts_dir.rglob("*.md")
-                            if _.name != ".gitkeep"
-                        )
+                        md_count = sum(1 for _ in thoughts_dir.rglob("*.md") if _.name != ".gitkeep")
                         entry["thought_count"] = md_count
                     scopes.append(entry)
 
@@ -85,9 +82,7 @@ async def handle_conflicts(trail, arguments: dict) -> dict[str, Any]:
                 "Choose side_a, side_b, or write a merged version."
             )
         else:
-            entry["resolution_hint"] = (
-                "Manual intervention required. Use rollback to restore pre-conflict state."
-            )
+            entry["resolution_hint"] = "Manual intervention required. Use rollback to restore pre-conflict state."
         conflict_list.append(entry)
 
     return {
@@ -139,20 +134,20 @@ async def handle_propose_truth(
                 return {"status": "error", "message": str(e)}
 
             global_config = ConfigStore.get().global_config
-            openrouter_key = os.environ.get(global_config.openrouter_api_key_env, "")
-            if not openrouter_key:
+            api_key_env = global_config.resolve_trust_gate_api_key_env()
+            api_key = os.environ.get(api_key_env, "")
+            if not api_key:
                 return {
                     "status": "error",
-                    "message": (
-                        f"No LLM API key found. "
-                        f"Set {global_config.openrouter_api_key_env} environment variable."
-                    ),
+                    "message": (f"No LLM API key found. Set {api_key_env} environment variable."),
                 }
 
             from ..llm import LLMClient
 
             llm_client = LLMClient(
-                openrouter_api_key=openrouter_key,
+                api_key=api_key,
+                provider=global_config.trust_gate_provider,
+                api_base=global_config.trust_gate_api_base,
             )
 
             tg_timeout = global_config.trust_gate_timeout_secs
@@ -166,9 +161,7 @@ async def handle_propose_truth(
             )
             if tg_timeout > 0:
                 try:
-                    trust_result = await asyncio.wait_for(
-                        _review_coro, timeout=float(tg_timeout)
-                    )
+                    trust_result = await asyncio.wait_for(_review_coro, timeout=float(tg_timeout))
                 except TimeoutError:
                     logger.error(
                         "Trust Gate LLM call timed out after %ds for thought %s",
@@ -198,11 +191,14 @@ async def handle_propose_truth(
                 "reasoning": trust_result.reasoning,
                 "reviewer": trust_result.reviewer,
             }
+            if trust_result.provider is not None:
+                result["trust_gate"]["provider"] = trust_result.provider
+            if trust_result.model is not None:
+                result["trust_gate"]["model"] = trust_result.model
             if trust_result.verdict in ("reject", "error"):
                 result["status"] = "rejected" if trust_result.verdict == "reject" else "error"
                 result["message"] = (
-                    f"Thought {thought_id[:8]} {trust_result.verdict}ed by trust gate: "
-                    f"{trust_result.reasoning}"
+                    f"Thought {thought_id[:8]} {trust_result.verdict}ed by trust gate: {trust_result.reasoning}"
                 )
 
         return result
@@ -224,10 +220,7 @@ async def handle_rollback(trail, arguments: dict) -> dict[str, Any]:
         return {
             "status": "error",
             "message": "op_id is required. Recent operations:",
-            "operations": [
-                {"op_id": op.op_id, "description": op.description, "timestamp": op.timestamp}
-                for op in ops
-            ],
+            "operations": [{"op_id": op.op_id, "description": op.description, "timestamp": op.timestamp} for op in ops],
         }
 
     result = await trail.rollback(op_id)
@@ -241,8 +234,7 @@ async def handle_sync(trail, arguments: dict) -> dict[str, Any]:
         return {
             "status": "blocked",
             "message": (
-                f"Sync blocked: {result.summary} "
-                "Repair or remove the colliding tracked paths before retrying."
+                f"Sync blocked: {result.summary} Repair or remove the colliding tracked paths before retrying."
             ),
             "case_collisions": result.case_collisions,
         }
@@ -259,10 +251,7 @@ async def handle_sync(trail, arguments: dict) -> dict[str, Any]:
         return {
             "status": "conflict",
             "message": f"Sync aborted: {result.summary}. Pre-sync state restored.",
-            "conflicts": [
-                {"file": c.file_path, "description": c.description}
-                for c in result.conflict_details
-            ],
+            "conflicts": [{"file": c.file_path, "description": c.description} for c in result.conflict_details],
         }
     if not result.success:
         return {

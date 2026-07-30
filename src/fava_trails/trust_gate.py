@@ -42,6 +42,11 @@ class TrustResult:
     reviewer: str  # "llm-oneshot:<model>" or "human:<user_id>"
     reviewed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     confidence: float | None = None
+    # Provider selected for the review (e.g. "openrouter", "openai"). Optional
+    # for backward compatibility with callers that construct TrustResult directly.
+    provider: str | None = None
+    # Model identifier returned by the provider (may differ from configured id).
+    model: str | None = None
 
 
 class TrustGatePromptCache:
@@ -202,7 +207,7 @@ def _extract_json_from_llm_response(raw: str) -> str:
         first_newline = result.find("\n")
         if first_newline != -1:
             # Remove the opening fence line (e.g. ```json or ```)
-            result = result[first_newline + 1:]
+            result = result[first_newline + 1 :]
         # Remove the closing fence
         if result.endswith("```"):
             result = result[:-3]
@@ -281,12 +286,13 @@ async def review_thought(
         )
 
     if policy != "llm-oneshot":
-        raise TrustGateConfigError(
-            f"Unknown trust gate policy: {policy!r}. Available: 'llm-oneshot'."
-        )
+        raise TrustGateConfigError(f"Unknown trust gate policy: {policy!r}. Available: 'llm-oneshot'.")
 
     system_msg, user_msg = _build_review_payload(prompt, record, trail_name=trail_name)
+    # Keep reviewer shape stable for backward compatibility; provider/model are
+    # recorded separately on TrustResult for unambiguous provenance.
     reviewer_id = f"llm-oneshot:{model}"
+    provider = getattr(client, "provider", None)
 
     # Attempt API call with 1 retry on parse failure
     last_error = None
@@ -302,12 +308,16 @@ async def review_thought(
                 response_format={"type": "json_object"},
             )
             verdict, reasoning, confidence = _parse_verdict(response.content)
+            returned_model = response.model or model
+            returned_provider = response.provider or provider
 
             return TrustResult(
                 verdict=verdict,
                 reasoning=reasoning,
                 reviewer=reviewer_id,
                 confidence=confidence,
+                provider=returned_provider,
+                model=returned_model,
             )
 
         except ProviderError as e:
@@ -316,6 +326,8 @@ async def review_thought(
                 verdict="error",
                 reasoning=f"LLM API HTTP {status_code}: {str(e.message)[:200]}",
                 reviewer=reviewer_id,
+                provider=provider,
+                model=model,
             )
 
         except AnyLLMError as e:
@@ -323,6 +335,8 @@ async def review_thought(
                 verdict="error",
                 reasoning=f"LLM connection error: {type(e).__name__}: {e.message}",
                 reviewer=reviewer_id,
+                provider=provider,
+                model=model,
             )
 
         except (json.JSONDecodeError, ValueError) as e:
@@ -334,6 +348,8 @@ async def review_thought(
                 verdict="error",
                 reasoning=f"Failed to parse reviewer response after retry: {e}",
                 reviewer=reviewer_id,
+                provider=provider,
+                model=model,
             )
 
         except Exception as e:
@@ -341,6 +357,8 @@ async def review_thought(
                 verdict="error",
                 reasoning=f"Unexpected error: {type(e).__name__}: {e}",
                 reviewer=reviewer_id,
+                provider=provider,
+                model=model,
             )
 
     # Should not reach here, but fail-closed
@@ -348,4 +366,6 @@ async def review_thought(
         verdict="error",
         reasoning=f"Review failed: {last_error}",
         reviewer=reviewer_id,
+        provider=provider,
+        model=model,
     )

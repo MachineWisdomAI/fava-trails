@@ -147,7 +147,7 @@ OPENROUTER_API_KEY = "sk-or-v1-..."
 }
 ```
 
-> **The Trust Gate uses LLM verification:** Thoughts are reviewed before promotion to ensure they're coherent and safe. By default, FAVA Trails uses [OpenRouter](https://openrouter.ai/) to access 300–500+ models from 60+ providers including Anthropic, OpenAI, Google, Qwen, and others. Get a free API key at [openrouter.ai/keys](https://openrouter.ai/keys). The default model (`google/gemini-2.5-flash`) costs ~$0.001 per review. Multi-provider support via [any-llm-sdk](https://github.com/mozilla-ai/any-llm) enables switching to other providers by modifying `config.yaml`.
+> **The Trust Gate uses LLM verification:** Thoughts are reviewed before promotion to ensure they're coherent and safe. By default, FAVA Trails uses [OpenRouter](https://openrouter.ai/) to access 300–500+ models from 60+ providers including Anthropic, OpenAI, Google, Qwen, and others. Get a free API key at [openrouter.ai/keys](https://openrouter.ai/keys). The default model (`google/gemini-2.5-flash`) costs ~$0.001 per review. You can instead point Trust Gate at a local OpenAI-compatible endpoint (e.g. [Unsloth Studio](https://unsloth.ai/docs/new/studio)) via `trust_gate_provider`, `trust_gate_api_base`, and `trust_gate_api_key_env` in `config.yaml` — see [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md).
 
 ### Use it
 
@@ -290,9 +290,9 @@ Environment variables:
 | `FAVA_TRAILS_DIR` | Server | Override trails directory location (absolute path) | `$FAVA_TRAILS_DATA_REPO/trails` |
 | `FAVA_TRAILS_SCOPE_HINT` | Server | Broad scope hint baked into tool descriptions | *(none)* |
 | `FAVA_TRAILS_SCOPE` | Agent | Project-specific scope from `.env` file | *(none)* |
-| `OPENROUTER_API_KEY` | Server | API key for Trust Gate LLM reviews via [OpenRouter](https://openrouter.ai/keys) | *(none — required for `propose_truth`)* |
+| `OPENROUTER_API_KEY` | Server | Default Trust Gate API key env (OpenRouter). Override the env var *name* via `trust_gate_api_key_env` / legacy `openrouter_api_key_env` in `config.yaml`. | *(none — required for `propose_truth` when using llm-oneshot)* |
 
-**LLM Provider:** FAVA Trails uses [any-llm-sdk](https://github.com/mozilla-ai/any-llm) for unified LLM access. OpenRouter is the default provider (recommended for simplicity — single API key, 300–500+ models from 60+ providers). Additional providers (Anthropic, OpenAI, Bedrock, etc.) can be configured in `config.yaml` for future versions.
+**LLM Provider:** FAVA Trails uses [any-llm-sdk](https://github.com/mozilla-ai/any-llm) for unified LLM access. OpenRouter is the default Trust Gate provider. To use a local OpenAI-compatible server (Unsloth Studio, vLLM, etc.), set `trust_gate_provider`, `trust_gate_model`, optional `trust_gate_api_base`, and `trust_gate_api_key_env` in `config.yaml`. Slow local quantized models may need a higher `trust_gate_timeout_secs` (still below `tool_timeout_secs`). There is no automatic fallback between providers.
 
 The server reads `$FAVA_TRAILS_DATA_REPO/config.yaml` for global settings. Minimal `config.yaml`:
 

@@ -39,6 +39,7 @@ def _cleanup_args(**overrides):
     values.update(overrides)
     return argparse.Namespace(**values)
 
+
 # ─── _update_env_file ─────────────────────────────────────────────────────────
 
 
@@ -125,6 +126,7 @@ def test_is_env_gitignored_false_not_listed(tmp_path):
 def _make_args(**kwargs):
     """Build a minimal argparse.Namespace for testing."""
     from argparse import Namespace
+
     return Namespace(**kwargs)
 
 
@@ -248,6 +250,7 @@ def test_bootstrap_creates_structure(tmp_path):
     assert "quality gate" in (target / "trails" / "trust-gate-prompt.md").read_text().lower()
 
     import yaml as _yaml
+
     config = _yaml.safe_load((target / "config.yaml").read_text())
     assert config["trails_dir"] == "trails"
     assert config["push_strategy"] == "manual"
@@ -281,6 +284,7 @@ def test_bootstrap_with_remote(tmp_path):
 
     assert rc == 0
     import yaml as _yaml
+
     config = _yaml.safe_load((target / "config.yaml").read_text())
     assert config["remote_url"] == "https://github.com/org/repo.git"
 
@@ -506,7 +510,7 @@ def _make_valid_data_repo(tmp_path: Path) -> Path:
 
 
 def test_doctor_all_green(tmp_path, monkeypatch, capsys):
-    """doctor exits 0 when JJ, data repo, OpenRouter key, and scope are all configured."""
+    """doctor exits 0 when JJ, data repo, Trust Gate key, and scope are all configured."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     data_repo = _make_valid_data_repo(tmp_path)
@@ -514,7 +518,12 @@ def test_doctor_all_green(tmp_path, monkeypatch, capsys):
 
     with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
         with patch("fava_trails.cli.load_global_config") as mock_config:
-            mock_config.return_value.openrouter_api_key_env = "OPENROUTER_API_KEY"
+            cfg = mock_config.return_value
+            cfg.validate_trust_gate_runtime.return_value = "OPENROUTER_API_KEY"
+            cfg.trust_gate_provider = "openrouter"
+            cfg.trust_gate_model = "google/gemini-2.5-flash"
+            cfg.trust_gate_api_base = None
+            cfg.trust_gate = "llm-oneshot"
             with patch("shutil.which", return_value="/usr/bin/jj"):
                 with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
                     mock_run.return_value.stdout = "jj 0.25.0\n"
@@ -524,7 +533,9 @@ def test_doctor_all_green(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "JJ:" in out
     assert "Data repo:" in out
-    assert "OpenRouter:" in out
+    assert "Trust Gate:" in out
+    assert "provider=openrouter" in out
+    assert "API key:" in out
     assert "is set" in out
     assert "Scope:" in out
 
@@ -546,7 +557,12 @@ def test_doctor_missing_jj(tmp_path, monkeypatch, capsys):
 
     with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
         with patch("fava_trails.cli.load_global_config") as mock_config:
-            mock_config.return_value.openrouter_api_key_env = "OPENROUTER_API_KEY"
+            cfg = mock_config.return_value
+            cfg.validate_trust_gate_runtime.return_value = "OPENROUTER_API_KEY"
+            cfg.trust_gate_provider = "openrouter"
+            cfg.trust_gate_model = "google/gemini-2.5-flash"
+            cfg.trust_gate_api_base = None
+            cfg.trust_gate = "llm-oneshot"
             with patch("shutil.which", return_value=None):
                 with patch.object(Path, "exists", exists_side_effect):
                     rc = cmd_doctor(_make_args())
@@ -566,7 +582,12 @@ def test_doctor_missing_data_repo(tmp_path, monkeypatch, capsys):
 
     with patch("fava_trails.cli.get_data_repo_root", return_value=missing):
         with patch("fava_trails.cli.load_global_config") as mock_config:
-            mock_config.return_value.openrouter_api_key_env = "OPENROUTER_API_KEY"
+            cfg = mock_config.return_value
+            cfg.validate_trust_gate_runtime.return_value = "OPENROUTER_API_KEY"
+            cfg.trust_gate_provider = "openrouter"
+            cfg.trust_gate_model = "google/gemini-2.5-flash"
+            cfg.trust_gate_api_base = None
+            cfg.trust_gate = "llm-oneshot"
             with patch("shutil.which", return_value="/usr/bin/jj"):
                 with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
                     mock_run.return_value.stdout = "jj 0.25.0\n"
@@ -586,7 +607,12 @@ def test_doctor_missing_scope(tmp_path, monkeypatch, capsys):
 
     with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
         with patch("fava_trails.cli.load_global_config") as mock_config:
-            mock_config.return_value.openrouter_api_key_env = "OPENROUTER_API_KEY"
+            cfg = mock_config.return_value
+            cfg.validate_trust_gate_runtime.return_value = "OPENROUTER_API_KEY"
+            cfg.trust_gate_provider = "openrouter"
+            cfg.trust_gate_model = "google/gemini-2.5-flash"
+            cfg.trust_gate_api_base = None
+            cfg.trust_gate = "llm-oneshot"
             with patch("shutil.which", return_value="/usr/bin/jj"):
                 with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
                     mock_run.return_value.stdout = "jj 0.25.0\n"
@@ -599,7 +625,7 @@ def test_doctor_missing_scope(tmp_path, monkeypatch, capsys):
 
 
 def test_doctor_missing_openrouter_key(tmp_path, monkeypatch, capsys):
-    """doctor exits 1 and shows fix instructions when OpenRouter key is missing."""
+    """doctor exits 1 and shows OpenRouter fix instructions when default key is missing."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     data_repo = _make_valid_data_repo(tmp_path)
@@ -607,7 +633,12 @@ def test_doctor_missing_openrouter_key(tmp_path, monkeypatch, capsys):
 
     with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
         with patch("fava_trails.cli.load_global_config") as mock_config:
-            mock_config.return_value.openrouter_api_key_env = "OPENROUTER_API_KEY"
+            cfg = mock_config.return_value
+            cfg.validate_trust_gate_runtime.return_value = "OPENROUTER_API_KEY"
+            cfg.trust_gate_provider = "openrouter"
+            cfg.trust_gate_model = "google/gemini-2.5-flash"
+            cfg.trust_gate_api_base = None
+            cfg.trust_gate = "llm-oneshot"
             with patch("shutil.which", return_value="/usr/bin/jj"):
                 with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
                     mock_run.return_value.stdout = "jj 0.25.0\n"
@@ -615,8 +646,92 @@ def test_doctor_missing_openrouter_key(tmp_path, monkeypatch, capsys):
 
     assert rc == 1
     out = capsys.readouterr().out
-    assert "OpenRouter:   NOT SET" in out
+    assert "API key:      NOT SET" in out
     assert "openrouter.ai/keys" in out
+
+
+def test_doctor_local_provider_missing_key_no_openrouter_url(tmp_path, monkeypatch, capsys):
+    """doctor for local provider must not push OpenRouter key instructions."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("UNSLOTH_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    data_repo = _make_valid_data_repo(tmp_path)
+    (tmp_path / ".env").write_text("FAVA_TRAILS_SCOPE=mw/eng/test\n")
+
+    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
+        with patch("fava_trails.cli.load_global_config") as mock_config:
+            cfg = mock_config.return_value
+            cfg.validate_trust_gate_runtime.return_value = "UNSLOTH_API_KEY"
+            cfg.trust_gate_provider = "openai"
+            cfg.trust_gate_model = "local-gguf"
+            cfg.trust_gate_api_base = "http://127.0.0.1:8000/v1"
+            cfg.trust_gate = "llm-oneshot"
+            with patch("shutil.which", return_value="/usr/bin/jj"):
+                with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
+                    mock_run.return_value.stdout = "jj 0.25.0\n"
+                    rc = cmd_doctor(_make_args())
+
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "provider=openai" in out
+    assert "api_base=http://127.0.0.1:8000/v1" in out
+    assert "UNSLOTH_API_KEY" in out
+    assert "openrouter.ai" not in out
+
+
+def test_doctor_reports_invalid_trust_gate_runtime(tmp_path, monkeypatch, capsys):
+    """doctor fails when shared validate_trust_gate_runtime rejects config."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OPENAI_API_KEY", "hosted-key")
+    data_repo = _make_valid_data_repo(tmp_path)
+    (tmp_path / ".env").write_text("FAVA_TRAILS_SCOPE=mw/eng/test\n")
+
+    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
+        with patch("fava_trails.cli.load_global_config") as mock_config:
+            cfg = mock_config.return_value
+            cfg.validate_trust_gate_runtime.side_effect = ValueError(
+                "Trust Gate API key environment variable name is empty"
+            )
+            with patch("shutil.which", return_value="/usr/bin/jj"):
+                with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
+                    mock_run.return_value.stdout = "jj 0.25.0\n"
+                    rc = cmd_doctor(_make_args())
+
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "Trust Gate:   INVALID" in out
+    assert "Trust Gate API key environment variable name is set" not in out
+    assert "environment variable name is empty" in out
+    assert "API key:" not in out
+
+
+def test_doctor_hosted_openai_without_api_base_ok(tmp_path, monkeypatch, capsys):
+    """Hosted openai + key without api_base is healthy (matches tunnel contract)."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OPENAI_API_KEY", "hosted-key")
+    data_repo = _make_valid_data_repo(tmp_path)
+    (tmp_path / ".env").write_text("FAVA_TRAILS_SCOPE=mw/eng/test\n")
+
+    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
+        with patch("fava_trails.cli.load_global_config") as mock_config:
+            cfg = mock_config.return_value
+            cfg.validate_trust_gate_runtime.return_value = "OPENAI_API_KEY"
+            cfg.trust_gate_provider = "openai"
+            cfg.trust_gate_model = "gpt-4.1-mini"
+            cfg.trust_gate_api_base = None
+            cfg.trust_gate = "llm-oneshot"
+            with patch("shutil.which", return_value="/usr/bin/jj"):
+                with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
+                    mock_run.return_value.stdout = "jj 0.25.0\n"
+                    rc = cmd_doctor(_make_args())
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "provider=openai" in out
+    assert "model=gpt-4.1-mini" in out
+    assert "api_base=" not in out
+    assert "OPENAI_API_KEY is set" in out
+    assert "openrouter.ai" not in out
 
 
 def test_doctor_in_help(capsys):
@@ -643,6 +758,7 @@ def test_bootstrap_refuses_existing_config(tmp_path):
         rc = cmd_bootstrap(args)
 
     assert rc == 1
+
 
 # ─── install-jj tests ─────────────────────────────────────────────────────────
 
@@ -798,11 +914,14 @@ def _setup_data_repo(tmp_path: Path, monkeypatch) -> Path:
     return data_repo
 
 
-@pytest.mark.parametrize("cmd_fn,protocol_name,module_path", [
-    (cmd_secom_setup, "secom", "fava_trails.protocols.secom"),
-    (cmd_ace_setup, "ace", "fava_trails.protocols.ace"),
-    (cmd_rlm_setup, "rlm", "fava_trails.protocols.rlm"),
-])
+@pytest.mark.parametrize(
+    "cmd_fn,protocol_name,module_path",
+    [
+        (cmd_secom_setup, "secom", "fava_trails.protocols.secom"),
+        (cmd_ace_setup, "ace", "fava_trails.protocols.ace"),
+        (cmd_rlm_setup, "rlm", "fava_trails.protocols.rlm"),
+    ],
+)
 def test_setup_prints_yaml(tmp_path, monkeypatch, capsys, cmd_fn, protocol_name, module_path):
     """setup (no --write) prints YAML block with correct module."""
     _setup_data_repo(tmp_path, monkeypatch)
@@ -814,11 +933,14 @@ def test_setup_prints_yaml(tmp_path, monkeypatch, capsys, cmd_fn, protocol_name,
     assert "--write" in out
 
 
-@pytest.mark.parametrize("cmd_fn,protocol_name,module_path", [
-    (cmd_secom_setup, "secom", "fava_trails.protocols.secom"),
-    (cmd_ace_setup, "ace", "fava_trails.protocols.ace"),
-    (cmd_rlm_setup, "rlm", "fava_trails.protocols.rlm"),
-])
+@pytest.mark.parametrize(
+    "cmd_fn,protocol_name,module_path",
+    [
+        (cmd_secom_setup, "secom", "fava_trails.protocols.secom"),
+        (cmd_ace_setup, "ace", "fava_trails.protocols.ace"),
+        (cmd_rlm_setup, "rlm", "fava_trails.protocols.rlm"),
+    ],
+)
 def test_setup_write_adds_hook(tmp_path, monkeypatch, capsys, cmd_fn, protocol_name, module_path):
     """setup --write appends hook entry to config.yaml and runs jj dance."""
     data_repo = _setup_data_repo(tmp_path, monkeypatch)
@@ -847,11 +969,14 @@ def test_setup_write_adds_hook(tmp_path, monkeypatch, capsys, cmd_fn, protocol_n
     assert "added to config.yaml" in out
 
 
-@pytest.mark.parametrize("cmd_fn,module_path", [
-    (cmd_secom_setup, "fava_trails.protocols.secom"),
-    (cmd_ace_setup, "fava_trails.protocols.ace"),
-    (cmd_rlm_setup, "fava_trails.protocols.rlm"),
-])
+@pytest.mark.parametrize(
+    "cmd_fn,module_path",
+    [
+        (cmd_secom_setup, "fava_trails.protocols.secom"),
+        (cmd_ace_setup, "fava_trails.protocols.ace"),
+        (cmd_rlm_setup, "fava_trails.protocols.rlm"),
+    ],
+)
 def test_setup_write_idempotent(tmp_path, monkeypatch, capsys, cmd_fn, module_path):
     """setup --write is idempotent: running twice does not duplicate hooks."""
     _setup_data_repo(tmp_path, monkeypatch)
@@ -875,20 +1000,21 @@ def test_setup_write_idempotent(tmp_path, monkeypatch, capsys, cmd_fn, module_pa
     assert "already configured" in out
 
 
-@pytest.mark.parametrize("cmd_fn,module_path", [
-    (cmd_secom_setup, "fava_trails.protocols.secom"),
-    (cmd_ace_setup, "fava_trails.protocols.ace"),
-    (cmd_rlm_setup, "fava_trails.protocols.rlm"),
-])
+@pytest.mark.parametrize(
+    "cmd_fn,module_path",
+    [
+        (cmd_secom_setup, "fava_trails.protocols.secom"),
+        (cmd_ace_setup, "fava_trails.protocols.ace"),
+        (cmd_rlm_setup, "fava_trails.protocols.rlm"),
+    ],
+)
 def test_setup_write_preserves_existing_hooks(tmp_path, monkeypatch, capsys, cmd_fn, module_path):
     """setup --write preserves existing hooks in config.yaml."""
     data_repo = _setup_data_repo(tmp_path, monkeypatch)
     # Pre-populate config with an unrelated hook
     existing_config = {
         "trails_dir": "trails",
-        "hooks": [
-            {"module": "fava_trails.protocols.other", "points": ["on_recall"], "order": 99, "fail_mode": "open"}
-        ],
+        "hooks": [{"module": "fava_trails.protocols.other", "points": ["on_recall"], "order": 99, "fail_mode": "open"}],
     }
     (data_repo / "config.yaml").write_text(_yaml.dump(existing_config))
     ConfigStore.reset()
@@ -910,11 +1036,14 @@ def test_setup_write_preserves_existing_hooks(tmp_path, monkeypatch, capsys, cmd
     assert module_path in config_text
 
 
-@pytest.mark.parametrize("cmd_fn,module_path", [
-    (cmd_secom_setup, "fava_trails.protocols.secom"),
-    (cmd_ace_setup, "fava_trails.protocols.ace"),
-    (cmd_rlm_setup, "fava_trails.protocols.rlm"),
-])
+@pytest.mark.parametrize(
+    "cmd_fn,module_path",
+    [
+        (cmd_secom_setup, "fava_trails.protocols.secom"),
+        (cmd_ace_setup, "fava_trails.protocols.ace"),
+        (cmd_rlm_setup, "fava_trails.protocols.rlm"),
+    ],
+)
 def test_setup_write_warns_about_comments(tmp_path, monkeypatch, capsys, cmd_fn, module_path):
     """setup --write warns when config.yaml contains comments."""
     data_repo = _setup_data_repo(tmp_path, monkeypatch)
@@ -962,11 +1091,14 @@ def test_setup_help(cmd_fn):
     assert "--write" in result.stdout
 
 
-@pytest.mark.parametrize("cmd_fn,module_path", [
-    (cmd_secom_setup, "fava_trails.protocols.secom"),
-    (cmd_ace_setup, "fava_trails.protocols.ace"),
-    (cmd_rlm_setup, "fava_trails.protocols.rlm"),
-])
+@pytest.mark.parametrize(
+    "cmd_fn,module_path",
+    [
+        (cmd_secom_setup, "fava_trails.protocols.secom"),
+        (cmd_ace_setup, "fava_trails.protocols.ace"),
+        (cmd_rlm_setup, "fava_trails.protocols.rlm"),
+    ],
+)
 def test_setup_write_warns_on_jj_failure(tmp_path, monkeypatch, capsys, cmd_fn, module_path):
     """setup --write warns when jj commit dance fails."""
     _setup_data_repo(tmp_path, monkeypatch)

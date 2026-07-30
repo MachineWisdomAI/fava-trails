@@ -46,14 +46,13 @@ class AmbiguousThoughtID(Exception):
 
     def __init__(self, prefix: str, candidates: list[dict], total_matches: int) -> None:
         self.prefix = prefix
-        self.candidates = candidates  # up to 5 entries: {thought_id, namespace, source_type, created_at, content_preview}
+        self.candidates = (
+            candidates  # up to 5 entries: {thought_id, namespace, source_type, created_at, content_preview}
+        )
         self.total_matches = total_matches
         shown = len(candidates)
         detail = f"showing {shown} of {total_matches}" if total_matches > shown else f"{total_matches} matches"
-        super().__init__(
-            f"Prefix '{prefix}' is ambiguous — {detail}. "
-            "Provide a longer prefix or the full ULID."
-        )
+        super().__init__(f"Prefix '{prefix}' is ambiguous — {detail}. Provide a longer prefix or the full ULID.")
 
 
 # Namespace subdirectories created on trail init
@@ -145,13 +144,15 @@ class TrailManager:
                 try:
                     record = ThoughtRecord.from_markdown(p.read_text())
                     fm = record.frontmatter
-                    candidates.append({
-                        "thought_id": fm.thought_id,
-                        "namespace": self._get_namespace_from_path(p),
-                        "source_type": fm.source_type.value,
-                        "created_at": fm.created_at.isoformat() if fm.created_at else None,
-                        "content_preview": record.content[:100] + ("..." if len(record.content) > 100 else ""),
-                    })
+                    candidates.append(
+                        {
+                            "thought_id": fm.thought_id,
+                            "namespace": self._get_namespace_from_path(p),
+                            "source_type": fm.source_type.value,
+                            "created_at": fm.created_at.isoformat() if fm.created_at else None,
+                            "content_preview": record.content[:100] + ("..." if len(record.content) > 100 else ""),
+                        }
+                    )
                 except Exception:
                     candidates.append({"thought_id": p.stem, "namespace": self._get_namespace_from_path(p)})
             raise AmbiguousThoughtID(thought_id, candidates, total_matches=total)
@@ -222,9 +223,9 @@ class TrailManager:
 
         if relationships:
             from .models import Relationship, RelationshipType
+
             frontmatter.relationships = [
-                Relationship(type=RelationshipType(r["type"]), target_id=r["target_id"])
-                for r in relationships
+                Relationship(type=RelationshipType(r["type"]), target_id=r["target_id"]) for r in relationships
             ]
 
         # Warn if decision without intent_ref
@@ -275,9 +276,7 @@ class TrailManager:
                 thought=record,
                 namespace=ns,
             )
-            self._merge_observer_feedback(
-                await dispatch_observer(self._hooks, after_event)
-            )
+            self._merge_observer_feedback(await dispatch_observer(self._hooks, after_event))
 
         return record
 
@@ -421,9 +420,7 @@ class TrailManager:
                 new_thought=new_record,
                 original_thought=original,
             )
-            self._merge_observer_feedback(
-                await dispatch_observer(self._hooks, after_event)
-            )
+            self._merge_observer_feedback(await dispatch_observer(self._hooks, after_event))
 
         return new_record
 
@@ -494,15 +491,17 @@ class TrailManager:
                 # Filter by query (simple text match across all fields)
                 if query:
                     query_lower = query.lower()
-                    searchable = " ".join([
-                        record.content.lower(),
-                        record.frontmatter.thought_id.lower(),
-                        (record.frontmatter.source_type.value if record.frontmatter.source_type else ""),
-                        (record.frontmatter.agent_id or "").lower(),
-                        (meta.project or "").lower(),
-                        (meta.branch or "").lower(),
-                        " ".join(t.lower() for t in meta.tags),
-                    ])
+                    searchable = " ".join(
+                        [
+                            record.content.lower(),
+                            record.frontmatter.thought_id.lower(),
+                            (record.frontmatter.source_type.value if record.frontmatter.source_type else ""),
+                            (record.frontmatter.agent_id or "").lower(),
+                            (meta.project or "").lower(),
+                            (meta.branch or "").lower(),
+                            " ".join(t.lower() for t in meta.tags),
+                        ]
+                    )
                     query_words = query_lower.split()
                     if not all(word in searchable for word in query_words):
                         continue
@@ -612,6 +611,10 @@ class TrailManager:
                 }
                 if trust_result.confidence is not None:
                     record.frontmatter.metadata.extra["trust_gate"]["confidence"] = trust_result.confidence
+                if trust_result.provider is not None:
+                    record.frontmatter.metadata.extra["trust_gate"]["provider"] = trust_result.provider
+                if trust_result.model is not None:
+                    record.frontmatter.metadata.extra["trust_gate"]["model"] = trust_result.model
 
                 if trust_result.verdict == "reject":
                     record.frontmatter.validation_status = ValidationStatus.REJECTED
@@ -655,9 +658,7 @@ class TrailManager:
                 thought=record,
                 trust_result=trust_result,
             )
-            self._merge_observer_feedback(
-                await dispatch_observer(self._hooks, after_event)
-            )
+            self._merge_observer_feedback(await dispatch_observer(self._hooks, after_event))
 
         return record
 
@@ -722,8 +723,7 @@ class TrailManager:
         elapsed = time.time() - self._last_gc_time
 
         should_gc = (
-            self._snapshot_count >= self.config.gc_interval_snapshots
-            or elapsed >= self.config.gc_interval_seconds
+            self._snapshot_count >= self.config.gc_interval_snapshots or elapsed >= self.config.gc_interval_seconds
         )
 
         if should_gc:
