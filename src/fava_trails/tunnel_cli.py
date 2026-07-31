@@ -48,9 +48,7 @@ class GatewayConfig:
     mcp_path: str
     profile: str
     tunnel_client: str
-    # Credential source description. Retains the historical attribute name for
-    # callers that display the configured environment variable.
-    trust_gate_env: str
+    trust_gate_credential: str
 
     @property
     def mcp_url(self) -> str:
@@ -198,7 +196,7 @@ def _load_gateway_config(args: argparse.Namespace, *, require_tunnel_client: boo
         mcp_path=mcp_path,
         profile=profile,
         tunnel_client=tunnel_client or tunnel_client_arg,
-        trust_gate_env=trust_gate_credential,
+        trust_gate_credential=trust_gate_credential,
     )
 
 

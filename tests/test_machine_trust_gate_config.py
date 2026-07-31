@@ -104,7 +104,7 @@ def test_readiness_validates_effective_machine_config(tmp_path, monkeypatch):
     (machine_dir / "config.yaml").write_text("trust_gate_timeout_secs: 300\n")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
 
-    with pytest.raises(ReadinessFailure, match="data repository config is malformed"):
+    with pytest.raises(ReadinessFailure, match="effective configuration is malformed"):
         probe_data_repository(data_repo)
 
 

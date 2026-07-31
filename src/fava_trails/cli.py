@@ -580,16 +580,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     api_base = None
     trust_gate_policy = "llm-oneshot"
     trust_gate_config_ok = True
-    trust_gate_key_file: str | None = None
     try:
         global_config = load_global_config()
         env_var_name = global_config.validate_trust_gate_runtime()
-        configured_key_file = getattr(global_config, "trust_gate_api_key_file", None)
-        if isinstance(configured_key_file, str) and configured_key_file:
-            trust_gate_key_file = configured_key_file
-            credential_description = trust_gate_credential_description(global_config)
-        else:
-            credential_description = env_var_name
+        trust_gate_key_file = global_config.trust_gate_api_key_file
+        credential_description = trust_gate_credential_description(global_config)
         provider = global_config.trust_gate_provider
         model = global_config.trust_gate_model
         api_base = global_config.trust_gate_api_base
@@ -607,14 +602,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print(provider_line)
 
         if trust_gate_policy == "llm-oneshot":
-            credential_error: ValueError | None = None
-            if trust_gate_key_file:
-                try:
-                    load_trust_gate_api_key(global_config)
-                except ValueError as exc:
-                    credential_error = exc
-            elif not os.environ.get(env_var_name):
-                credential_error = ValueError(f"{env_var_name} is not set")
+            try:
+                load_trust_gate_api_key(global_config)
+                credential_error: ValueError | None = None
+            except ValueError as exc:
+                credential_error = exc
 
             if credential_error is None:
                 availability = "is available" if trust_gate_key_file else "is set"

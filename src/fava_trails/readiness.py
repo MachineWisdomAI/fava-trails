@@ -11,10 +11,9 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from .config import apply_machine_config
+from .config import MAX_CONFIG_BYTES, apply_machine_config
 from .models import GlobalConfig, ThoughtRecord
 
-MAX_CONFIG_BYTES = 256 * 1024
 MAX_THOUGHT_BYTES = 512 * 1024
 MAX_TREE_ENTRIES = 100_000
 DEFAULT_READINESS_TIMEOUT_SECONDS = 2.0
@@ -83,7 +82,7 @@ def _validate_config(data_repo: Path, deadline: float) -> GlobalConfig:
             raise ValueError("config must be a mapping")
         config = GlobalConfig(**apply_machine_config(parsed))
     except (UnicodeDecodeError, ValueError, yaml.YAMLError, ValidationError) as exc:
-        raise ReadinessFailure("config_malformed", "data repository config is malformed") from exc
+        raise ReadinessFailure("config_malformed", "effective configuration is malformed") from exc
     return config
 
 

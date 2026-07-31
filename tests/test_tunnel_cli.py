@@ -130,7 +130,7 @@ def test_load_gateway_config_uses_trust_gate_api_key_env(tmp_path, monkeypatch):
     with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
         with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
             config = _load_gateway_config(_args(data_repo=str(data_repo)))
-    assert config.trust_gate_env == "UNSLOTH_API_KEY"
+    assert config.trust_gate_credential == "UNSLOTH_API_KEY"
 
 
 def test_load_gateway_config_uses_standard_machine_config_and_key_file(tmp_path, monkeypatch):
@@ -163,7 +163,7 @@ def test_load_gateway_config_uses_standard_machine_config_and_key_file(tmp_path,
         with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
             config = _load_gateway_config(_args(data_repo=str(data_repo)))
 
-    assert config.trust_gate_env == "credential file"
+    assert config.trust_gate_credential == "credential file"
 
 
 def test_load_gateway_config_rejects_blank_provider(tmp_path, monkeypatch):
@@ -190,7 +190,7 @@ def test_load_gateway_config_allows_hosted_provider_without_api_base(tmp_path, m
     with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
         with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
             config = _load_gateway_config(_args(data_repo=str(data_repo)))
-    assert config.trust_gate_env == "OPENAI_API_KEY"
+    assert config.trust_gate_credential == "OPENAI_API_KEY"
 
 
 def test_load_gateway_config_rejects_invalid_api_base(tmp_path, monkeypatch):
