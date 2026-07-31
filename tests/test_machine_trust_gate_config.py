@@ -184,6 +184,19 @@ def test_key_file_is_read_each_time_for_safe_rotation(tmp_path):
     assert load_trust_gate_api_key(config) == "new-key"
 
 
+def test_key_file_invalid_utf8_uses_safe_generic_error(tmp_path):
+    key_file = tmp_path / "api-key"
+    key_file.write_bytes(b"\xff\xfe")
+    key_file.chmod(0o600)
+    config = GlobalConfig(trust_gate_api_key_file=str(key_file))
+
+    with pytest.raises(ValueError, match="credential file is not readable") as exc_info:
+        load_trust_gate_api_key(config)
+
+    assert str(key_file) not in str(exc_info.value)
+    assert "codec" not in str(exc_info.value)
+
+
 def test_env_key_remains_backward_compatible(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "openrouter-key")
     assert load_trust_gate_api_key(GlobalConfig()) == "openrouter-key"

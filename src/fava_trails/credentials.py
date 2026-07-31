@@ -33,9 +33,11 @@ def _load_owner_only_key_file(configured_path: str) -> str:
         with os.fdopen(descriptor, encoding="utf-8") as handle:
             descriptor = None
             value = handle.read().strip()
+    except UnicodeDecodeError as exc:
+        raise ValueError("Trust Gate credential file is not readable") from exc
     except ValueError:
         raise
-    except (OSError, UnicodeDecodeError) as exc:
+    except OSError as exc:
         raise ValueError("Trust Gate credential file is not readable") from exc
     finally:
         if descriptor is not None:
