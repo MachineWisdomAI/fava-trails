@@ -370,6 +370,53 @@ async def test_propose_truth_local_reject(trail_manager, tmp_fava_home, openai_s
 
 
 @pytest.mark.asyncio
+async def test_propose_truth_uses_key_file_and_provider_extra_body(
+    trail_manager,
+    tmp_fava_home,
+    tmp_path,
+    openai_server,
+):
+    """The production promotion path reads the file and disables Qwen thinking."""
+    base_url, handler = openai_server
+    key_file = tmp_path / "runtime-api-key"
+    key_file.write_text("test-local-key\n")
+    key_file.chmod(0o600)
+    record = await trail_manager.save_thought(
+        content="A concrete local-provider observation.",
+        agent_id="test-agent",
+        source_type=SourceType.OBSERVATION,
+    )
+    cache = MagicMock(spec=TrustGatePromptCache)
+    cache.resolve_prompt.return_value = "You are a reviewer."
+    cfg = ConfigStore.__new__(ConfigStore)
+    cfg.global_config = GlobalConfig(
+        trust_gate="llm-oneshot",
+        trust_gate_provider="openai",
+        trust_gate_model="fixture-local-model",
+        trust_gate_api_base=base_url,
+        trust_gate_api_key_file=str(key_file),
+        trust_gate_extra_body={"enable_thinking": False},
+        trust_gate_timeout_secs=30,
+        tool_timeout_secs=60,
+    )
+    cfg.data_repo_root = tmp_fava_home
+    cfg.trails_dir = tmp_fava_home / "trails"
+    ConfigStore.override(cfg)
+
+    result = await handle_propose_truth(
+        trail_manager,
+        {"thought_id": record.thought_id},
+        prompt_cache=cache,
+    )
+
+    assert result["status"] == "ok"
+    assert handler.last_auth == "Bearer test-local-key"
+    assert handler.last_body is not None
+    assert handler.last_body["enable_thinking"] is False
+    assert str(key_file) not in json.dumps(result)
+
+
+@pytest.mark.asyncio
 async def test_propose_truth_missing_configured_key(trail_manager, tmp_fava_home, openai_server):
     base_url, _ = openai_server
 

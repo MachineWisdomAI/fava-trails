@@ -21,12 +21,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn
 
-import yaml
 from pydantic import ValidationError
 
 from .cli import _find_jj_bin
-from .config import ConfigStore
-from .models import GlobalConfig
+from .config import ConfigStore, load_effective_global_config
+from .credentials import load_trust_gate_api_key, trust_gate_credential_description
 from .readiness import DEFAULT_READINESS_TIMEOUT_SECONDS
 
 DEFAULT_HOST = "127.0.0.1"
@@ -49,6 +48,8 @@ class GatewayConfig:
     mcp_path: str
     profile: str
     tunnel_client: str
+    # Credential source description. Retains the historical attribute name for
+    # callers that display the configured environment variable.
     trust_gate_env: str
 
     @property
@@ -150,16 +151,15 @@ def _load_gateway_config(args: argparse.Namespace, *, require_tunnel_client: boo
     identity = _resolve_gateway_identity(args)
     data_repo = identity.data_repo
 
-    config_path = data_repo / "config.yaml"
-    if not config_path.is_file():
-        raise ValueError(f"missing data repo config.yaml: {config_path}")
+    if not (data_repo / "config.yaml").is_file():
+        raise ValueError(f"missing data repo config.yaml: {data_repo / 'config.yaml'}")
 
     try:
-        config_data = yaml.safe_load(config_path.read_text()) or {}
-    except yaml.YAMLError as exc:
-        raise ValueError(f"invalid data repo config.yaml: {exc}") from exc
+        global_config = load_effective_global_config(data_repo)
+    except (ValidationError, ValueError, TypeError) as exc:
+        raise ValueError(f"invalid Trust Gate configuration: {exc}") from exc
 
-    trails_value = config_data.get("trails_dir", "trails")
+    trails_value = global_config.trails_dir
     trails_dir = Path(trails_value)
     if not trails_dir.is_absolute():
         trails_dir = data_repo / trails_dir
@@ -169,27 +169,13 @@ def _load_gateway_config(args: argparse.Namespace, *, require_tunnel_client: boo
     if _find_jj_bin() is None:
         raise ValueError("jj not found. Install with: fava-trails install-jj")
 
-    # Reuse the typed GlobalConfig seam so provider/model/api_base/key-env are
-    # validated the same way as doctor and propose_truth (no duplicated alias logic).
     try:
-        if not isinstance(config_data, dict):
-            raise ValueError("config must be a mapping")
-        global_config = GlobalConfig(**config_data)
-        trust_gate_env = global_config.validate_trust_gate_runtime()
+        global_config.validate_trust_gate_runtime()
+        trust_gate_credential = trust_gate_credential_description(global_config)
+        if global_config.trust_gate == "llm-oneshot":
+            load_trust_gate_api_key(global_config)
     except (ValidationError, ValueError, TypeError) as exc:
         raise ValueError(f"invalid Trust Gate configuration: {exc}") from exc
-
-    if global_config.trust_gate == "llm-oneshot" and not os.environ.get(trust_gate_env):
-        raise ValueError(
-            f"Trust Gate provider config missing: set {trust_gate_env} "
-            f"(provider={global_config.trust_gate_provider}, model={global_config.trust_gate_model}"
-            + (
-                f", api_base={global_config.trust_gate_api_base}"
-                if global_config.trust_gate_api_base
-                else ""
-            )
-            + ")"
-        )
 
     host = getattr(args, "host", DEFAULT_HOST)
     port = getattr(args, "port", DEFAULT_PORT)
@@ -212,7 +198,7 @@ def _load_gateway_config(args: argparse.Namespace, *, require_tunnel_client: boo
         mcp_path=mcp_path,
         profile=profile,
         tunnel_client=tunnel_client or tunnel_client_arg,
-        trust_gate_env=trust_gate_env,
+        trust_gate_env=trust_gate_credential,
     )
 
 

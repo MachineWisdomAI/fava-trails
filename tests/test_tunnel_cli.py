@@ -133,6 +133,39 @@ def test_load_gateway_config_uses_trust_gate_api_key_env(tmp_path, monkeypatch):
     assert config.trust_gate_env == "UNSLOTH_API_KEY"
 
 
+def test_load_gateway_config_uses_standard_machine_config_and_key_file(tmp_path, monkeypatch):
+    """Tunnel preflight resolves the same XDG Trust Gate config as the MCP server."""
+    data_repo = _make_data_repo(tmp_path)
+    config_home = tmp_path / "config"
+    machine_dir = config_home / "fava-trails"
+    machine_dir.mkdir(parents=True)
+    key_file = tmp_path / "runtime-api-key"
+    key_file.write_text("local-key\n")
+    key_file.chmod(0o600)
+    (machine_dir / "config.yaml").write_text(
+        "\n".join(
+            (
+                "trust_gate_provider: openai",
+                "trust_gate_model: unsloth/Qwen3.6-27B-GGUF",
+                "trust_gate_api_base: http://127.0.0.1:8888/v1",
+                f'trust_gate_api_key_file: "{key_file}"',
+                "trust_gate_timeout_secs: 240",
+                "trust_gate_extra_body:",
+                "  enable_thinking: false",
+            )
+        )
+        + "\n"
+    )
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            config = _load_gateway_config(_args(data_repo=str(data_repo)))
+
+    assert config.trust_gate_env == "credential file"
+
+
 def test_load_gateway_config_rejects_blank_provider(tmp_path, monkeypatch):
     """Blank trust_gate_provider fails tunnel preflight via GlobalConfig validation."""
     data_repo = _make_data_repo(tmp_path, extra_lines=["trust_gate_provider: ''"])

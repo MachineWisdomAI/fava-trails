@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from typing import Any
 
 from ..config import ConfigStore, get_trails_dir, get_trust_gate_policy
@@ -134,20 +133,23 @@ async def handle_propose_truth(
                 return {"status": "error", "message": str(e)}
 
             global_config = ConfigStore.get().global_config
-            api_key_env = global_config.resolve_trust_gate_api_key_env()
-            api_key = os.environ.get(api_key_env, "")
-            if not api_key:
+            from ..credentials import load_trust_gate_api_key
+
+            try:
+                load_trust_gate_api_key(global_config)
+            except ValueError as exc:
                 return {
                     "status": "error",
-                    "message": (f"No LLM API key found. Set {api_key_env} environment variable."),
+                    "message": str(exc),
                 }
 
             from ..llm import LLMClient
 
             llm_client = LLMClient(
-                api_key=api_key,
+                api_key_loader=lambda: load_trust_gate_api_key(global_config),
                 provider=global_config.trust_gate_provider,
                 api_base=global_config.trust_gate_api_base,
+                extra_body=global_config.trust_gate_extra_body,
             )
 
             tg_timeout = global_config.trust_gate_timeout_secs

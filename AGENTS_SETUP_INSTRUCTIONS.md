@@ -36,25 +36,35 @@ The default model (`google/gemini-2.5-flash`) costs ~$0.001 per review.
 **Local OpenAI-compatible endpoint (e.g. Unsloth Studio):**
 
 Unsloth Studio (and similar local servers) expose authenticated OpenAI-compatible
-`/v1/chat/completions` endpoints. Point Trust Gate at them via `config.yaml`:
+`/v1/chat/completions` endpoints. Point Trust Gate at them on one machine via
+`$XDG_CONFIG_HOME/fava-trails/config.yaml` (default
+`~/.config/fava-trails/config.yaml`):
 
 ```yaml
 trust_gate: llm-oneshot
 trust_gate_provider: openai
 trust_gate_model: <exact-model-id-served-by-studio>
 trust_gate_api_base: http://127.0.0.1:<studio-api-port>/v1
-trust_gate_api_key_env: UNSLOTH_API_KEY
+trust_gate_api_key_file: /path/to/owner-only/runtime/api-key
 # Slow quantized local models may need more time; keep this below tool_timeout_secs.
 trust_gate_timeout_secs: 240
-tool_timeout_secs: 300
+trust_gate_extra_body:
+  enable_thinking: false
 ```
 
-Unsloth Studio generates local API keys (`sk-unsloth-…`) under **Settings → API**.
-`unsloth run` can also auto-create and print a key. Copy that value into the env
-var named by `trust_gate_api_key_env` (see [Unsloth API docs](https://unsloth.ai/docs/basics/api)).
+The key file must be a regular, non-symlink file owned by the current user with
+no group or other permissions (mode `0600`). It is read for every promotion. If
+the provider returns 401 and the file value changed, FAVA retries exactly once
+with the new value. `trust_gate_api_key_env` remains available as a fallback when
+no key file is configured (see [Unsloth API docs](https://unsloth.ai/docs/basics/api)).
 Do not hardcode host, port, model, or credentials in the engine. There is **no
 automatic fallback** to OpenRouter if the local provider fails — Trust Gate stays
 fail-closed.
+
+Per-machine config may contain only Trust Gate runtime fields. Effective
+precedence is machine config, then the data repo's `config.yaml`, then defaults;
+repository paths, remotes, push strategy, hooks, and trail definitions cannot be
+overridden per machine.
 
 FAVA Trails uses [any-llm-sdk](https://github.com/mozilla-ai/any-llm) for the provider seam.
 
@@ -155,6 +165,8 @@ trust_gate_model: google/gemini-2.5-flash # exact model id for LLM-based review
 trust_gate_api_base: null                 # optional; set for OpenAI-compatible local endpoints
 trust_gate_api_key_env: OPENROUTER_API_KEY # env var name holding the API key
 # openrouter_api_key_env: OPENROUTER_API_KEY  # deprecated alias for trust_gate_api_key_env
+# trust_gate_api_key_file: /path/to/key    # owner-only file; takes precedence over env
+# trust_gate_extra_body: {}               # provider-specific request body
 trust_gate_timeout_secs: 120              # LLM wait; raise for slow local models (< tool_timeout_secs)
 tool_timeout_secs: 300
 
@@ -184,6 +196,8 @@ trails:
 | `trust_gate_api_base` | string | `null` | Optional OpenAI-compatible API base (e.g. Unsloth Studio `http://127.0.0.1:<port>/v1`) |
 | `trust_gate_api_key_env` | string | `OPENROUTER_API_KEY` (via alias) | Env var name holding the API key |
 | `openrouter_api_key_env` | string | `OPENROUTER_API_KEY` | Deprecated alias for `trust_gate_api_key_env` |
+| `trust_gate_api_key_file` | string | `null` | Owner-only credential file; takes precedence over environment variables and is reread for each promotion |
+| `trust_gate_extra_body` | mapping | `{}` | Provider-specific request body passed through to the chat-completions request |
 | `trust_gate_timeout_secs` | int | `120` | Trust Gate LLM timeout; raise for slow local models, keep below `tool_timeout_secs` |
 | `tool_timeout_secs` | int | `300` | Outer MCP tool timeout |
 | `hooks` | list | `[]` | Lifecycle hook entries (see [Lifecycle Hooks](#lifecycle-hooks)) |
