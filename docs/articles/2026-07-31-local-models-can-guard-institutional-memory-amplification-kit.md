@@ -87,10 +87,7 @@ https://machinewisdom.substack.com/p/fava-trails-v060-the-model-that-decides?utm
 ```text
 I tested a quantized Qwen3.6 27B model as the local promotion gate for FAVA Trails.
 
-49/49 valid verdicts.
-13/13 historical rejections preserved.
-17/26 historical approvals matched.
-9/10 canaries matched.
+The model returned valid verdicts in all 49 cases, preserved all 13 historical rejections, matched 17 of 26 historical approvals, and matched 9 of 10 canaries.
 
 A second-model review of the nine historical disagreements favored Gemini in six cases and the local model in three. The local model was stricter, but every observed error was an additional rejection, which leaves the thought visible and recoverable as a draft.
 
@@ -140,7 +137,7 @@ The historical Gemini verdicts were references from earlier operation, not a fre
 | p95 latency | 122.9 seconds |
 | Maximum latency | 172.5 seconds |
 
-The raw agreement number hides the important part: every disagreement was an additional rejection by the local model. It did not reverse any of the 13 historical Gemini rejections in this corpus.
+Every disagreement was an additional rejection by the local model. It did not reverse any of the 13 historical Gemini rejections in this corpus.
 
 That error direction fits a promotion gate. A false rejection leaves the thought in drafts, where it can be revised and resubmitted. A false approval quietly adds weak material to future agent context.
 
