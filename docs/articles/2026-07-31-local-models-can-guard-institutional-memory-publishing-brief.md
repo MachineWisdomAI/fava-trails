@@ -2,6 +2,17 @@
 
 This file contains publication metadata and should not be pasted into the Substack article body.
 
+## Published record
+
+- **Status:** Published
+- **Published:** July 31, 2026 at 17:51:04 UTC
+- **Canonical URL:** https://machinewisdom.substack.com/p/fava-trails-v060-the-model-that-decides
+- **Live title:** FAVA Trails v0.6.0: The Model That Decides What Our Agents Remember Now Runs Locally
+- **Live description:** FAVA Trails v0.6.0 brings local-model promotion gating. Our benchmark found that a quantized Qwen model was conservative, consistent, and a good fit for the job
+- **Screenshot alt text:** “Benchmark results: 49 of 49 valid verdicts, 39 of 49 raw agreement, all 13 historical rejections matched, 17 of 26 approvals matched, and 9 of 10 canaries matched.”
+
+Use the clean canonical URL on GitHub and machine-wisdom.ai. Use the source-specific links in the amplification kit for social posts.
+
 ## Page job
 
 - **Audience:** AI-agent builders, technical leaders, and local-model practitioners evaluating durable agent memory.
@@ -42,7 +53,9 @@ Suggested alt text: "Agent thoughts passing through a local quality gate before 
 
 ## Publication checks
 
-- Add the author's byline and publication date in Substack.
-- Add the exact workstation hardware used for the benchmark if reproducibility is a publication goal; do not infer or invent it.
-- Verify Substack's canonical URL, Article metadata, social card, and hero-image alt text after publishing.
-- Confirm the article does not include this publishing brief.
+- [x] The article is publicly available at the canonical URL.
+- [x] The title and description match the publication-ready article.
+- [x] The benchmark screenshot exposes the exact results as alt text.
+- [x] Substack emits canonical and NewsArticle metadata.
+- [x] The article does not include this publishing brief.
+- [ ] Add the exact workstation hardware in a future revision only if reproducibility requires it; do not infer or invent it.
