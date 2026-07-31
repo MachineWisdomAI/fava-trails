@@ -6,7 +6,7 @@ Research date: 2026-07-31. Primary sources only. This note supports the accompan
 
 FAVA Trails v0.6.0 moves the judgment boundary—not merely inference—onto the machine that owns the context. A machine can now run the model deciding what becomes durable institutional memory while retaining the existing promotion prompt, fail-closed behavior, audit trail, and shared data model.
 
-The benchmark supports a narrow claim: the tested quantized Qwen3.6 27B model was credible for this promotion-gate task. It was structurally reliable, preserved every historical rejection boundary, and showed a small, conservative net regression after the disagreements were independently adjudicated. It does not establish general parity with Gemini or frontier models.
+The benchmark supports a narrow claim: the tested quantized Qwen3.6 27B model was credible for this promotion-gate task. It was structurally reliable, preserved every historical rejection boundary in the corpus, and showed a small, conservative interpretive net difference after second-model adjudication. It does not establish general parity with Gemini or frontier models.
 
 ## Benchmark method
 

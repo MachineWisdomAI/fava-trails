@@ -2,6 +2,22 @@
 
 This file contains publication metadata and should not be pasted into the Substack article body.
 
+## Page job
+
+- **Audience:** AI-agent builders, technical leaders, and local-model practitioners evaluating durable agent memory.
+- **Search intent:** Understand local LLM promotion gating, the FAVA Trails v0.6.0 release, and the evidence from its Unsloth/Qwen benchmark.
+- **Primary entity:** FAVA Trails v0.6.0.
+- **Supporting entities:** FAVA Trust Gate, Unsloth Studio, Qwen3.6 27B GGUF, Gemini, OpenAI Codex, Model Context Protocol, OpenRouter, and Jujutsu.
+- **Desired action:** Understand the bounded result, then inspect the open-source release or install it from PyPI.
+- **Proof:** The production prompt, issue #85 benchmark record, release and implementation PRs, release workflow, and PyPI artifact.
+
+## Search and social metadata
+
+- **SEO title:** FAVA Trails v0.6.0: Local LLM Gating for Agent Memory
+- **Meta description:** FAVA Trails v0.6.0 adds local LLM promotion gating. See the 49-case Unsloth/Qwen benchmark, disagreement audit, limitations, and release details.
+- **Suggested slug:** `fava-trails-v06-local-llm-agent-memory`
+- **Schema candidate:** Article. Let Substack generate it from visible title, byline, date, image, and article content; do not inject separate JSON-LD unless the publishing surface supports and requires it.
+
 ## Suggested Substack preview text
 
 A quantized local Qwen model preserved every historical rejection in FAVA Trails' 49-case promotion benchmark, and its observed mistakes were conservative and recoverable. Here is what we learned while moving institutional-memory review off hosted inference.

@@ -82,7 +82,7 @@ The full evidence and caveats are recorded in [FAVA Trails issue #85](https://gi
 
 ## What the benchmark did not prove
 
-The result is encouraging, but it has boundaries.
+The benchmark supports one bounded conclusion: this local model had an acceptable error profile for FAVA's promotion prompt on this corpus. It does not establish general parity with Gemini, frontier models, or unrelated agent tasks.
 
 The Gemini verdicts were historical references, not a fresh Gemini rerun. The benchmark covered a specific corpus and prompt, not arbitrary reasoning tasks. Long inputs were a weak spot: inputs over 40,000 characters achieved only 2/6 raw agreement and had a median latency of 122.9 seconds. The largest successful request contained 29,397 prompt tokens.
 
@@ -94,7 +94,7 @@ For FAVA Trails, the answer was yes.
 
 ## The implementation stays provider-neutral
 
-Although Unsloth Studio was the first live target, FAVA Trails v0.6.0 does not contain an Unsloth-specific transport. It uses the OpenAI-compatible interface already exposed by many local and hosted runtimes.
+[FAVA Trails v0.6.0](https://github.com/MachineWisdomAI/fava-trails/releases/tag/v0.6.0) supports local promotion gating through a provider-neutral OpenAI-compatible interface. Although Unsloth Studio was the first live target, the release does not contain an Unsloth-specific SDK or transport.
 
 Each machine can select its provider, exact model identifier, API base, timeout, credentials, and provider-specific request controls through the standard per-machine configuration at `~/.config/fava-trails/config.yaml`. Shared trail configuration does not need to change, so one workstation can use a local model while another machine or a ChatGPT gateway continues using OpenRouter.
 
@@ -106,21 +106,21 @@ That boundary is important: local execution should reduce external dependency, n
 
 ## FAVA Trails changed substantially in the last few months
 
-The local Trust Gate is the headline for v0.6.0, but it sits on top of a broader push to make agent memory inspectable, portable, and operationally safe.
+From May through July, FAVA Trails added four operational layers around its memory core: safer synchronization, human-readable views, authenticated ChatGPT access, and local promotion gating. The local Trust Gate is the v0.6.0 headline, but it rests on that broader push to make agent memory inspectable, portable, and operationally safe.
 
 Between [v0.5.6 and v0.6.0](https://github.com/MachineWisdomAI/fava-trails/compare/v0.5.6...v0.6.0)—May 5 through July 31—the repository accumulated 66 commits. The public milestones also included [v0.5.7](https://github.com/MachineWisdomAI/fava-trails/releases/tag/v0.5.7), [v0.5.8](https://github.com/MachineWisdomAI/fava-trails/releases/tag/v0.5.8), and [v0.5.9](https://github.com/MachineWisdomAI/fava-trails/releases/tag/v0.5.9). The more meaningful story is how the system's boundaries became explicit.
 
 ### Data integrity became fail-closed
 
-FAVA sync now blocks when the data repository has a dirty working copy or case-colliding tracked paths. Commit operations fail fast on unexpected changes and executable-bit churn instead of proceeding as if the repository were clean. This protects the memory store from a class of subtle VCS mistakes that are easy for agents to miss.
+[FAVA Trails v0.5.7](https://github.com/MachineWisdomAI/fava-trails/releases/tag/v0.5.7) made data integrity fail-closed. FAVA sync now blocks when the data repository has a dirty working copy or case-colliding tracked paths, while commit operations fail fast on unexpected changes and executable-bit churn. This protects the memory store from subtle VCS mistakes that are easy for agents to miss.
 
 ### Memory became visible to humans
 
-The new rich-view commands generate and serve a small Astro reader from trail records. Thoughts have stable ULID routes, derived titles, and snapshot metadata. It is intentionally a reader rather than another editing surface: humans can inspect what agents saved without bypassing the MCP lifecycle that governs changes.
+[FAVA Trails v0.5.8](https://github.com/MachineWisdomAI/fava-trails/releases/tag/v0.5.8) made agent memory directly inspectable. Its rich-view commands generate and serve a small Astro reader from trail records, with stable ULID routes, derived titles, and snapshot metadata. It is intentionally a reader rather than another editing surface: humans can inspect what agents saved without bypassing the MCP lifecycle that governs changes.
 
 ### FAVA reached ChatGPT without exposing an unauthenticated public MCP endpoint
 
-The ChatGPT tunnel gateway runs a private loopback MCP runtime behind an authenticated secure tunnel, with detached lifecycle commands and a bounded `/healthz` readiness probe. Authorized ChatGPT requests can receive returned FAVA data through that tunnel, but the local MCP runtime is not exposed as an unauthenticated public endpoint. Structured MCP errors and output schemas survive the gateway boundary, so clients receive meaningful failures instead of transport-shaped ambiguity.
+The v0.5.8 ChatGPT tunnel gateway made FAVA reachable from an authorized ChatGPT client without publishing an unauthenticated MCP endpoint. It runs a private loopback MCP runtime behind an authenticated secure tunnel, with detached lifecycle commands and a bounded `/healthz` readiness probe. Authorized requests can receive returned FAVA data through that tunnel, while structured MCP errors and output schemas survive the gateway boundary.
 
 Tunnel startup was hardened over several releases. Readiness checks validate that the runtime identity can actually traverse the configured trail tree and parse representative data. Optional startup sync is bounded and fail-closed. Recurring autosync is disabled by default rather than quietly mutating shared state.
 
@@ -136,9 +136,9 @@ The trajectory is consistent: make important state explicit, make failure visibl
 
 ## Local models are most compelling when the task has clear error economics
 
-I do not think this benchmark proves that every agent workload should move to a local quantized model. It demonstrates something narrower and more useful.
+Local models are strongest when the task has a stable policy, structured output, auditable historical cases, and asymmetric failure costs. FAVA's promotion gate has all four.
 
-The FAVA Trust Gate has a stable prompt, structured output, historical cases, and asymmetric failure costs. Those properties make it a strong candidate for local inference. We can measure the model on the real task, inspect every disagreement, and decide whether its mistakes are acceptable.
+This benchmark does not prove that every agent workload should move to a local quantized model. It demonstrates something narrower and more useful: when a task has those properties, we can measure the model on the real job, inspect every disagreement, and decide whether its mistakes are acceptable.
 
 Here, they were.
 
