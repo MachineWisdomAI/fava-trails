@@ -68,14 +68,20 @@ Run these at publication and after 30 days in one browsing model and one non-bro
 2. Can FAVA Trails use a local LLM for memory promotion?
 3. What evidence exists for local LLM promotion gating in FAVA Trails?
 
-| Date | Model and mode | Prompt | Names FAVA Trails | Accurate | Cites Substack | Cites GitHub | Cites machine-wisdom.ai | Notes |
-|---|---|---|---|---|---|---|---|---|
-| 2026-07-31 |  | 1 |  |  |  |  |  |  |
-| 2026-07-31 |  | 2 |  |  |  |  |  |  |
-| 2026-07-31 |  | 3 |  |  |  |  |  |  |
-| 2026-08-30 |  | 1 |  |  |  |  |  |  |
-| 2026-08-30 |  | 2 |  |  |  |  |  |  |
-| 2026-08-30 |  | 3 |  |  |  |  |  |  |
+| Date | Mode | Model | Prompt | Names FAVA Trails | Accurate | Cites Substack | Cites GitHub | Cites machine-wisdom.ai | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| 2026-07-31 | Browsing |  | 1 |  |  |  |  |  |  |
+| 2026-07-31 | Non-browsing |  | 1 |  |  |  |  |  |  |
+| 2026-07-31 | Browsing |  | 2 |  |  |  |  |  |  |
+| 2026-07-31 | Non-browsing |  | 2 |  |  |  |  |  |  |
+| 2026-07-31 | Browsing |  | 3 |  |  |  |  |  |  |
+| 2026-07-31 | Non-browsing |  | 3 |  |  |  |  |  |  |
+| 2026-08-30 | Browsing |  | 1 |  |  |  |  |  |  |
+| 2026-08-30 | Non-browsing |  | 1 |  |  |  |  |  |  |
+| 2026-08-30 | Browsing |  | 2 |  |  |  |  |  |  |
+| 2026-08-30 | Non-browsing |  | 2 |  |  |  |  |  |  |
+| 2026-08-30 | Browsing |  | 3 |  |  |  |  |  |  |
+| 2026-08-30 | Non-browsing |  | 3 |  |  |  |  |  |  |
 
 ## Link and claim QA
 
