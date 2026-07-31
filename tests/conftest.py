@@ -15,9 +15,11 @@ if not Path(jj_bin).exists():
 
 
 @pytest.fixture(autouse=True)
-def reset_config_store():
-    """Reset ConfigStore singleton before and after every test for isolation."""
+def reset_config_store(monkeypatch, tmp_path):
+    """Isolate machine config and reset ConfigStore around every test."""
     from fava_trails.config import ConfigStore
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
     ConfigStore.reset()
     yield
     ConfigStore.reset()

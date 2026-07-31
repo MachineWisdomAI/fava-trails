@@ -4,6 +4,8 @@ All notable changes to FAVA Trails are documented here.
 
 ## Unreleased
 
+## [0.6.0] — 2026-07-31
+
 ### Added
 - Standard per-machine Trust Gate configuration at `$XDG_CONFIG_HOME/fava-trails/config.yaml` (default `~/.config/fava-trails/config.yaml`), limited to runtime-specific fields and shared by the MCP server, doctor, readiness, and tunnel preflight.
 - Owner-only `trust_gate_api_key_file` credentials with per-promotion reads and one retry after a 401 only when the file value changed; `trust_gate_extra_body` supports provider-specific controls such as disabling local-model thinking.
