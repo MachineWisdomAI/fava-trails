@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import any_llm
 import httpx
+from any_llm.exceptions import AuthenticationError
 
 from ._retry import async_retry
 from .registry import get_registry
@@ -55,11 +57,15 @@ class LLMClient:
         provider: str = "openrouter",
         api_base: str | None = None,
         openrouter_api_key: str | None = None,
+        api_key_loader: Callable[[], str] | None = None,
+        extra_body: dict | None = None,
     ) -> None:
         # openrouter_api_key is retained as a backward-compatible alias.
         self._api_key = api_key if api_key is not None else openrouter_api_key
         self._provider = provider
         self._api_base = api_base
+        self._api_key_loader = api_key_loader
+        self._extra_body = dict(extra_body or {})
 
     @property
     def provider(self) -> str:
@@ -87,7 +93,7 @@ class LLMClient:
         forward the exact configured model identifier so local servers (e.g.
         Unsloth Studio) receive the ID they actually expose.
         """
-        if not self._api_key:
+        if not self._api_key and self._api_key_loader is None:
             raise LLMError("LLM API key required but not provided")
 
         # OpenRouter-oriented alias registry must not rewrite local/custom IDs
@@ -116,6 +122,17 @@ class LLMClient:
         if self._api_base is not None:
             kwargs["api_base"] = self._api_base
 
+        if self._extra_body:
+            kwargs["extra_body"] = dict(self._extra_body)
+
+        def _load_api_key() -> str | None:
+            if self._api_key_loader is None:
+                return self._api_key
+            try:
+                return self._api_key_loader()
+            except Exception as exc:
+                raise LLMError("LLM API credential unavailable") from exc
+
         async def _do_call() -> LLMResponse:
             # Use explicit httpx.Timeout phases to ensure all timeout types are set.
             # A scalar timeout only sets the total/read timeout; connect and pool
@@ -126,14 +143,27 @@ class LLMClient:
                 write=timeout,
                 pool=10.0,
             )
-            response = await any_llm.acompletion(
-                model=resolved_model,
-                provider=self._provider,
-                messages=messages,
-                api_key=self._api_key,
-                client_args={"timeout": httpx_timeout},
-                **kwargs,
-            )
+            api_key = _load_api_key()
+
+            async def _request(key: str | None):
+                return await any_llm.acompletion(
+                    model=resolved_model,
+                    provider=self._provider,
+                    messages=messages,
+                    api_key=key,
+                    client_args={"timeout": httpx_timeout},
+                    **kwargs,
+                )
+
+            try:
+                response = await _request(api_key)
+            except AuthenticationError:
+                if self._api_key_loader is None:
+                    raise
+                rotated_key = _load_api_key()
+                if rotated_key == api_key:
+                    raise
+                response = await _request(rotated_key)
             choice = response.choices[0] if response.choices else None
             content = choice.message.content if choice and choice.message else ""
 

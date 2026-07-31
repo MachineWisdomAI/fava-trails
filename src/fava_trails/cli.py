@@ -22,6 +22,7 @@ from pathlib import Path
 import yaml
 
 from .config import get_data_repo_root, get_trails_dir, load_global_config, sanitize_scope_path, save_global_config
+from .credentials import load_trust_gate_api_key, trust_gate_credential_description
 from .models import HookEntry, ThoughtRecord
 
 # ─── JJ binary helper ─────────────────────────────────────────────────────────
@@ -573,7 +574,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     # Check 3: Trust Gate provider + API key
     # Share validate_trust_gate_runtime() with tunnel/gateway preflight so doctor
     # and startup agree on provider/model/key-env (api_base stays optional).
-    env_var_name = "OPENROUTER_API_KEY"  # noqa: S105 — env var name, not a secret
+    credential_description = "OPENROUTER_API_KEY"  # noqa: S105 — env var name, not a secret
     provider = "openrouter"
     model = "google/gemini-2.5-flash"
     api_base = None
@@ -582,6 +583,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     try:
         global_config = load_global_config()
         env_var_name = global_config.validate_trust_gate_runtime()
+        trust_gate_key_file = global_config.trust_gate_api_key_file
+        credential_description = trust_gate_credential_description(global_config)
         provider = global_config.trust_gate_provider
         model = global_config.trust_gate_model
         api_base = global_config.trust_gate_api_base
@@ -599,17 +602,27 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print(provider_line)
 
         if trust_gate_policy == "llm-oneshot":
-            if os.environ.get(env_var_name):
-                print(f"API key:      {env_var_name} is set")
+            try:
+                load_trust_gate_api_key(global_config)
+                credential_error: ValueError | None = None
+            except ValueError as exc:
+                credential_error = exc
+
+            if credential_error is None:
+                availability = "is available" if trust_gate_key_file else "is set"
+                print(f"API key:      {credential_description} {availability}")
             else:
-                print(f"API key:      NOT SET ({env_var_name})")
-                print(f"  Fix: export {env_var_name}=...")
+                if trust_gate_key_file:
+                    print(f"API key:      INVALID ({credential_error})")
+                else:
+                    print(f"API key:      NOT SET ({env_var_name})")
+                    print(f"  Fix: export {env_var_name}=...")
                 if provider == "openrouter":
                     print("  Get a key: https://openrouter.ai/keys")
                 else:
                     print(
                         f"  Configure the API key for provider '{provider}' "
-                        f"(see trust_gate_api_key_env / optional trust_gate_api_base in config.yaml)."
+                        "(see trust_gate_api_key_file / trust_gate_api_key_env in config.yaml)."
                     )
                 any_failed = True
         else:

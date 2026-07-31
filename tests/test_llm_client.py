@@ -212,6 +212,68 @@ async def test_custom_provider_and_api_base_forwarded():
 
 
 @pytest.mark.asyncio
+async def test_extra_body_forwarded_to_openai_compatible_provider():
+    """Provider-specific request controls reach the OpenAI-compatible API."""
+    client = LLMClient(
+        api_key="local-key",
+        provider="openai",
+        api_base="http://127.0.0.1:9999/v1",
+        extra_body={"enable_thinking": False},
+    )
+    mock_resp = _mock_completion("ok", model="local-gguf")
+
+    with patch("fava_trails.llm.client.any_llm.acompletion", new_callable=AsyncMock) as call:
+        call.return_value = mock_resp
+        await client.chat(messages=[{"role": "user", "content": "hi"}], model="local-gguf")
+
+    assert call.call_args.kwargs["extra_body"] == {"enable_thinking": False}
+
+
+@pytest.mark.asyncio
+async def test_auth_failure_retries_once_only_when_file_key_changed():
+    """A 401 caused by rotation gets one retry with the newly read key."""
+    keys = iter(("old-key", "new-key"))
+    client = LLMClient(
+        api_key_loader=lambda: next(keys),
+        provider="openai",
+        api_base="http://127.0.0.1:9999/v1",
+    )
+    mock_resp = _mock_completion("ok", model="local-gguf")
+
+    with patch("fava_trails.llm.client.any_llm.acompletion", new_callable=AsyncMock) as call:
+        call.side_effect = [AuthenticationError("expired"), mock_resp]
+        result = await client.chat(messages=[{"role": "user", "content": "hi"}], model="local-gguf")
+
+    assert result.content == "ok"
+    assert [item.kwargs["api_key"] for item in call.call_args_list] == ["old-key", "new-key"]
+
+
+@pytest.mark.asyncio
+async def test_auth_failure_does_not_retry_when_file_key_is_unchanged():
+    client = LLMClient(api_key_loader=lambda: "same-key")
+
+    with patch("fava_trails.llm.client.any_llm.acompletion", new_callable=AsyncMock) as call:
+        call.side_effect = AuthenticationError("bad key")
+        with pytest.raises(AuthenticationError):
+            await client.chat(messages=[{"role": "user", "content": "hi"}], model="model")
+
+    assert call.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_key_loader_failure_does_not_enter_request_retry_loop():
+    loader = MagicMock(side_effect=ValueError("credential unavailable"))
+    client = LLMClient(api_key_loader=loader)
+
+    with patch("fava_trails.llm.client.any_llm.acompletion", new_callable=AsyncMock) as call:
+        with pytest.raises(LLMError, match="credential unavailable"):
+            await client.chat(messages=[{"role": "user", "content": "hi"}], model="model")
+
+    assert loader.call_count == 1
+    call.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_local_provider_preserves_registry_colliding_model_id():
     """Local/custom endpoints must not rewrite IDs that collide with OpenRouter aliases.
 

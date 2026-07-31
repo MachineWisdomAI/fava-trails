@@ -6,7 +6,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import yaml
 
@@ -15,6 +15,20 @@ from .models import GlobalConfig, TrailConfig
 logger = logging.getLogger(__name__)
 
 DEFAULT_FAVA_HOME = os.path.expanduser("~/.fava-trails")
+MAX_CONFIG_BYTES = 256 * 1024
+
+# Per-machine configuration is deliberately limited to Trust Gate runtime
+# selection. Durable trail/repository settings remain owned by the data repo.
+MACHINE_TRUST_GATE_KEYS = frozenset({
+    "trust_gate",
+    "trust_gate_provider",
+    "trust_gate_model",
+    "trust_gate_api_base",
+    "trust_gate_api_key_env",
+    "trust_gate_api_key_file",
+    "trust_gate_timeout_secs",
+    "trust_gate_extra_body",
+})
 
 # Scope path segment: alphanumeric + hyphens/dots/underscores, starts with alphanumeric
 _SCOPE_SEGMENT_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
@@ -66,6 +80,53 @@ def sanitize_namespace(namespace: str) -> str:
     return namespace
 
 
+def get_machine_config_path() -> Path:
+    """Return the standard per-machine FAVA Trails configuration path."""
+    config_home = os.environ.get("XDG_CONFIG_HOME")
+    root = Path(config_home).expanduser() if config_home else Path.home() / ".config"
+    return root / "fava-trails" / "config.yaml"
+
+
+def _read_config_mapping(path: Path, *, missing_ok: bool) -> dict[str, Any]:
+    if not path.exists():
+        if missing_ok:
+            return {}
+        raise ValueError("data repository config.yaml is missing")
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        raise ValueError("configuration file is not readable") from exc
+    if len(raw) > MAX_CONFIG_BYTES:
+        raise ValueError("configuration file exceeds the read limit")
+    try:
+        parsed = yaml.safe_load(raw.decode("utf-8"))
+    except (UnicodeDecodeError, yaml.YAMLError) as exc:
+        raise ValueError("configuration file is malformed") from exc
+    if parsed is None:
+        return {}
+    if not isinstance(parsed, dict):
+        raise ValueError("configuration must be a mapping")
+    return parsed
+
+
+def apply_machine_config(data_config: dict[str, Any]) -> dict[str, Any]:
+    """Overlay standard per-machine Trust Gate fields onto data-repo config."""
+    machine_path = get_machine_config_path()
+    machine_config = _read_config_mapping(machine_path, missing_ok=True)
+    unsupported = sorted(set(machine_config) - MACHINE_TRUST_GATE_KEYS)
+    if unsupported:
+        raise ValueError(
+            "unsupported per-machine configuration key(s): " + ", ".join(unsupported)
+        )
+    return {**data_config, **machine_config}
+
+
+def load_effective_global_config(data_repo_root: Path) -> GlobalConfig:
+    """Load data-repo configuration with standard per-machine Trust Gate overrides."""
+    data = _read_config_mapping(data_repo_root / "config.yaml", missing_ok=True)
+    return GlobalConfig(**apply_machine_config(data))
+
+
 class ConfigStore:
     """Singleton for cached global config access.
 
@@ -95,13 +156,7 @@ class ConfigStore:
         data_repo = os.environ.get("FAVA_TRAILS_DATA_REPO")
         data_repo_root = Path(data_repo) if data_repo else Path(DEFAULT_FAVA_HOME)
 
-        config_path = data_repo_root / "config.yaml"
-        if config_path.exists():
-            with open(config_path) as f:
-                data = yaml.safe_load(f) or {}
-            global_config = GlobalConfig(**data)
-        else:
-            global_config = GlobalConfig()
+        global_config = load_effective_global_config(data_repo_root)
 
         # Resolve trails_dir
         env_override = os.environ.get("FAVA_TRAILS_DIR")
@@ -147,16 +202,24 @@ def get_trails_dir() -> Path:
 
 
 def load_global_config() -> GlobalConfig:
-    """Load global configuration from config.yaml."""
+    """Load effective data-repo and per-machine configuration."""
     return ConfigStore.get().global_config
 
 
 def save_global_config(config: GlobalConfig) -> None:
-    """Save global configuration to config.yaml."""
+    """Save data-repo configuration without persisting machine overrides."""
     config_path = ConfigStore.get().data_repo_root / "config.yaml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
+    persisted = config.model_dump()
+    data_config = _read_config_mapping(config_path, missing_ok=True)
+    machine_config = _read_config_mapping(get_machine_config_path(), missing_ok=True)
+    for key in MACHINE_TRUST_GATE_KEYS.intersection(machine_config):
+        if key in data_config:
+            persisted[key] = data_config[key]
+        else:
+            persisted.pop(key, None)
     with open(config_path, "w") as f:
-        yaml.dump(config.model_dump(), f, default_flow_style=False, sort_keys=False)
+        yaml.dump(persisted, f, default_flow_style=False, sort_keys=False)
     ConfigStore.reset()  # Invalidate cache after write
 
 

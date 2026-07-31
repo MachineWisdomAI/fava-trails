@@ -226,6 +226,13 @@ class GlobalConfig(BaseModel):
     trust_gate_api_key_env: str | None = None
     # Deprecated alias for trust_gate_api_key_env (OpenRouter default).
     openrouter_api_key_env: str = "OPENROUTER_API_KEY"
+    # Optional owner-only credential file. When set, it takes precedence over
+    # environment variables and is read for every Trust Gate request.
+    trust_gate_api_key_file: str | None = None
+    # Provider-specific request body passed through to any-llm. This is useful
+    # for OpenAI-compatible local servers whose generation controls are not
+    # part of the common chat-completions schema.
+    trust_gate_extra_body: dict[str, Any] = Field(default_factory=dict)
     # Timeout for the Trust Gate LLM call (asyncio.wait_for guard).
     # Should be well above a normal slow response (e.g. 60-90s) but short enough
     # to recover from a hung provider before the session times out. 0 = disabled.
@@ -262,6 +269,15 @@ class GlobalConfig(BaseModel):
             return None
         if not isinstance(v, str) or not v.strip():
             raise ValueError("trust_gate_api_key_env must be a non-empty string when set")
+        return v.strip()
+
+    @field_validator("trust_gate_api_key_file")
+    @classmethod
+    def normalize_trust_gate_api_key_file(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if not isinstance(v, str) or not v.strip():
+            raise ValueError("trust_gate_api_key_file must be a non-empty path when set")
         return v.strip()
 
     @field_validator("trust_gate_api_base")

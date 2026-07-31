@@ -32,6 +32,7 @@ from fava_trails.cli import (
     cmd_secom_warmup,
 )
 from fava_trails.config import ConfigStore
+from fava_trails.models import GlobalConfig
 
 
 def _cleanup_args(**overrides):
@@ -520,9 +521,11 @@ def test_doctor_all_green(tmp_path, monkeypatch, capsys):
         with patch("fava_trails.cli.load_global_config") as mock_config:
             cfg = mock_config.return_value
             cfg.validate_trust_gate_runtime.return_value = "OPENROUTER_API_KEY"
+            cfg.resolve_trust_gate_api_key_env.return_value = "OPENROUTER_API_KEY"
             cfg.trust_gate_provider = "openrouter"
             cfg.trust_gate_model = "google/gemini-2.5-flash"
             cfg.trust_gate_api_base = None
+            cfg.trust_gate_api_key_file = None
             cfg.trust_gate = "llm-oneshot"
             with patch("shutil.which", return_value="/usr/bin/jj"):
                 with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
@@ -559,9 +562,11 @@ def test_doctor_missing_jj(tmp_path, monkeypatch, capsys):
         with patch("fava_trails.cli.load_global_config") as mock_config:
             cfg = mock_config.return_value
             cfg.validate_trust_gate_runtime.return_value = "OPENROUTER_API_KEY"
+            cfg.resolve_trust_gate_api_key_env.return_value = "OPENROUTER_API_KEY"
             cfg.trust_gate_provider = "openrouter"
             cfg.trust_gate_model = "google/gemini-2.5-flash"
             cfg.trust_gate_api_base = None
+            cfg.trust_gate_api_key_file = None
             cfg.trust_gate = "llm-oneshot"
             with patch("shutil.which", return_value=None):
                 with patch.object(Path, "exists", exists_side_effect):
@@ -584,9 +589,11 @@ def test_doctor_missing_data_repo(tmp_path, monkeypatch, capsys):
         with patch("fava_trails.cli.load_global_config") as mock_config:
             cfg = mock_config.return_value
             cfg.validate_trust_gate_runtime.return_value = "OPENROUTER_API_KEY"
+            cfg.resolve_trust_gate_api_key_env.return_value = "OPENROUTER_API_KEY"
             cfg.trust_gate_provider = "openrouter"
             cfg.trust_gate_model = "google/gemini-2.5-flash"
             cfg.trust_gate_api_base = None
+            cfg.trust_gate_api_key_file = None
             cfg.trust_gate = "llm-oneshot"
             with patch("shutil.which", return_value="/usr/bin/jj"):
                 with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
@@ -609,9 +616,11 @@ def test_doctor_missing_scope(tmp_path, monkeypatch, capsys):
         with patch("fava_trails.cli.load_global_config") as mock_config:
             cfg = mock_config.return_value
             cfg.validate_trust_gate_runtime.return_value = "OPENROUTER_API_KEY"
+            cfg.resolve_trust_gate_api_key_env.return_value = "OPENROUTER_API_KEY"
             cfg.trust_gate_provider = "openrouter"
             cfg.trust_gate_model = "google/gemini-2.5-flash"
             cfg.trust_gate_api_base = None
+            cfg.trust_gate_api_key_file = None
             cfg.trust_gate = "llm-oneshot"
             with patch("shutil.which", return_value="/usr/bin/jj"):
                 with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
@@ -635,9 +644,11 @@ def test_doctor_missing_openrouter_key(tmp_path, monkeypatch, capsys):
         with patch("fava_trails.cli.load_global_config") as mock_config:
             cfg = mock_config.return_value
             cfg.validate_trust_gate_runtime.return_value = "OPENROUTER_API_KEY"
+            cfg.resolve_trust_gate_api_key_env.return_value = "OPENROUTER_API_KEY"
             cfg.trust_gate_provider = "openrouter"
             cfg.trust_gate_model = "google/gemini-2.5-flash"
             cfg.trust_gate_api_base = None
+            cfg.trust_gate_api_key_file = None
             cfg.trust_gate = "llm-oneshot"
             with patch("shutil.which", return_value="/usr/bin/jj"):
                 with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
@@ -648,6 +659,74 @@ def test_doctor_missing_openrouter_key(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "API key:      NOT SET" in out
     assert "openrouter.ai/keys" in out
+
+
+def test_doctor_rejects_whitespace_only_environment_key(tmp_path, monkeypatch, capsys):
+    """Doctor and propose_truth must agree that a whitespace key is missing."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "   ")
+    data_repo = _make_valid_data_repo(tmp_path)
+    (tmp_path / ".env").write_text("FAVA_TRAILS_SCOPE=mw/eng/test\n")
+
+    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
+        with patch("fava_trails.cli.load_global_config", return_value=GlobalConfig()):
+            with patch("shutil.which", return_value="/usr/bin/jj"):
+                with patch("subprocess.run", return_value=_make_jj_mock(0)):
+                    rc = cmd_doctor(_make_args())
+
+    assert rc == 1
+    assert "API key:      NOT SET (OPENROUTER_API_KEY)" in capsys.readouterr().out
+
+
+def test_doctor_accepts_owner_only_key_file_without_exposing_path(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    data_repo = _make_valid_data_repo(tmp_path)
+    (tmp_path / ".env").write_text("FAVA_TRAILS_SCOPE=mw/eng/test\n")
+    key_file = tmp_path / "runtime-api-key"
+    key_file.write_text("local-key\n")
+    key_file.chmod(0o600)
+    config = GlobalConfig(
+        trust_gate_provider="openai",
+        trust_gate_model="local-model",
+        trust_gate_api_base="http://127.0.0.1:8888/v1",
+        trust_gate_api_key_file=str(key_file),
+    )
+
+    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
+        with patch("fava_trails.cli.load_global_config", return_value=config):
+            with patch("shutil.which", return_value="/usr/bin/jj"):
+                with patch("subprocess.run", return_value=_make_jj_mock(0)):
+                    rc = cmd_doctor(_make_args())
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "API key:      credential file is available" in out
+    assert str(key_file) not in out
+
+
+def test_doctor_rejects_insecure_key_file_without_exposing_path(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    data_repo = _make_valid_data_repo(tmp_path)
+    (tmp_path / ".env").write_text("FAVA_TRAILS_SCOPE=mw/eng/test\n")
+    key_file = tmp_path / "runtime-api-key"
+    key_file.write_text("local-key\n")
+    key_file.chmod(0o644)
+    config = GlobalConfig(
+        trust_gate_provider="openai",
+        trust_gate_model="local-model",
+        trust_gate_api_key_file=str(key_file),
+    )
+
+    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
+        with patch("fava_trails.cli.load_global_config", return_value=config):
+            with patch("shutil.which", return_value="/usr/bin/jj"):
+                with patch("subprocess.run", return_value=_make_jj_mock(0)):
+                    rc = cmd_doctor(_make_args())
+
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "must be owner-only" in out
+    assert str(key_file) not in out
 
 
 def test_doctor_local_provider_missing_key_no_openrouter_url(tmp_path, monkeypatch, capsys):
@@ -662,9 +741,11 @@ def test_doctor_local_provider_missing_key_no_openrouter_url(tmp_path, monkeypat
         with patch("fava_trails.cli.load_global_config") as mock_config:
             cfg = mock_config.return_value
             cfg.validate_trust_gate_runtime.return_value = "UNSLOTH_API_KEY"
+            cfg.resolve_trust_gate_api_key_env.return_value = "UNSLOTH_API_KEY"
             cfg.trust_gate_provider = "openai"
             cfg.trust_gate_model = "local-gguf"
             cfg.trust_gate_api_base = "http://127.0.0.1:8000/v1"
+            cfg.trust_gate_api_key_file = None
             cfg.trust_gate = "llm-oneshot"
             with patch("shutil.which", return_value="/usr/bin/jj"):
                 with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
@@ -716,9 +797,11 @@ def test_doctor_hosted_openai_without_api_base_ok(tmp_path, monkeypatch, capsys)
         with patch("fava_trails.cli.load_global_config") as mock_config:
             cfg = mock_config.return_value
             cfg.validate_trust_gate_runtime.return_value = "OPENAI_API_KEY"
+            cfg.resolve_trust_gate_api_key_env.return_value = "OPENAI_API_KEY"
             cfg.trust_gate_provider = "openai"
             cfg.trust_gate_model = "gpt-4.1-mini"
             cfg.trust_gate_api_base = None
+            cfg.trust_gate_api_key_file = None
             cfg.trust_gate = "llm-oneshot"
             with patch("shutil.which", return_value="/usr/bin/jj"):
                 with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
