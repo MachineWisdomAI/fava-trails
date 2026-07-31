@@ -20,7 +20,7 @@ This file contains publication metadata and should not be pasted into the Substa
 
 ## Suggested Substack preview text
 
-A quantized local Qwen model preserved every historical rejection in FAVA Trails' 49-case promotion benchmark, and its observed mistakes were conservative and recoverable. Here is what we learned while moving institutional-memory review off hosted inference.
+A quantized local Qwen model preserved all 13 historical rejection boundaries in FAVA Trails' 49-case promotion benchmark, and its observed mistakes were conservative and recoverable. Here is what we learned while moving institutional-memory review off hosted inference.
 
 ## Suggested social text
 

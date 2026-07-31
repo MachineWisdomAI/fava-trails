@@ -10,7 +10,7 @@ A quantized local model still has to be trustworthy enough to act as the gatekee
 
 We ran [49 historical cases and canaries](https://github.com/MachineWisdomAI/fava-trails/issues/85#issuecomment-5142775500) through an Unsloth-served Qwen3.6 27B GGUF model. It returned valid structured verdicts in all 49 cases, preserved all 13 historical rejection boundaries in the corpus, and was stable across every repeated case. Every observed disagreement was conservative: the local model rejected additional material, but it did not reverse any of the 13 historical Gemini rejections.
 
-I then asked OpenAI Codex to re-audit the disagreements as a second-model adjudicator. The local model's interpretive net difference against the historical Gemini references was only three judgments. In exchange, promotion candidates in the Mac-local deployment stay local, per-thought hosted API fees disappear, and a hosted provider is removed from the critical path.
+I then asked OpenAI Codex to re-audit the disagreements as a second-model adjudicator. It favored Gemini in six cases and the local model in three, leaving an interpretive net difference of three historical judgments. In exchange, promotion candidates in the Mac-local deployment stay local, per-thought hosted API fees disappear, and a hosted provider is removed from the critical path.
 
 For this job, that is a trade I am willing to make.
 
@@ -36,7 +36,9 @@ The benchmark used 39 historical thoughts with prior Gemini verdicts (26 approva
 
 We tested one model on one operationally important task, using the exact prompt that governs FAVA Trails promotion.
 
-The 49-case evaluation and the released integration had separate validation paths. The benchmark used WisdomHelm's provider-neutral `local-llm` CLI to send FAVA's exact production messages and parse the results with FAVA's production verdict parser; it did not change the production provider configuration or exercise the new v0.6 provider path end to end. After the release was integrated, [a separate live dogfood](https://github.com/MachineWisdomAI/fava-trails/pull/88) exercised that provider path directly: it approved a durable architectural decision and rejected an adversarial instruction.
+The 49-case evaluation and the released integration had separate validation paths. The benchmark used WisdomHelm's provider-neutral `local-llm` CLI to send FAVA's exact production messages and parse the results with FAVA's production verdict parser. It did not change the production provider configuration or exercise the new v0.6 provider path end to end.
+
+After the release was integrated, [a separate live dogfood](https://github.com/MachineWisdomAI/fava-trails/pull/88) exercised that provider path directly. It approved a durable architectural decision and rejected an adversarial instruction.
 
 The results were:
 
@@ -100,7 +102,7 @@ Credentials follow the same fail-closed rules. File-backed API keys must be owne
 
 Failures remain fail-closed. If the local endpoint is unavailable, times out, rejects authentication, or returns malformed output, FAVA Trails does not silently fall back to a hosted provider and promote the thought anyway.
 
-Failing closed reduces external dependency without creating an invisible alternate decision path.
+Local execution reduces external provider dependency. Failing closed prevents an invisible alternate decision path.
 
 ## FAVA Trails changed substantially in the last few months
 
