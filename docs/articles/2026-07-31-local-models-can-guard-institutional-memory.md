@@ -1,4 +1,4 @@
-# The Model That Decides What Our Agents Remember Now Runs Locally
+# FAVA Trails v0.6.0: The Model That Decides What Our Agents Remember Now Runs Locally
 
 ## FAVA Trails v0.6.0 brings local-model promotion gating—and our benchmark found that a quantized Qwen model was conservative, consistent, and good enough for the job
 
@@ -8,9 +8,9 @@ That means a thought being considered for institutional memory no longer has to 
 
 The obvious question is whether a quantized local model is actually trustworthy enough to act as the gatekeeper.
 
-We ran 49 historical cases and canaries through an Unsloth-served Qwen3.6 27B GGUF model. It returned valid structured verdicts in all 49 cases, preserved all 13 historical rejection boundaries, and was stable across every repeated case. Its errors were conservative: it rejected too much, but it never approved something Gemini had rejected.
+We ran [49 historical cases and canaries](https://github.com/MachineWisdomAI/fava-trails/issues/85#issuecomment-5142775500) through an Unsloth-served Qwen3.6 27B GGUF model. It returned valid structured verdicts in all 49 cases, preserved all 13 historical rejection boundaries in the corpus, and was stable across every repeated case. Every observed disagreement was conservative: the local model rejected additional material, but it did not reverse any of the 13 historical Gemini rejections.
 
-After I independently re-audited the disagreements, the local model's net regression against Gemini was only three historical judgments. In exchange, promotion candidates stay local, external inference cost disappears, and a hosted provider is removed from the critical path.
+After I asked OpenAI Codex to re-audit the disagreements as a separate second-model adjudicator, the local model's interpretive net difference against the historical Gemini references was only three judgments. In exchange, promotion candidates in the Mac-local deployment stay local, per-thought hosted API fees disappear, and a hosted provider is removed from the critical path.
 
 For this job, that is a trade I am willing to make.
 
@@ -28,13 +28,15 @@ The Trust Gate asks a deliberately simple question:
 
 The [production review prompt](https://github.com/MachineWisdomAI/fava-trails/blob/v0.6.0/src/fava_trails/data_repo_template/trust-gate-prompt.md) rewards concrete decisions, evidenced observations, actionable constraints, and negative results with methodology. It rejects secrets, vague claims, transient state masquerading as permanent truth, and imperative instructions disguised as observations.
 
-Until now, that review normally went through OpenRouter to Gemini. It worked well, but it created an uncomfortable property: everything being considered for durable memory had to cross an external inference boundary before it could be saved.
+Before v0.6.0, thoughts sent through FAVA's `llm-oneshot` promotion path went through OpenRouter to Gemini. It worked well, but it created an uncomfortable property: every candidate on that path had to cross an external inference boundary before it could be promoted.
 
 ## What we benchmarked
 
-The benchmark used 39 historical thoughts with prior Gemini verdicts—26 approvals and 13 rejections—plus 10 synthetic canaries. The local candidate was the quantized Qwen model already running through Unsloth Studio on the workstation.
+The benchmark used 39 historical thoughts with prior Gemini verdicts—26 approvals and 13 rejections—plus 10 synthetic canaries. The local candidate was the quantized model exposed as `unsloth/Qwen3.6-27B-GGUF` through Unsloth Studio on the workstation.
 
 This was not a generic model benchmark. We tested one model on one operationally important task, using the exact prompt that governs FAVA Trails promotion.
+
+The 49-case evaluation and the released integration had separate validation paths. The benchmark used WisdomHelm's provider-neutral `local-llm` CLI to send FAVA's exact production messages and parse the results with FAVA's production verdict parser; it did not change the production provider configuration or exercise the new v0.6 provider path end to end. After the release was integrated, [a separate live dogfood](https://github.com/MachineWisdomAI/fava-trails/pull/88) exercised that provider path directly: it approved a durable architectural decision and rejected an adversarial instruction.
 
 The results were:
 
@@ -53,7 +55,7 @@ The results were:
 
 At first glance, 79.6% agreement sounds merely adequate. But aggregate agreement hides the most important part of a gate: **which direction the errors go**.
 
-Every disagreement was an additional rejection by the local model. It did not approve a single thought that Gemini had historically rejected. That matters because the cost of the two error types is asymmetric:
+Every disagreement was an additional rejection by the local model. Among the 13 historical Gemini rejections in this corpus, it did not reverse a single verdict. That matters because the cost of the two error types is asymmetric:
 
 - A false rejection is visible and recoverable. The thought remains a draft, can be improved, and can be resubmitted.
 - A false approval is quiet. Low-quality material enters institutional memory, consumes future context, and may steer later agents.
@@ -62,7 +64,7 @@ A conservative critic is often preferable to a permissive one.
 
 ## The nine disagreements were not nine regressions
 
-The local model rejected nine historical thoughts Gemini had approved. Rather than treating Gemini as ground truth, I asked a more capable frontier model—separate from the quantized candidate—to re-audit each thought against the exact promotion prompt and then apply its own judgment.
+The local model rejected nine historical thoughts Gemini had approved. Rather than treating Gemini as ground truth, I asked OpenAI Codex—separate from the quantized candidate—to conduct a second-model adjudication of each thought against the exact promotion prompt and then apply its own judgment. This was not independent human ground truth; it was a structured challenge to the historical reference verdicts, published with the other [evaluation evidence](https://github.com/MachineWisdomAI/fava-trails/issues/85#issuecomment-5142775500).
 
 Gemini had the better verdict in six cases. The local model was simply too strict.
 
@@ -72,7 +74,7 @@ But in three cases, the local model caught material Gemini should not have promo
 2. An implementation-heavy artifact had been misclassified as a specification.
 3. An imperative task instruction had been presented as durable knowledge without provenance or rationale.
 
-So the historical disagreement set contained six lost approvals and three improved rejections: a net regression of three judgments, not nine. The tenth disagreement was a separate positive canary that the local model also rejected too conservatively.
+So the historical disagreement set contained six lost approvals and three improved rejections: an interpretive net difference of three judgments after second-model adjudication, not a formal accuracy estimate. The tenth disagreement was a separate positive canary that the local model also rejected too conservatively.
 
 That does not make the local model “better than Gemini.” It means the quality difference on this task was small, understandable, and tilted in the safer direction.
 
@@ -106,7 +108,7 @@ That boundary is important: local execution should reduce external dependency, n
 
 The local Trust Gate is the headline for v0.6.0, but it sits on top of a broader push to make agent memory inspectable, portable, and operationally safe.
 
-Between [v0.5.6](https://github.com/MachineWisdomAI/fava-trails/releases/tag/v0.5.6) on May 5 and [v0.6.0](https://github.com/MachineWisdomAI/fava-trails/releases/tag/v0.6.0) on July 31, the repository accumulated 66 commits across 45 changed files. The public milestones also included [v0.5.7](https://github.com/MachineWisdomAI/fava-trails/releases/tag/v0.5.7), [v0.5.8](https://github.com/MachineWisdomAI/fava-trails/releases/tag/v0.5.8), and [v0.5.9](https://github.com/MachineWisdomAI/fava-trails/releases/tag/v0.5.9). The more meaningful story is how the system's boundaries became explicit.
+Between [v0.5.6 and v0.6.0](https://github.com/MachineWisdomAI/fava-trails/compare/v0.5.6...v0.6.0)—May 5 through July 31—the repository accumulated 66 commits. The public milestones also included [v0.5.7](https://github.com/MachineWisdomAI/fava-trails/releases/tag/v0.5.7), [v0.5.8](https://github.com/MachineWisdomAI/fava-trails/releases/tag/v0.5.8), and [v0.5.9](https://github.com/MachineWisdomAI/fava-trails/releases/tag/v0.5.9). The more meaningful story is how the system's boundaries became explicit.
 
 ### Data integrity became fail-closed
 
@@ -116,9 +118,9 @@ FAVA sync now blocks when the data repository has a dirty working copy or case-c
 
 The new rich-view commands generate and serve a small Astro reader from trail records. Thoughts have stable ULID routes, derived titles, and snapshot metadata. It is intentionally a reader rather than another editing surface: humans can inspect what agents saved without bypassing the MCP lifecycle that governs changes.
 
-### FAVA reached ChatGPT without making the data public
+### FAVA reached ChatGPT without exposing an unauthenticated public MCP endpoint
 
-The ChatGPT tunnel gateway runs a private loopback MCP runtime behind a secure tunnel, with detached lifecycle commands and a bounded `/healthz` readiness probe. Structured MCP errors and output schemas survive the gateway boundary, so clients receive meaningful failures instead of transport-shaped ambiguity.
+The ChatGPT tunnel gateway runs a private loopback MCP runtime behind an authenticated secure tunnel, with detached lifecycle commands and a bounded `/healthz` readiness probe. Authorized ChatGPT requests can receive returned FAVA data through that tunnel, but the local MCP runtime is not exposed as an unauthenticated public endpoint. Structured MCP errors and output schemas survive the gateway boundary, so clients receive meaningful failures instead of transport-shaped ambiguity.
 
 Tunnel startup was hardened over several releases. Readiness checks validate that the runtime identity can actually traverse the configured trail tree and parse representative data. Optional startup sync is bounded and fail-closed. Recurring autosync is disabled by default rather than quietly mutating shared state.
 
@@ -140,17 +142,8 @@ The FAVA Trust Gate has a stable prompt, structured output, historical cases, an
 
 Here, they were.
 
-The local model preserved every historical rejection boundary, produced valid JSON every time, behaved consistently under repetition, and even caught three approvals that deserved another look. It gave up some recall in exchange for privacy, zero per-thought hosted inference cost, and less provider dependence.
+In this benchmark, the local model preserved every historical rejection boundary, produced valid JSON every time, behaved consistently under repetition, and caught three approvals that deserved another look. It approved fewer historically approved candidates in exchange for keeping promotion payloads off hosted inference, eliminating per-thought hosted API fees, and reducing provider dependence.
 
 That is not a consolation prize for using a smaller model. It is the result of matching a model to a bounded job—and designing the surrounding system so conservative mistakes are recoverable.
 
 [FAVA Trails v0.6.0](https://github.com/MachineWisdomAI/fava-trails/releases/tag/v0.6.0) is available now on [PyPI](https://pypi.org/project/fava-trails/0.6.0/). The project is open source under Apache 2.0.
-
----
-
-## Publication notes
-
-- **Suggested Substack preview text:** A quantized local Qwen model matched every historical rejection in FAVA Trails' promotion benchmark—and its conservative mistakes were recoverable. Here is what we learned while moving institutional-memory review off hosted inference.
-- **Suggested social text:** FAVA Trails v0.6.0 can now use a local model to decide what deserves permanent agent memory. We benchmarked 49 historical cases and canaries: 49/49 valid verdicts, 13/13 historical rejections preserved, and only three net historical regressions after auditing the disagreements.
-- **Suggested tags:** AI agents, agent memory, local LLMs, MCP, open source
-- **Suggested hero image:** A split scene showing noisy streams of agent thoughts approaching a small local gate, with only a few versioned memory cards continuing into a private archive. Avoid humanoid robots and generic glowing brains.

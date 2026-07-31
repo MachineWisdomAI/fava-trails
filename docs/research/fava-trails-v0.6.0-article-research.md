@@ -35,7 +35,7 @@ Primary evidence: [issue #85 benchmark comment](https://github.com/MachineWisdom
 
 All ten disagreements were additional local-model rejections. No permissive error was observed against the 13 historical rejection cases in this corpus.
 
-The nine historical disagreements were independently re-audited against the exact prompt. Gemini's approval was judged better in six cases; the local rejection was judged better in three. The separate tenth disagreement was an over-rejected positive canary. The historical comparison therefore produced a net regression of three judgments, not nine. This is an interpretive adjudication, not a formal accuracy estimate.
+The nine historical disagreements were re-audited by OpenAI Codex as a separate second-model adjudicator against the exact prompt. Gemini's approval was judged better in six cases; the local rejection was judged better in three. The separate tenth disagreement was an over-rejected positive canary. The historical comparison therefore produced an interpretive net difference of three judgments, not nine. This was not independent human ground truth or a formal accuracy estimate.
 
 ## Important limitations
 
