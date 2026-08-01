@@ -35,7 +35,7 @@ A quantized local Qwen model preserved all 13 historical rejection boundaries in
 
 ## Suggested social text
 
-FAVA Trails v0.6.0 can use a local model to decide what deserves permanent agent memory. In a 49-case benchmark: 49/49 valid verdicts, all 13 historical rejection boundaries preserved, and an interpretive net difference of three historical judgments after second-model adjudication.
+FAVA Trails v0.6.0 can use a local model to decide what deserves permanent agent memory. An Unsloth quantized Qwen 3.6 model proved on par with Google Gemini on the gate's historical verdicts, and every error it made was a recoverable rejection rather than a quiet bad approval.
 
 ## Suggested tags
 
