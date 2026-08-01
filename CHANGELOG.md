@@ -4,6 +4,11 @@ All notable changes to FAVA Trails are documented here.
 
 ## Unreleased
 
+## [0.6.1] — 2026-08-01
+
+### Fixed
+- Raised direct MCP (`>=1.28.1`) and Starlette (`>=1.3.1`) floors and refreshed the lockfile to clear open Dependabot advisories (including high-severity transitive updates such as NLTK and Transformers). Supersedes #81.
+
 ## [0.6.0] — 2026-07-31
 
 ### Added
