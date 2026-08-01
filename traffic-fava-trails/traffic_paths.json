@@ -3,19 +3,25 @@
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
     "count": 26,
-    "uniques": 18
+    "uniques": 17
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pull/86",
     "title": "/pull/86",
-    "count": 6,
+    "count": 8,
     "uniques": 1
   },
   {
     "path": "/MachineWisdomAI/fava-trails/issues/85",
     "title": "/issues/85",
-    "count": 3,
+    "count": 5,
     "uniques": 2
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pull/89/changes",
+    "title": "/pull/89/changes",
+    "count": 4,
+    "uniques": 1
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pull/84",
@@ -26,6 +32,12 @@
   {
     "path": "/MachineWisdomAI/fava-trails/pull/86/changes",
     "title": "/pull/86/changes",
+    "count": 2,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pulls",
+    "title": "/pulls",
     "count": 2,
     "uniques": 1
   },
@@ -42,20 +54,8 @@
     "uniques": 1
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/issues",
-    "title": "/issues",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pull/48",
-    "title": "/pull/48",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pull/81/changes",
-    "title": "/pull/81/changes",
+    "path": "/MachineWisdomAI/fava-trails/blob/821a9ee44e11fe68c66ab166b7ea6adfc66f604a/docs/articles/2026-07-31-local-models-can-guard-institutional-memory.md",
+    "title": "/blob/821a9ee44e11fe68c66ab166b7ea6adfc66f604a/docs/articles/2026-07-31-local-models-can-guard-institutional-memory.md",
     "count": 1,
     "uniques": 1
   }
