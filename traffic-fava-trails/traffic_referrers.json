@@ -10,22 +10,17 @@
     "uniques": 2
   },
   {
-    "referrer": "news.ycombinator.com",
-    "count": 2,
-    "uniques": 2
-  },
-  {
-    "referrer": "Google",
-    "count": 1,
-    "uniques": 1
-  },
-  {
     "referrer": "docs-local-trust-gate-page.fava-trails-org.pages.dev",
     "count": 1,
     "uniques": 1
   },
   {
     "referrer": "machinewisdom.substack.com",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "referrer": "news.ycombinator.com",
     "count": 1,
     "uniques": 1
   },
