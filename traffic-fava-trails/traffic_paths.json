@@ -2,49 +2,19 @@
   {
     "path": "/MachineWisdomAI/fava-trails/issues/85",
     "title": "/issues/85",
-    "count": 10,
+    "count": 8,
     "uniques": 8
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pull/89/changes",
-    "title": "/pull/89/changes",
-    "count": 7,
-    "uniques": 1
   },
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 4,
-    "uniques": 4
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pulls",
-    "title": "/pulls",
     "count": 3,
-    "uniques": 1
+    "uniques": 3
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/blob/f3bf1be0aa7fd861faf57462d38c0eca7068744e/docs/articles/2026-07-31-local-models-can-guard-institutional-memory.md",
-    "title": "/blob/f3bf1be0aa7fd861faf57462d38c0eca7068744e/docs/articles/2026-07-31-local-models-can-guard-institutional-memory.md",
-    "count": 2,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pull/86",
-    "title": "/pull/86",
-    "count": 2,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pull/87",
-    "title": "/pull/87",
-    "count": 2,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pull/89",
-    "title": "/pull/89",
-    "count": 2,
+    "path": "/MachineWisdomAI/fava-trails/pull/89/changes",
+    "title": "/pull/89/changes",
+    "count": 3,
     "uniques": 1
   },
   {
@@ -54,8 +24,38 @@
     "uniques": 1
   },
   {
+    "path": "/MachineWisdomAI/fava-trails/pulls",
+    "title": "/pulls",
+    "count": 2,
+    "uniques": 1
+  },
+  {
     "path": "/MachineWisdomAI/fava-trails.git",
     "title": ".git",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/blob/f3bf1be0aa7fd861faf57462d38c0eca7068744e/docs/articles/2026-07-31-local-models-can-guard-institutional-memory.md",
+    "title": "/blob/f3bf1be0aa7fd861faf57462d38c0eca7068744e/docs/articles/2026-07-31-local-models-can-guard-institutional-memory.md",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/blob/main/.gitignore",
+    "title": "/blob/main/.gitignore",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/blob/main/AGENTS_SETUP_INSTRUCTIONS.md",
+    "title": "/blob/main/AGENTS_SETUP_INSTRUCTIONS.md",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/blob/main/src/fava_trails/protocols/secom/README.md",
+    "title": "/blob/main/src/fava_trails/protocols/secom/README.md",
     "count": 1,
     "uniques": 1
   }

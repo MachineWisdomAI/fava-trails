@@ -1,11 +1,11 @@
 [
   {
-    "referrer": "github.com",
-    "count": 4,
+    "referrer": "com.reddit.frontpage",
+    "count": 2,
     "uniques": 2
   },
   {
-    "referrer": "com.reddit.frontpage",
+    "referrer": "github.com",
     "count": 2,
     "uniques": 2
   },
