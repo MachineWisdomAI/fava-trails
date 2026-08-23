@@ -2,8 +2,8 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 11,
-    "uniques": 7
+    "count": 12,
+    "uniques": 8
   },
   {
     "path": "/MachineWisdomAI/fava-trails.git",
@@ -26,12 +26,6 @@
   {
     "path": "/MachineWisdomAI/fava-trails/issues",
     "title": "/issues",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/issues/85",
-    "title": "/issues/85",
     "count": 1,
     "uniques": 1
   }
