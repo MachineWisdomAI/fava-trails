@@ -6,12 +6,6 @@
     "uniques": 8
   },
   {
-    "path": "/MachineWisdomAI/fava-trails.git",
-    "title": ".git",
-    "count": 1,
-    "uniques": 1
-  },
-  {
     "path": "/MachineWisdomAI/fava-trails/blob/main/.gitignore",
     "title": "/blob/main/.gitignore",
     "count": 1,
