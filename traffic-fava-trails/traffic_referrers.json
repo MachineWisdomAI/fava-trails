@@ -8,5 +8,10 @@
     "referrer": "news.ycombinator.com",
     "count": 4,
     "uniques": 2
+  },
+  {
+    "referrer": "chatgpt.com",
+    "count": 1,
+    "uniques": 1
   }
 ]
