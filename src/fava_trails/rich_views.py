@@ -1,11 +1,13 @@
-"""Minimal FAVA Rich Views reader generation."""
+"""Generate a local Astro reader from canonical FAVA Markdown records."""
 
 from __future__ import annotations
 
 import json
 import re
 import shutil
-from dataclasses import dataclass
+import unicodedata
+from collections import Counter
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -38,6 +40,12 @@ class ReaderThought:
     tags: tuple[str, ...]
     route: str
     scope: str
+    created_at: str = ""
+    parent_id: str | None = None
+    superseded_by: str | None = None
+    intent_ref: str | None = None
+    relationships: tuple[tuple[str, str], ...] = ()
+    fallback_route: str = ""
 
 
 @dataclass(frozen=True)
@@ -61,23 +69,8 @@ def generate_reader(
 ) -> GenerationResult:
     """Generate a minimal plain-Astro reader from FAVA source thought records."""
 
-    safe_scope = sanitize_scope_path(scope)
-    source_root = Path(trails_dir)
-    destination = Path(output_dir)
-    timestamp = generated_at or datetime.now(UTC)
-    if timestamp.tzinfo is None:
-        timestamp = timestamp.replace(tzinfo=UTC)
-
-    thoughts = _load_reader_thoughts(source_root, safe_scope)
-    _write_reader(destination, safe_scope, timestamp, thoughts)
-
-    return GenerationResult(
-        scope=safe_scope,
-        output_dir=destination,
-        generated_at=timestamp,
-        thought_count=len(thoughts),
-        routes=tuple(thought.route for thought in thoughts),
-        scopes=(safe_scope,),
+    return generate_reader_for_scopes(
+        trails_dir=trails_dir, scopes=[scope], output_dir=output_dir, generated_at=generated_at,
     )
 
 
@@ -106,8 +99,8 @@ def generate_reader_for_scopes(
             seen[thought.thought_id] = source_path
             all_thoughts.append(thought)
 
-    display_scope = safe_scopes[0] if len(safe_scopes) == 1 else "all scopes"
-    all_thoughts = sorted(all_thoughts, key=lambda thought: (thought.scope, thought.thought_id))
+    display_scope = sanitize_scope_path(scopes[0]) if scopes and len(scopes) == 1 else (safe_scopes[0] if len(safe_scopes) == 1 else "all scopes")
+    all_thoughts = _assign_routes(sorted(all_thoughts, key=lambda thought: (thought.scope, thought.thought_id)))
     _write_reader(destination, display_scope, timestamp, all_thoughts, input_scopes=safe_scopes)
 
     return GenerationResult(
@@ -134,6 +127,8 @@ def _load_reader_thoughts_with_sources(trails_dir: Path, scope: str) -> list[tup
     for path in sorted(p for p in thoughts_dir.rglob("*.md") if p.name != ".gitkeep"):
         raw_text = path.read_text(encoding="utf-8")
         raw_frontmatter = _read_raw_frontmatter(raw_text)
+        if not isinstance(raw_frontmatter.get("thought_id"), str) or not raw_frontmatter["thought_id"]:
+            raise ValueError(f"Missing thought_id in FAVA frontmatter: {path}")
         record = ThoughtRecord.from_markdown(raw_text)
         thought_id = record.thought_id
         _validate_reader_thought_id(thought_id, path)
@@ -160,6 +155,12 @@ def _load_reader_thoughts_with_sources(trails_dir: Path, scope: str) -> list[tup
             tags=tuple(fm.metadata.tags),
             route=f"/id/{thought_id}/",
             scope=scope,
+            created_at=fm.created_at.isoformat(),
+            parent_id=fm.parent_id,
+            superseded_by=fm.superseded_by,
+            intent_ref=fm.intent_ref,
+            relationships=tuple((rel.type.value, rel.target_id) for rel in fm.relationships),
+            fallback_route=f"/id/{thought_id}/",
         )
         thoughts.append((thought, path))
 
@@ -167,9 +168,16 @@ def _load_reader_thoughts_with_sources(trails_dir: Path, scope: str) -> list[tup
 
 
 def _resolve_reader_scopes(trails_dir: Path, scopes: list[str] | tuple[str, ...] | None) -> list[str]:
-    if scopes:
-        return sorted(dict.fromkeys(sanitize_scope_path(scope) for scope in scopes))
     discovered = discover_reader_scopes(trails_dir)
+    if scopes:
+        selected = set()
+        for raw_scope in scopes:
+            requested = sanitize_scope_path(raw_scope)
+            matches = [scope for scope in discovered if scope == requested or scope.startswith(requested + "/")]
+            if not matches:
+                raise ValueError(f"No FAVA thoughts found for scope {requested!r}")
+            selected.update(matches)
+        return sorted(selected)
     if not discovered:
         raise ValueError(f"No FAVA scopes found under {trails_dir}")
     return discovered
@@ -258,10 +266,11 @@ def _write_reader(
     _write_astro_config(output_dir)
     _write_readme(output_dir, scope, generated_at_iso, scopes)
     _write_generated_metadata(output_dir, scope, generated_at_iso, thoughts, scopes)
-    _write_index(output_dir, scope, generated_at_iso, thoughts)
-    _write_layout(output_dir)
+    from .reader_ui import write_reader_ui
+
+    write_reader_ui(output_dir, scope, generated_at_iso, [_thought_data(thought, thoughts) for thought in thoughts], scopes)
     for thought in thoughts:
-        _write_thought_page(output_dir, scope, generated_at_iso, thought)
+        _write_thought_page(output_dir, scope, generated_at_iso, thought, thoughts)
 
 
 def _prepare_reader_output_dir(output_dir: Path) -> None:
@@ -315,6 +324,8 @@ def _write_package_json(output_dir: Path) -> None:
         },
         "devDependencies": {
             "astro": "^7.0.0",
+            "rehype-sanitize": "^6.0.0",
+            "@astrojs/markdown-remark": "^7.3.0",
         },
     }
     (output_dir / "package.json").write_text(json.dumps(package, indent=2) + "\n", encoding="utf-8")
@@ -322,9 +333,13 @@ def _write_package_json(output_dir: Path) -> None:
 
 def _write_astro_config(output_dir: Path) -> None:
     (output_dir / "astro.config.mjs").write_text(
-        "import { defineConfig } from 'astro/config';\n\n"
+        "import { defineConfig } from 'astro/config';\n"
+        "import rehypeSanitize from 'rehype-sanitize';\n"
+        "import { unified } from '@astrojs/markdown-remark';\n\n"
         "export default defineConfig({\n"
         "  output: 'static',\n"
+        "  devToolbar: { enabled: false },\n"
+        "  markdown: { processor: unified({ rehypePlugins: [rehypeSanitize] }) },\n"
         "});\n",
         encoding="utf-8",
     )
@@ -372,259 +387,107 @@ def _write_generated_metadata(
         "snapshotNotice": "Static snapshot; not a live view.",
         "thoughtCount": len(thoughts),
         "routes": [thought.route for thought in thoughts],
+        "thoughtRoutes": {thought.thought_id: {"canonical": thought.route, "fallback": thought.fallback_route} for thought in thoughts},
     }
     (output_dir / "src/data/generated.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
 
-def _write_index(output_dir: Path, scope: str, generated_at: str, thoughts: list[ReaderThought]) -> None:
-    thought_data = [
-        {
-            "thoughtId": thought.thought_id,
-            "title": thought.title,
-            "route": thought.route,
-            "namespace": thought.namespace,
-            "sourceType": thought.source_type,
-            "validationStatus": thought.validation_status,
-            "sourcePath": thought.source_path,
-            "scope": thought.scope,
-        }
-        for thought in thoughts
-    ]
-    (output_dir / "src/pages/index.astro").write_text(
-        f"""---
-const thoughts = {json.dumps(thought_data, indent=2)};
----
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>FAVA Reader - {scope}</title>
-    <style>
-      :root {{
-        color: #161616;
-        background: #f7f7f4;
-        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      }}
-      body {{
-        margin: 0;
-      }}
-      main {{
-        max-width: 980px;
-        margin: 0 auto;
-        padding: 32px 20px 48px;
-      }}
-      header {{
-        border-bottom: 1px solid #d8d8d0;
-        margin-bottom: 24px;
-        padding-bottom: 16px;
-      }}
-      h1 {{
-        font-size: 1.9rem;
-        margin: 0 0 12px;
-      }}
-      .meta {{
-        color: #555;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px 18px;
-        font-size: 0.92rem;
-        margin: 0;
-      }}
-      .notice {{
-        background: #fff8d8;
-        border: 1px solid #e1ce75;
-        border-radius: 6px;
-        margin: 18px 0 0;
-        padding: 10px 12px;
-      }}
-      ul {{
-        list-style: none;
-        margin: 0;
-        padding: 0;
-      }}
-      li {{
-        background: #fff;
-        border: 1px solid #ddd;
-        border-radius: 6px;
-        margin-bottom: 10px;
-        padding: 14px 16px;
-      }}
-      a {{
-        color: #135d54;
-        font-weight: 650;
-      }}
-      code {{
-        font-size: 0.82rem;
-      }}
-      .row-meta {{
-        color: #666;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px 14px;
-        margin-top: 8px;
-      }}
-    </style>
-  </head>
-  <body>
-    <main>
-      <header>
-        <h1>FAVA Reader</h1>
-        <p class="meta">
-          <span>Input scope: {scope}</span>
-          <span>Generated at: {generated_at}</span>
-          <span>{len(thoughts)} thoughts</span>
-        </p>
-        <p class="notice">Static snapshot generated from FAVA source records; this is not a live view.</p>
-      </header>
-      <ul>
-        {{thoughts.map((thought) => (
-          <li>
-            <a href={{thought.route}}>{{thought.title}}</a>
-            <div class="row-meta">
-              <code>{{thought.thoughtId}}</code>
-              <span>{{thought.namespace}}</span>
-              <span>{{thought.sourceType}}</span>
-              <span>{{thought.validationStatus}}</span>
-              <span>{{thought.scope}}</span>
-              <span>{{thought.sourcePath}}</span>
-            </div>
-          </li>
-        ))}}
-      </ul>
-    </main>
-  </body>
-</html>
-""",
-        encoding="utf-8",
-    )
+def _assign_routes(thoughts: list[ReaderThought]) -> list[ReaderThought]:
+    """Titles name human routes; the /id route always preserves record identity."""
+    def slug(title: str) -> str:
+        ascii_title = unicodedata.normalize("NFKD", title).encode("ascii", "ignore").decode()
+        return re.sub(r"[^a-z0-9]+", "-", ascii_title.lower()).strip("-")[:80].rstrip("-") or "thought"
+
+    stems = {thought.thought_id: f"/{thought.scope}/{slug(thought.title)}" for thought in thoughts}
+    counts = Counter(stems.values())
+    used = {f"/id/{thought.thought_id}/" for thought in thoughts}
+    used.update(f"/scopes/{thought.scope}/" for thought in thoughts)
+    routes = []
+    for thought in thoughts:
+        stem = stems[thought.thought_id]
+        route = stem + "/"
+        if counts[stem] > 1 or route in used:
+            length = min(8, len(thought.thought_id))
+            while True:
+                route = f"{stem}-{thought.thought_id[-length:]}/"
+                if route not in used:
+                    break
+                length += 1
+                if length > len(thought.thought_id):
+                    raise ValueError(f"Cannot assign unique route for {thought.thought_id}")
+        used.add(route)
+        routes.append(replace(thought, route=route, fallback_route=f"/id/{thought.thought_id}/"))
+    return routes
 
 
-def _write_layout(output_dir: Path) -> None:
-    (output_dir / "src/layouts/ThoughtLayout.astro").write_text(
-        """---
-const { frontmatter } = Astro.props;
----
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{frontmatter.title}</title>
-    <style>
-      :root {
-        color: #161616;
-        background: #f7f7f4;
-        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      }
-      body {
-        margin: 0;
-      }
-      main {
-        max-width: 880px;
-        margin: 0 auto;
-        padding: 32px 20px 56px;
-      }
-      a {
-        color: #135d54;
-      }
-      header {
-        border-bottom: 1px solid #d8d8d0;
-        margin-bottom: 24px;
-        padding-bottom: 16px;
-      }
-      h1 {
-        font-size: 1.8rem;
-        margin: 0 0 12px;
-      }
-      dl {
-        display: grid;
-        gap: 8px 14px;
-        grid-template-columns: max-content 1fr;
-      }
-      dt {
-        color: #555;
-        font-weight: 650;
-      }
-      dd {
-        margin: 0;
-      }
-      code {
-        font-size: 0.85rem;
-      }
-      .notice {
-        background: #fff8d8;
-        border: 1px solid #e1ce75;
-        border-radius: 6px;
-        margin: 16px 0 0;
-        padding: 10px 12px;
-      }
-      article {
-        background: #fff;
-        border: 1px solid #ddd;
-        border-radius: 6px;
-        padding: 22px;
-      }
-    </style>
-  </head>
-  <body>
-    <main>
-      <p><a href="/">Back to reader index</a></p>
-      <header>
-        <h1>{frontmatter.title}</h1>
-        <dl>
-          <dt>Thought ID</dt>
-          <dd><code>{frontmatter.thoughtId}</code></dd>
-          <dt>Input scope</dt>
-          <dd>{frontmatter.inputScope}</dd>
-          <dt>Generated at</dt>
-          <dd>{frontmatter.generatedAt}</dd>
-          <dt>Namespace</dt>
-          <dd>{frontmatter.namespace}</dd>
-          <dt>Source type</dt>
-          <dd>{frontmatter.sourceType}</dd>
-          <dt>Validation</dt>
-          <dd>{frontmatter.validationStatus}</dd>
-          <dt>Source path</dt>
-          <dd><code>{frontmatter.sourcePath}</code></dd>
-        </dl>
-        <p class="notice">Static snapshot generated from FAVA source records; this is not a live view.</p>
-      </header>
-      <article>
-        <slot />
-      </article>
-    </main>
-  </body>
-</html>
-""",
-        encoding="utf-8",
-    )
+def _thought_data(thought: ReaderThought, thoughts: list[ReaderThought]) -> dict[str, Any]:
+    """Project only stored semantics; missing targets carry no inferred metadata."""
+    by_id = {item.thought_id: item for item in thoughts}
+
+    def target(thought_id: str) -> dict[str, Any]:
+        found = by_id.get(thought_id)
+        return {"thoughtId": thought_id, "title": found.title if found else thought_id,
+                "route": found.route if found else None, "resolved": found is not None}
+
+    outbound = [{"type": kind, **target(tid)} for kind, tid in thought.relationships]
+    inbound = [{"type": kind, **target(other.thought_id)} for other in thoughts
+               for kind, tid in other.relationships if tid == thought.thought_id]
+    # Traverse only explicit parentage and supersession, preserving branch/cycle evidence.
+    lineage = []
+    pending = [thought.thought_id]
+    visited = set()
+    edges = []
+    for other in thoughts:
+        if other.parent_id:
+            edges.append((other.thought_id, "parent", other.parent_id))
+        if other.superseded_by:
+            edges.append((other.thought_id, "superseded by", other.superseded_by))
+    while pending:
+        current = pending.pop()
+        if current in visited:
+            continue
+        visited.add(current)
+        for source, kind, dest in edges:
+            if current not in (source, dest):
+                continue
+            edge = {"source": target(source), "type": kind, "target": target(dest)}
+            if edge not in lineage:
+                lineage.append(edge)
+            for neighbor in (source, dest):
+                if neighbor in by_id and neighbor not in visited:
+                    pending.append(neighbor)
+
+    return {
+        "thoughtId": thought.thought_id, "title": thought.title, "route": thought.route,
+        "fallbackRoute": thought.fallback_route, "slug": thought.route.rstrip("/").rsplit("/", 1)[-1],
+        "namespace": thought.namespace, "sourceType": thought.source_type,
+        "validationStatus": thought.validation_status, "sourcePath": thought.source_path,
+        "scope": thought.scope, "agentId": thought.agent_id, "confidence": thought.confidence,
+        "tags": thought.tags, "createdAt": thought.created_at,
+        "excerpt": _WHITESPACE_RE.sub(" ", thought.content).strip()[:200],
+        "supersededBy": target(thought.superseded_by) if thought.superseded_by else None,
+        "parent": target(thought.parent_id) if thought.parent_id else None,
+        "intent": target(thought.intent_ref) if thought.intent_ref else None,
+        "outbound": outbound, "inbound": inbound, "lineage": lineage,
+        "relationshipCount": len(outbound) + len(inbound),
+    }
 
 
-def _write_thought_page(output_dir: Path, scope: str, generated_at: str, thought: ReaderThought) -> None:
-    frontmatter = [
-        "---",
-        'layout: "../../layouts/ThoughtLayout.astro"',
-        f"title: {_yaml_string(thought.title)}",
-        f"thoughtId: {_yaml_string(thought.thought_id)}",
-        f"inputScope: {_yaml_string(scope)}",
-        f"scope: {_yaml_string(thought.scope)}",
-        f"generatedAt: {_yaml_string(generated_at)}",
-        f"namespace: {_yaml_string(thought.namespace)}",
-        f"sourceType: {_yaml_string(thought.source_type)}",
-        f"validationStatus: {_yaml_string(thought.validation_status)}",
-        f"agentId: {_yaml_string(thought.agent_id)}",
-        f"confidence: {thought.confidence}",
-        f"sourcePath: {_yaml_string(thought.source_path)}",
-    ]
-    if thought.tags:
-        frontmatter.append("tags:")
-        frontmatter.extend(f"  - {_yaml_string(tag)}" for tag in thought.tags)
-    else:
-        frontmatter.append("tags: []")
-    frontmatter.append("---")
-    page = "\n".join(frontmatter) + "\n" + thought.content.rstrip() + "\n"
-    (output_dir / "src/pages/id" / f"{thought.thought_id}.md").write_text(page, encoding="utf-8")
+def _write_thought_page(
+    output_dir: Path, scope: str, generated_at: str, thought: ReaderThought, thoughts: list[ReaderThought],
+) -> None:
+    data = _thought_data(thought, thoughts)
+    data.update(inputScope=scope, generatedAt=generated_at)
+    # Both routes render the same source body, generated together from one record.
+    for route in (thought.fallback_route, thought.route):
+        parts = route.strip("/").split("/")
+        page_path = output_dir / "src/pages" / Path(*parts[:-1]) / f"{parts[-1]}.md"
+        page_path.parent.mkdir(parents=True, exist_ok=True)
+        layout = "../" * len(parts) + "layouts/ThoughtLayout.astro"
+        frontmatter = ["---", f"layout: {_yaml_string(layout)}"]
+        frontmatter.extend(f"{key}: {json.dumps(value)}" for key, value in data.items())
+        page = "\n".join(frontmatter) + "\n---\n" + thought.content.rstrip() + "\n"
+        page_path.write_text(page, encoding="utf-8")
 
 
 def _yaml_string(value: str) -> str:

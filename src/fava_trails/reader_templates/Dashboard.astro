@@ -1,0 +1,94 @@
+---
+import ReaderLayout from '../layouts/ReaderLayout.astro';
+const { scope, generatedAt, thoughts, scopes } = Astro.props;
+const active = thought => thought.sourceType === 'decision' && thought.validationStatus === 'approved' && !thought.supersededBy;
+const counts = [
+  ['Included thoughts', thoughts.length],
+  ['Child scopes', scopes.filter(item => item !== scope).length],
+  ['Active decisions', thoughts.filter(active).length],
+  ['Draft / proposed', thoughts.filter(t => ['draft','proposed'].includes(t.validationStatus)).length],
+  ['Superseded', thoughts.filter(t => t.supersededBy).length],
+];
+const facets = [
+  ['namespace','Namespace', [...new Set(thoughts.map(t => t.namespace))]],
+  ['sourceType','Source type', [...new Set(thoughts.map(t => t.sourceType))]],
+  ['validationStatus','Validation', [...new Set(thoughts.map(t => t.validationStatus))]],
+  ['tags','Tag', [...new Set(thoughts.flatMap(t => t.tags))]],
+  ['agentId','Contributor', [...new Set(thoughts.map(t => t.agentId))]],
+  ['scope','Scope', scopes],
+];
+const recent = [...thoughts].sort((a,b) => b.createdAt.localeCompare(a.createdAt)).slice(0,4);
+const ordered = [...thoughts].sort((a,b) => Number(active(b)) - Number(active(a)) || b.createdAt.localeCompare(a.createdAt));
+const contributors = [...new Set(thoughts.map(t => t.agentId))].map(agent => [agent, thoughts.filter(t => t.agentId === agent).length]);
+---
+<ReaderLayout title={scope} scope={scope} generatedAt={generatedAt}>
+  <p class="eyebrow">Scope dashboard</p>
+  <h1>{scope}</h1>
+  <p class="freshness">Generated <time datetime={generatedAt}>{generatedAt}</time> · This view counts included records only.</p>
+  <section class="stats" aria-label="Scope summary">{counts.map(([label,count]) => <div><strong>{count}</strong><span>{label}</span></div>)}</section>
+  <div class="overview">
+    <section class="panel"><h2>Recent activity</h2><ul class="clean recent">{recent.map(t => <li><a href={t.route}>{t.title}</a><span class="badge" data-status={t.supersededBy ? "superseded" : t.validationStatus}>{t.supersededBy ? "superseded" : t.validationStatus}</span></li>)}</ul>{!recent.length && <p class="empty">No records included in this view.</p>}</section>
+    <section class="panel"><h2>Scope & contributors</h2><div class="scope-links">{scopes.map(item => <a href={`/scopes/${item}/`}>{item}<span class="muted"> ({thoughts.filter(t => t.scope === item).length})</span></a>)}</div><p class="contributors">{contributors.map(([agent,count]) => <span>{agent} <b>{count}</b></span>)}</p></section>
+  </div>
+  <section aria-label="Thought records">
+    <div class="section-heading"><h2>Thoughts</h2><output id="result-count" aria-live="polite">{thoughts.length} records</output></div>
+    <form id="filters" class="filters" aria-label="Filter thoughts">
+      {facets.map(([key,label,values]) => <label>{label}<select name={key}><option value="">All</option>{values.sort().map(value => <option value={value}>{value}</option>)}</select></label>)}
+      <button type="reset">Reset</button>
+    </form>
+    <div class="quick-filters" aria-label="Quick views"><button type="button" data-view="all" aria-pressed="true">All records</button><button type="button" data-view="active" aria-pressed="false">Active decisions</button><button type="button" data-view="attention" aria-pressed="false">Drafts & proposed</button><button type="button" data-view="superseded" aria-pressed="false">Superseded</button></div>
+    <ul class="clean records">{ordered.map(t => <li class="record" data-record={JSON.stringify({ ...Object.fromEntries(facets.map(([key]) => [key,t[key]])), active:active(t), superseded:!!t.supersededBy })}>
+      <div class="record-title"><a href={t.route}>{t.title}</a><span class="badge" data-status={t.validationStatus}>{t.validationStatus}</span>{t.supersededBy && <span class="badge" data-status="superseded">superseded</span>}</div>
+      <p class="excerpt">{t.excerpt}</p>
+      <div class="meta"><span>{t.sourceType} · {t.namespace}</span><span>{Math.round(t.confidence * 100)}% confidence</span><span>{t.agentId}</span><time datetime={t.createdAt}>{t.createdAt.slice(0,10)}</time><span>{t.relationshipCount} relationships</span>{t.tags.map(tag => <span class="tag">#{tag}</span>)}</div>
+      <details class="provenance"><summary>{t.scope} · Source provenance</summary><p><code>{t.thoughtId}</code><br /><code>{t.sourcePath}</code></p></details>
+    </li>)}</ul>
+    <p id="no-results" class="panel empty" hidden>No records match these filters. Reset the filters to see all included records.</p>
+    <noscript><p class="notice">All included records are shown. Enable JavaScript to use filters.</p></noscript>
+  </section>
+</ReaderLayout>
+<style>
+.stats { display:grid;grid-template-columns:repeat(5,1fr);border:1px solid #c8d6c8;border-radius:7px;background:#eaf0e5;margin-bottom:18px; }
+.stats div { padding:13px 16px;border-right:1px solid #c8d6c8; } .stats div:last-child { border:0; }
+.stats strong { display:block;font-size:1.8rem;letter-spacing:-.05em; } .stats span { font-size:.76rem;color:#4a6152; }
+.overview { display:grid;grid-template-columns:1.15fr 1fr;gap:16px;margin-bottom:22px; }
+.recent li { display:flex;justify-content:space-between;gap:12px;font-size:.85rem;padding:5px 0; }
+.scope-links { display:flex;flex-wrap:wrap;gap:6px 12px;font-size:.8rem;max-height:100px;overflow:auto; }
+.contributors { display:flex;flex-wrap:wrap;gap:8px 16px;font-size:.8rem;margin-bottom:0; }
+.section-heading { display:flex;align-items:baseline;justify-content:space-between;gap:10px; }
+output { font-size:.8rem;color:#536457; }
+.filters { display:grid;grid-template-columns:repeat(6,minmax(0,1fr)) auto;gap:8px;align-items:end; }
+.filters label { display:grid;gap:5px;font-size:.73rem;color:#516054; }
+select,button { font:inherit;border:1px solid #bacabb;border-radius:4px;background:white;color:#243d2c;padding:7px 8px;min-width:0; }
+select { width:100%;font-size:.8rem; } button { cursor:pointer;font-size:.8rem; }
+button[aria-pressed="true"] { background:#245c47;color:white;border-color:#245c47; }
+.quick-filters { display:flex;flex-wrap:wrap;gap:7px;margin:12px 0; }
+.record { border:1px solid #d6ded7;border-radius:6px;background:#fff;padding:13px 16px;margin-bottom:8px; }
+.record-title { display:flex;flex-wrap:wrap;align-items:center;gap:8px; }.record-title a { font-weight:650;margin-right:auto; }
+.excerpt { color:#58635b;font-size:.84rem;margin:7px 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden; }
+.provenance { margin-top:8px;font-size:.72rem;color:#6b766e;overflow-wrap:anywhere; }.provenance summary { cursor:pointer; }.provenance p { margin-bottom:0; }
+@media(max-width:800px) { .filters { grid-template-columns:repeat(3,minmax(0,1fr)); }.overview { grid-template-columns:1fr; } }
+@media(max-width:480px) { .stats { grid-template-columns:repeat(3,1fr); }.stats div { padding:9px; }.stats strong { font-size:1.4rem; }.stats span { font-size:.7rem; }.filters { grid-template-columns:repeat(2,minmax(0,1fr)); }.record { padding:12px; } }
+</style>
+<script>
+  const form = document.querySelector<HTMLFormElement>('#filters');
+  const records = Array.from(document.querySelectorAll<HTMLElement>('[data-record]'));
+  const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-view]'));
+  let view = 'all';
+  function filterRecords() {
+    if (!form) return;
+    const fields = new FormData(form);
+    let count = 0;
+    for (const row of records) {
+      const data = JSON.parse(row.dataset.record || '{}');
+      const matches = Array.from(fields.entries()).every(([key,value]) => !value || (Array.isArray(data[key]) ? data[key].includes(value) : data[key] === value));
+      const visible = matches && (view === 'all' || view === 'active' && data.active || view === 'attention' && ['draft','proposed'].includes(data.validationStatus) || view === 'superseded' && data.superseded);
+      row.hidden = !visible; if (visible) count++;
+    }
+    document.querySelector('#result-count')!.textContent = `${count} of ${records.length} records`;
+    document.querySelector<HTMLElement>('#no-results')!.hidden = count !== 0;
+  }
+  form?.addEventListener('change', filterRecords);
+  form?.addEventListener('reset', () => { view = 'all'; buttons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.view === view))); setTimeout(filterRecords,0); });
+  buttons.forEach(button => button.addEventListener('click', () => { view = button.dataset.view || 'all'; buttons.forEach(item => item.setAttribute('aria-pressed',String(item === button))); filterRecords(); }));
+</script>

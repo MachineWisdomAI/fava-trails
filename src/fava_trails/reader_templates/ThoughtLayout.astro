@@ -1,0 +1,32 @@
+---
+import ReaderLayout from './ReaderLayout.astro';
+import ThoughtLink from '../components/ThoughtLink.astro';
+const { frontmatter: t } = Astro.props;
+const group = relationships => Object.entries(relationships.reduce((groups, edge) => { (groups[edge.type] ||= []).push(edge); return groups; }, {}));
+---
+<ReaderLayout title={t.title} scope={t.inputScope} generatedAt={t.generatedAt}>
+  <p class="eyebrow"><a href={`/scopes/${t.scope}/`}>{t.scope}</a> / Thought</p>
+  <h1>{t.title}</h1>
+  <div class="meta"><span class="badge" data-status={t.validationStatus}>{t.validationStatus}</span><span>{t.sourceType}</span><span>{Math.round(t.confidence * 100)}% confidence</span><span>{t.agentId}</span><time datetime={t.createdAt}>{t.createdAt}</time>{t.tags.map(tag => <span class="tag">#{tag}</span>)}</div>
+  {t.supersededBy && <p class="warning">Superseded — use the replacement record: <ThoughtLink target={t.supersededBy} /></p>}
+  <section class="panel provenance-panel" aria-label="Source provenance">
+    <dl><dt>Durable ID</dt><dd><a href={t.fallbackRoute}><code>{t.thoughtId}</code></a></dd><dt>Human route</dt><dd><a href={t.route}>{t.route}</a></dd><dt>Namespace</dt><dd>{t.namespace}</dd><dt>Source Markdown</dt><dd><code>{t.sourcePath}</code></dd><dt>Generated at</dt><dd>{t.generatedAt}</dd></dl>
+  </section>
+  <nav class="section-links" aria-label="Thought sections"><a href="#lineage">Lineage</a><a href="#relationships">Relationships ({t.relationshipCount})</a><a href="#source-body">Full source body</a></nav>
+  <div class="two-column">
+    <section id="lineage" class="panel"><h2>Lineage</h2>
+      {t.intent && <p class="meta">Intent: <ThoughtLink target={t.intent} /></p>}
+      {t.lineage.length ? <ul class="clean links">{t.lineage.map(edge => <li><ThoughtLink target={edge.source} /> <span class="badge">{edge.type}</span> <ThoughtLink target={edge.target} /></li>)}</ul> : <p class="empty">No parentage or supersession recorded.</p>}
+    </section>
+    <section id="relationships" class="panel"><h2>Typed relationships</h2>
+      <h3>Outbound ({t.outbound.length})</h3>{group(t.outbound).map(([type,edges]) => <div><span class="badge">{type}</span><ul class="clean links">{edges.map(edge => <li><ThoughtLink target={edge} /></li>)}</ul></div>)}
+      {!t.outbound.length && <p class="empty">No outbound relationships recorded.</p>}
+      <h3>Inbound ({t.inbound.length})</h3>{group(t.inbound).map(([type,edges]) => <div><span class="badge">{type}</span><ul class="clean links">{edges.map(edge => <li><ThoughtLink target={edge} /></li>)}</ul></div>)}
+      {!t.inbound.length && <p class="empty">No included records point here.</p>}
+    </section>
+  </div>
+  <article id="source-body" class="panel source-body"><h2>Source body</h2><slot /></article>
+</ReaderLayout>
+<style>
+.provenance-panel { margin-top:18px; } dl { display:grid;grid-template-columns:120px minmax(0,1fr);gap:8px 16px;margin:0;font-size:.85rem; }dt { color:#657166; }dd { margin:0;overflow-wrap:anywhere; }.section-links { display:flex;flex-wrap:wrap;gap:10px 22px;margin:16px 0;font-size:.85rem; }h3 { margin-top:14px; }@media(max-width:480px) { dl { grid-template-columns:1fr;gap:4px; }dd { margin-bottom:8px; } }
+</style>
