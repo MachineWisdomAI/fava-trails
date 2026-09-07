@@ -308,3 +308,16 @@ async def test_all_draft_group_stays_unapproved(jj_backend):
     snap = read_snapshot(root / "trails", strict=True)
     assert len(snap.records) == 1
     assert not any(Visibility().allows(r, snap.by_id) for r in snap.records.values())
+
+
+@pytest.mark.asyncio
+async def test_corrupt_existing_recovery_receipt_blocks_source_mutation(jj_backend):
+    plan = await seed(jj_backend)
+    receipt = jj_backend.repo_root / ".jj/fava-migrations" / (plan["digest"] + ".json")
+    receipt.parent.mkdir()
+    receipt.write_text('{"plan": {}}')
+    before = capture(jj_backend.repo_root)
+    with pytest.raises(ValueError, match="Recovery receipt is invalid"):
+        await apply_plan(jj_backend, plan, plan["digest"])
+    assert capture(jj_backend.repo_root) == before
+    assert not journal_path(jj_backend.repo_root).exists()

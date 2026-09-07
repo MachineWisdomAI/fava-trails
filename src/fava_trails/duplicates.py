@@ -413,7 +413,15 @@ async def apply_plan(vcs, plan: dict, confirmation: str, *, rollback: bool = Fal
         }
         receipt_path.parent.mkdir(parents=True, exist_ok=True)
         # Retries retain their original recovery evidence; each migration has a fixed identity.
-        if not receipt_path.exists():
+        if receipt_path.exists():
+            existing = json.loads(receipt_path.read_text())
+            if (
+                existing.get("plan") != plan
+                or not existing.get("recovery_commit")
+                or not existing.get("recovery_operation")
+            ):
+                raise ValueError("Recovery receipt is invalid; inspect it before retrying")
+        else:
             write_private(receipt_path, receipt)
 
     writes = {root / o["path"]: o["before"] if rollback else o["after"] for o in plan["operations"]}
@@ -426,14 +434,14 @@ async def apply_plan(vcs, plan: dict, confirmation: str, *, rollback: bool = Fal
     receipt["status"] = "rolled_back" if rollback else "applied"
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=receipt_path.parent, delete=False) as stream:
         temporary = Path(stream.name)
-        try:
-            json.dump(receipt, stream, indent=2)
-            stream.flush()
-            os.fsync(stream.fileno())
-            os.replace(temporary, receipt_path)
-            _sync_directory(receipt_path.parent)
-        finally:
-            temporary.unlink(missing_ok=True)
+        json.dump(receipt, stream, indent=2)
+        stream.flush()
+        os.fsync(stream.fileno())
+    try:
+        os.replace(temporary, receipt_path)
+        _sync_directory(receipt_path.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
     return {
         "status": receipt["status"],
         "digest": plan["digest"],
