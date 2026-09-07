@@ -575,3 +575,83 @@ def _make_serve_args(
             "no_install": no_install,
         },
     )()
+
+
+def test_reader_readiness_waits_for_background_exit_zero_to_become_ready():
+    import urllib.error
+    from contextlib import nullcontext
+
+    process = Mock()
+    process.poll.return_value = 0
+    with patch("fava_trails.cli.urllib.request.urlopen", side_effect=[urllib.error.URLError("starting"), nullcontext()]) as request:
+        with patch("fava_trails.cli.time.sleep"):
+            cli._wait_for_reader_server("http://127.0.0.1:4321/", process, timeout=1)
+    assert request.call_count == 2
+
+
+def test_reader_readiness_rejects_failed_startup_even_if_a_url_is_occupied():
+    import subprocess
+
+    process = Mock()
+    process.poll.return_value = 2
+    with patch("fava_trails.cli.urllib.request.urlopen") as request:
+        with pytest.raises(subprocess.SubprocessError, match="exit 2"):
+            cli._wait_for_reader_server("http://127.0.0.1:4321/", process)
+    request.assert_not_called()
+
+
+def test_reader_successful_exit_without_server_still_times_out():
+    import urllib.error
+
+    process = Mock()
+    process.poll.return_value = 0
+    with patch("fava_trails.cli.urllib.request.urlopen", side_effect=urllib.error.URLError("unavailable")):
+        with patch("fava_trails.cli.time.monotonic", side_effect=[0, 0.1, 2]):
+            with patch("fava_trails.cli.time.sleep"):
+                with pytest.raises(TimeoutError, match="Timed out"):
+                    cli._wait_for_reader_server("http://127.0.0.1:4321/", process, timeout=1)
+
+
+def test_reader_background_start_reports_supported_status_and_stop(tmp_path, capsys):
+    trails_dir = tmp_path / "trails"
+    output_dir = tmp_path / "reader"
+    _write_thought(trails_dir, "mw/eng/alpha", "decisions", EXPLICIT_TITLE_ID, "# Alpha")
+    process = Mock()
+    process.poll.return_value = 0
+    with patch("fava_trails.cli._ensure_reader_node_modules"), patch("fava_trails.cli._wait_for_reader_server"):
+        with patch("fava_trails.cli._run_reader_process") as run_process:
+            with patch("subprocess.Popen", return_value=process):
+                assert cmd_rich_view_serve(_make_serve_args(trails_dir=trails_dir, out=output_dir)) == 0
+    run_process.assert_not_called()
+    output = capsys.readouterr().out
+    assert "managed background server" in output
+    assert "npm exec astro dev status" in output and "npm exec astro dev stop" in output
+    assert "Press Ctrl-C" not in output
+
+
+def test_reader_detach_after_readiness_reports_background_controls(tmp_path, capsys):
+    trails_dir = tmp_path / "trails"
+    output_dir = tmp_path / "reader"
+    _write_thought(trails_dir, "mw/eng/alpha", "decisions", EXPLICIT_TITLE_ID, "# Alpha")
+    process = Mock()
+    process.poll.side_effect = [None, 0]
+    with patch("fava_trails.cli._ensure_reader_node_modules"), patch("fava_trails.cli._wait_for_reader_server"):
+        with patch("fava_trails.cli._run_reader_process") as run_process:
+            with patch("fava_trails.cli._reader_server_is_ready", return_value=True):
+                with patch("subprocess.Popen", return_value=process):
+                    assert cmd_rich_view_serve(_make_serve_args(trails_dir=trails_dir, out=output_dir)) == 0
+    run_process.assert_called_once_with(process)
+    assert "managed background server" in capsys.readouterr().out
+
+
+def test_reader_failure_after_readiness_returns_failure(tmp_path, capsys):
+    trails_dir = tmp_path / "trails"
+    output_dir = tmp_path / "reader"
+    _write_thought(trails_dir, "mw/eng/alpha", "decisions", EXPLICIT_TITLE_ID, "# Alpha")
+    process = Mock()
+    process.poll.side_effect = [None, 2]
+    with patch("fava_trails.cli._ensure_reader_node_modules"), patch("fava_trails.cli._wait_for_reader_server"):
+        with patch("fava_trails.cli._run_reader_process"):
+            with patch("subprocess.Popen", return_value=process):
+                assert cmd_rich_view_serve(_make_serve_args(trails_dir=trails_dir, out=output_dir)) == 1
+    assert "exited with code 2" in capsys.readouterr().err

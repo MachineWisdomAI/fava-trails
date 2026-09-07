@@ -1009,8 +1009,17 @@ def cmd_rich_view_serve(args: argparse.Namespace) -> int:
         print(f"  URL: {url}")
         print(f"  Reader: {output_dir}")
         print(f"  Scopes: {scopes}")
-        print("  Press Ctrl-C to stop.")
+        if process.poll() == 0:
+            _print_reader_background_controls(output_dir)
+            return 0
+        print("  Attached Astro servers stop with Ctrl-C.")
         _run_reader_process(process)
+        exit_code = process.poll()
+        if exit_code not in (None, 0):
+            raise subprocess.SubprocessError(f"Astro dev server exited with code {exit_code}")
+        # Agent-aware Astro versions may detach just after the readiness probe.
+        if exit_code == 0 and _reader_server_is_ready(url):
+            _print_reader_background_controls(output_dir)
     except KeyboardInterrupt:
         print("\nStopped local FAVA reader.")
         return 0
@@ -1064,8 +1073,9 @@ def _wait_for_reader_server(url: str, process: subprocess.Popen, *, timeout: flo
     deadline = time.monotonic() + timeout
     last_error: Exception | None = None
     while time.monotonic() < deadline:
-        if process.poll() is not None:
-            raise subprocess.SubprocessError("Astro dev server exited before becoming ready")
+        exit_code = process.poll()
+        if exit_code not in (None, 0):
+            raise subprocess.SubprocessError(f"Astro dev server exited before becoming ready (exit {exit_code})")
         try:
             with urllib.request.urlopen(url, timeout=0.5):
                 return
@@ -1073,6 +1083,21 @@ def _wait_for_reader_server(url: str, process: subprocess.Popen, *, timeout: flo
             last_error = e
             time.sleep(0.1)
     raise TimeoutError(f"Timed out waiting for local FAVA reader at {url}: {last_error}")
+
+
+def _reader_server_is_ready(url: str) -> bool:
+    try:
+        with urllib.request.urlopen(url, timeout=0.5):
+            return True
+    except (OSError, urllib.error.URLError):
+        return False
+
+
+def _print_reader_background_controls(output_dir: Path) -> None:
+    print("  Astro is running its managed background server.")
+    print(f"  In {output_dir}:")
+    print("    Status: npm exec astro dev status")
+    print("    Stop:   npm exec astro dev stop")
 
 
 def _run_reader_process(process: subprocess.Popen) -> None:

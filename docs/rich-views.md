@@ -19,6 +19,13 @@ Generation defaults to governed current records: approved records whose approved
 
 The local server binds to `127.0.0.1:4321` by default. Supply `--port` to choose another local port. To generate and serve in one step, use `rich-view serve` with `--trails-dir` and optional repeated `--scope` arguments. Omitting scope includes all discovered scopes. Manual regeneration replaces generated pages, including obsolete routes. The footer records the input scope and generation time; it never implies that the snapshot is live. A future file watcher or JJ change trigger can invoke the same generator, but automatic regeneration is not included.
 
+
+Astro can use its managed background server in an agent environment. The FAVA
+serve command waits for HTTP readiness even when Astro's starter exits successfully,
+then prints the supported `npm exec astro dev status` and `npm exec astro dev stop`
+controls for the generated reader directory. A failed starter or an unavailable
+server still fails; a foreground server retains Ctrl-C cleanup.
+
 ## Read the dashboard
 
 The index and `/scopes/<full-scope>/` dashboards include descendant records. Summary counts describe the included records: total thoughts, descendant scopes, active decisions, draft/proposed records, and superseded records. An active decision is an approved decision without an effective approved successor. A raw replacement link alone does not retire it.
