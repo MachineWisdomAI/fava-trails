@@ -37,4 +37,4 @@ Astro's supported Unified processor handles Markdown. `rehype-sanitize` removes 
 
 ## Acceptance still requiring an operator
 
-Implementation and fixture/browser verification are separate from the five real context re-entry or review sessions in issue #54. The operator still needs to record whether the dashboard reduces raw-file opening or manual reconstruction, what remains hard to inspect, and a continue, revise, or stop decision. Synthetic QA sessions do not count toward that acceptance. The September 7 continuation authorizes implementation of the remaining reader surfaces; it supplies no completed operator sessions or product-outcome decision.
+Implementation and fixture/browser verification are separate from the five real context re-entry or review sessions in issue #54. The operator still needs to record whether the dashboard reduces raw-file opening or manual reconstruction, what remains hard to inspect, and a continue, revise, or stop decision. Synthetic QA sessions do not count toward that acceptance. Automated verification establishes functional behavior; it supplies no completed operator sessions or product-outcome decision.
