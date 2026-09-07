@@ -24,6 +24,9 @@ The operator configures `FAVA_TRAILS_AGENT_ID` on a dedicated process; caller
 `agent_id` must match it. A shared endpoint is one identity boundary. Configure
 `FAVA_TRAILS_OPERATOR=1` only on a separate operator-controlled endpoint.
 
+For a long-lived private ChatGPT connection, follow the deployment-neutral
+[Secure MCP Tunnel operator guide](docs/secure-mcp-tunnel.md).
+
 ## Why
 
 - **Supersession tracking** — a proposed correction leaves the original current; approved replacements make predecessors historical. No contradictory memories.
