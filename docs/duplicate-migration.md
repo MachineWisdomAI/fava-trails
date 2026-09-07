@@ -41,8 +41,10 @@ references, approved current counts, blockers, and its SHA256 digest. Unselected
 groups stay untouched. Canonical selection must retain approved current truth
 when a group contains approved records. Groups with only one unapproved lifecycle
 retain that lifecycle; consolidation never approves them. Removed frontmatter,
-review provenance, and source hashes are retained in the canonical record's
-`metadata.extra.duplicate_migrations`. Original body bytes and extension fields
+review provenance, and source hashes remain in the operator-only receipt before
+images. The canonical record's `metadata.extra.duplicate_migrations` contains only
+a count and opaque audit reference; hidden author context never enters governed
+recall through copied metadata. Original body bytes and extension fields
 survive rewrites.
 
 The tool redirects unambiguous inbound relationships, parentage, intent and
@@ -69,8 +71,11 @@ source snapshot and a clean, conflict-free working change, then records the JJ
 commit and operation recovery point plus full before images in an owner-only
 `.jj/fava-migrations/<digest>.json` receipt. The existing governance journal keeps
 readers on one consistent view until all files are durably committed. No push is
-performed. On success the tool checks the complete resulting snapshot and reports
-counts. Repeating the same successful apply makes no writes or VCS operations.
+performed. Before publication, the tool checks the complete resulting snapshot and saves
+durable commit evidence in the receipt. Repeating a completed apply validates the
+receipt and committed history without writes or new VCS operations. A crash after
+publication leaves a prepared receipt with commit evidence; retry verifies it and
+finishes the receipt instead of inferring success from matching files alone.
 
 If the process fails or dies after writes begin, readers retain the before-image
 view. Repeating the explicitly approved command recovers the journal through JJ,

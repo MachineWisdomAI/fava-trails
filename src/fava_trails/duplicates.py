@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import tempfile
 from datetime import date, datetime
 from pathlib import Path
@@ -14,7 +15,7 @@ import yaml
 from .config import sanitize_scope_path
 from .governance import Visibility, record_index
 from .models import ThoughtRecord
-from .transactions import _sync_directory, journal_path, persist_governance
+from .transactions import _file_lock, _sync_directory, journal_path, persist_governance
 
 
 def digest(value) -> str:
@@ -27,9 +28,9 @@ def _hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-def _scan(root: Path) -> dict[str, str]:
+def _scan(root: Path, *, allow_journal: bool = False) -> dict[str, str]:
     """No JJ invocation or lock creation: dry runs never write repository metadata."""
-    if journal_path(root).exists():
+    if not allow_journal and journal_path(root).exists():
         raise ValueError("Interrupted governance transaction: recover it before planning a migration")
     texts = {}
     for path in sorted((root / "trails").glob("**/thoughts/**/*.md")):
@@ -37,7 +38,7 @@ def _scan(root: Path) -> dict[str, str]:
             raise ValueError("Symlinked thought paths are not supported for migration")
         text = path.read_bytes().decode("utf-8")
         texts[path.relative_to(root).as_posix()] = text
-    if journal_path(root).exists():
+    if not allow_journal and journal_path(root).exists():
         raise ValueError("Governance changed during scan; retry")
     return texts
 
@@ -242,11 +243,8 @@ def build_plan(root: Path, scope: str, canonical: dict[str, str], *, texts=None)
             {
                 "body_sha256": next(h for h, path in canonical.items() if path == keep),
                 "retained_id": fm.thought_id,
-                "removed": [
-                    {"path": n, "sha256": _hash(texts[n]), "frontmatter": _frontmatter(texts[n])}
-                    for n in names
-                    if n != keep
-                ],
+                "removed_count": len(names) - 1,
+                "operator_audit": digest({"before_snapshot": details["snapshot"], "canonical": canonical}),
             }
         )
     changed = set(merged)
@@ -344,6 +342,7 @@ def write_private(path: Path, value) -> None:
         stream.write("\n")
         stream.flush()
         os.fsync(stream.fileno())
+    _sync_directory(path.parent)
 
 
 def _validate_plan(root: Path, plan: dict, confirmation: str) -> None:
@@ -375,22 +374,82 @@ def _verify_rules(root: Path, plan: dict, texts: dict[str, str], *, after: bool)
         raise ValueError("Plan does not match safe migration rules")
 
 
-async def apply_plan(vcs, plan: dict, confirmation: str, *, rollback: bool = False) -> dict:
-    """Only explicit local operator CLI/API use; reviewed digest is mandatory.
+def _read_receipt(path: Path, plan: dict, rollback: bool, *, committed: bool = False) -> dict:
+    try:
+        receipt = json.loads(path.read_text())
+    except (OSError, ValueError) as exc:
+        raise ValueError("Recovery receipt is missing or invalid; inspect it before retrying") from exc
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("plan") != plan
+        or receipt.get("rollback") != rollback
+        or receipt.get("status") not in {"prepared", "rolled_back" if rollback else "applied"}
+    ):
+        raise ValueError("Recovery receipt is invalid; inspect it before retrying")
+    fields = ("recovery_commit", "recovery_operation") + (
+        ("committed_commit", "committed_operation") if committed else ()
+    )
+    for field in fields:
+        size = 40 if field.endswith("commit") else 128
+        if not isinstance(receipt.get(field), str) or not re.fullmatch(r"[0-9a-f]{" + str(size) + "}", receipt[field]):
+            raise ValueError("Recovery receipt lacks valid durable VCS evidence")
+    return receipt
 
-    Reuse the governance journal and lock for atomic publication and crash recovery.
-    The durable receipt holds an exact JJ operation/commit and all before images.
-    """
+
+def _save_receipt(path: Path, receipt: dict) -> None:
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent, delete=False, newline=""
+        ) as stream:
+            temporary = Path(stream.name)
+            json.dump(receipt, stream, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        _sync_directory(path.parent)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+async def _verify_committed(vcs, receipt: dict, message: str) -> None:
+    dirty, _ = await vcs._run("diff", "--name-only")
+    if dirty or await vcs.conflicts():
+        raise ValueError("Recovery verification requires a clean conflict-free repository")
+    commit = receipt["committed_commit"]
+    proof, _ = await vcs._run(
+        "log", "-r", f"{commit} & ancestors(@)", "--no-graph", "-T", 'commit_id ++ "\\n" ++ description'
+    )
+    if proof != commit + "\n" + message:
+        raise ValueError("Recovery receipt does not identify the durable migration in current history")
+
+
+async def apply_plan(vcs, plan: dict, confirmation: str, *, rollback: bool = False) -> dict:
+    """Explicit operator maintenance with private, recoverable publication evidence."""
     root = vcs.repo_root.resolve(strict=True)
     _validate_plan(root, plan, confirmation)
     source = plan["after_snapshot"] if rollback else plan["before_snapshot"]
     target = plan["before_snapshot"] if rollback else plan["after_snapshot"]
+    status = "rolled_back" if rollback else "applied"
+    message = ("Rollback" if rollback else "Migrate") + " exact duplicates " + plan["digest"]
     receipt_path = root / ".jj" / "fava-migrations" / (plan["digest"] + ("-rollback" if rollback else "") + ".json")
-    # A successful rerun does not create another VCS operation.
     current = capture(root) if not journal_path(root).exists() else None
     if current is not None and {n: _hash(t) for n, t in current.items()} == target:
-        _verify_rules(root, plan, current, after=not rollback)
-        return {"status": "already_rolled_back" if rollback else "already_applied", "digest": plan["digest"]}
+        # Matching bytes alone cannot prove that an operator migration committed.
+        _read_receipt(receipt_path, plan, rollback, committed=True)
+        async with vcs.repo_lock:
+            with _file_lock(root, exclusive=True):
+                current = capture(root)
+                if {n: _hash(t) for n, t in current.items()} != target:
+                    raise ValueError("Repository changed during recovery verification")
+                _verify_rules(root, plan, current, after=not rollback)
+                receipt = _read_receipt(receipt_path, plan, rollback, committed=True)
+                await _verify_committed(vcs, receipt, message)
+                if receipt["status"] == "prepared":
+                    receipt["status"] = status
+                    _save_receipt(receipt_path, receipt)
+        return {"status": "already_" + status, "digest": plan["digest"]}
 
     async def prepare():
         texts = capture(root)
@@ -412,39 +471,27 @@ async def apply_plan(vcs, plan: dict, confirmation: str, *, rollback: bool = Fal
             "plan": plan,
         }
         receipt_path.parent.mkdir(parents=True, exist_ok=True)
-        # Retries retain their original recovery evidence; each migration has a fixed identity.
+        _sync_directory(receipt_path.parent.parent)
         if receipt_path.exists():
-            existing = json.loads(receipt_path.read_text())
-            if (
-                existing.get("plan") != plan
-                or not existing.get("recovery_commit")
-                or not existing.get("recovery_operation")
-            ):
-                raise ValueError("Recovery receipt is invalid; inspect it before retrying")
+            _read_receipt(receipt_path, plan, rollback)
         else:
             write_private(receipt_path, receipt)
 
+    async def committed():
+        # This runs under the transaction lock before journal removal publishes.
+        if {n: _hash(t) for n, t in _scan(root, allow_journal=True).items()} != target:
+            raise RuntimeError("Post-migration verification failed; inspect the recovery receipt")
+        receipt = _read_receipt(receipt_path, plan, rollback)
+        receipt["status"] = "prepared"
+        receipt["committed_commit"], _ = await vcs._run("log", "-r", "@-", "--no-graph", "-T", "commit_id")
+        receipt["committed_operation"], _ = await vcs._run("op", "log", "--limit", "1", "--no-graph", "-T", "id")
+        await _verify_committed(vcs, receipt, message)
+        _save_receipt(receipt_path, receipt)
+
     writes = {root / o["path"]: o["before"] if rollback else o["after"] for o in plan["operations"]}
-    await persist_governance(
-        vcs, writes, ("Rollback" if rollback else "Migrate") + " exact duplicates " + plan["digest"], prepare=prepare
-    )
-    if {n: _hash(t) for n, t in capture(root).items()} != target:
-        raise RuntimeError("Post-migration verification failed; inspect the recovery receipt")
-    receipt = json.loads(receipt_path.read_text())
-    receipt["status"] = "rolled_back" if rollback else "applied"
-    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=receipt_path.parent, delete=False) as stream:
-        temporary = Path(stream.name)
-        json.dump(receipt, stream, indent=2)
-        stream.flush()
-        os.fsync(stream.fileno())
-    try:
-        os.replace(temporary, receipt_path)
-        _sync_directory(receipt_path.parent)
-    finally:
-        temporary.unlink(missing_ok=True)
-    return {
-        "status": receipt["status"],
-        "digest": plan["digest"],
-        "counts": plan["counts"],
-        "receipt": str(receipt_path),
-    }
+    await persist_governance(vcs, writes, message, prepare=prepare, committed=committed)
+    # A crash here is recoverable: the prepared receipt already proves durability.
+    receipt = _read_receipt(receipt_path, plan, rollback, committed=True)
+    receipt["status"] = status
+    _save_receipt(receipt_path, receipt)
+    return {"status": status, "digest": plan["digest"], "counts": plan["counts"], "receipt": str(receipt_path)}

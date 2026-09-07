@@ -70,10 +70,12 @@ async def test_mixed_draft_preserves_approved_and_provenance(jj_backend):
     assert [r.thought_id for r in snap.records.values() if Visibility().allows(r, snap.by_id)] == ["A"]
     saved = next(iter(snap.records.values()))
     assert saved.frontmatter.validation_status == "approved"
-    removed = saved.frontmatter.metadata.extra["duplicate_migrations"][0]["removed"][0]
-    assert removed["frontmatter"]["validation_status"] == "draft"
-    assert removed["frontmatter"]["agent_id"] == "synthetic-author"
+    audit = saved.frontmatter.metadata.extra["duplicate_migrations"][0]
+    assert audit["removed_count"] == 1 and "removed" not in audit
+    assert "synthetic-author" not in saved.model_dump_json()
     receipt = json.loads(Path(result["receipt"]).read_text())
+    removed = next(o for o in receipt["plan"]["operations"] if o["after"] is None)
+    assert ThoughtRecord.from_markdown(removed["before"]).frontmatter.agent_id == "synthetic-author"
     assert len(receipt["recovery_commit"]) == 40 and len(receipt["recovery_operation"]) >= 32
     assert Path(result["receipt"]).stat().st_mode & 0o077 == 0
 
@@ -321,3 +323,104 @@ async def test_corrupt_existing_recovery_receipt_blocks_source_mutation(jj_backe
         await apply_plan(jj_backend, plan, plan["digest"])
     assert capture(jj_backend.repo_root) == before
     assert not journal_path(jj_backend.repo_root).exists()
+
+
+@pytest.mark.asyncio
+async def test_crlf_failure_retry_apply_and_rollback_preserve_exact_bytes(jj_backend, monkeypatch):
+    root = jj_backend.repo_root
+    paths = [put(root, identity) for identity in ("A", "B")]
+    for path in paths:
+        path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+    await jj_backend.commit_files("Synthetic CRLF sources", [str(path) for path in paths])
+    original = {path: path.read_bytes() for path in paths}
+    plan = plan_for(root)
+    commit = jj_backend.commit_files
+
+    async def fail(*args, **kwargs):
+        raise RuntimeError("synthetic CRLF persistence failure")
+
+    monkeypatch.setattr(jj_backend, "commit_files", fail)
+    with pytest.raises(RuntimeError, match="CRLF persistence failure"):
+        await apply_plan(jj_backend, plan, plan["digest"])
+    assert {path: path.read_bytes() for path in paths} == original
+    before = json.loads(journal_path(root).read_bytes())["before"]
+    assert all(before[str(path.relative_to(root))].encode() == original[path] for path in paths)
+    snapshot = read_snapshot(root / "trails", strict=True)
+    assert {path: text.encode() for path, text in snapshot.texts.items()} == original
+    monkeypatch.setattr(jj_backend, "commit_files", commit)
+    assert (await apply_plan(jj_backend, plan, plan["digest"]))["status"] == "applied"
+    for operation in plan["operations"]:
+        path = root / operation["path"]
+        if operation["after"] is None:
+            assert not path.exists()
+        else:
+            assert path.read_bytes() == operation["after"].encode()
+    assert (await apply_plan(jj_backend, plan, plan["digest"], rollback=True))["status"] == "rolled_back"
+    assert {path: path.read_bytes() for path in paths} == original
+
+
+@pytest.mark.asyncio
+async def test_post_commit_crash_receipt_is_finalized_by_verified_retry(jj_backend, monkeypatch):
+    import fava_trails.duplicates as maintenance
+
+    plan = await seed(jj_backend)
+    persist = maintenance.persist_governance
+
+    async def crash_after_publication(*args, **kwargs):
+        await persist(*args, **kwargs)
+        raise SystemExit("Synthetic interruption after publication")
+
+    monkeypatch.setattr(maintenance, "persist_governance", crash_after_publication)
+    with pytest.raises(SystemExit):
+        await apply_plan(jj_backend, plan, plan["digest"])
+    receipt = jj_backend.repo_root / ".jj/fava-migrations" / (plan["digest"] + ".json")
+    prepared = json.loads(receipt.read_text())
+    assert prepared["status"] == "prepared" and len(prepared["committed_commit"]) == 40
+    monkeypatch.setattr(maintenance, "persist_governance", persist)
+    assert (await apply_plan(jj_backend, plan, plan["digest"]))["status"] == "already_applied"
+    assert json.loads(receipt.read_text())["status"] == "applied"
+    receipt.write_text('{"status":"applied","plan":{}}')
+    with pytest.raises(ValueError, match="Recovery receipt"):
+        await apply_plan(jj_backend, plan, plan["digest"])
+
+
+@pytest.mark.asyncio
+async def test_matching_after_images_without_receipt_are_not_success(jj_backend):
+    plan = await seed(jj_backend)
+    for operation in plan["operations"]:
+        path = jj_backend.repo_root / operation["path"]
+        if operation["after"] is None:
+            path.unlink()
+        else:
+            path.write_bytes(operation["after"].encode())
+    with pytest.raises(ValueError, match="Recovery receipt"):
+        await apply_plan(jj_backend, plan, plan["digest"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["draft", "proposed"])
+async def test_private_provenance_remains_operator_only_after_migration(jj_backend, monkeypatch, status):
+    from fava_trails.tools.recall import handle_recall
+    from fava_trails.trail import TrailManager
+
+    marker = "SYNTHETIC_PRIVATE_AUTHOR_CONTEXT"
+    plan = await seed(jj_backend, status=status, agent_id="private-author", metadata={"extra": {"work_note": marker}})
+    trail = TrailManager(SCOPE, vcs=jj_backend)
+    monkeypatch.setenv("FAVA_TRAILS_AGENT_ID", "different-author")
+    monkeypatch.delenv("FAVA_TRAILS_OPERATOR", raising=False)
+    assert marker not in json.dumps(await handle_recall(trail, {}))
+    assert marker not in json.dumps(await handle_recall(trail, {"mode": "authoring"}))
+    with pytest.raises(PermissionError):
+        await handle_recall(trail, {"mode": "history"})
+    monkeypatch.setenv("FAVA_TRAILS_AGENT_ID", "private-author")
+    assert marker in json.dumps(await handle_recall(trail, {"mode": "authoring"}))
+    result = await apply_plan(jj_backend, plan, plan["digest"])
+    assert marker in Path(result["receipt"]).read_text()
+    for identity in ("private-author", "different-author"):
+        monkeypatch.setenv("FAVA_TRAILS_AGENT_ID", identity)
+        assert marker not in json.dumps(await handle_recall(trail, {}))
+        assert (await handle_recall(trail, {"mode": "authoring"}))["thoughts"] == []
+    monkeypatch.setenv("FAVA_TRAILS_OPERATOR", "1")
+    history = await handle_recall(trail, {"mode": "history"})
+    assert [t["thought_id"] for t in history["thoughts"]] == ["A"]
+    assert marker not in json.dumps(history)
