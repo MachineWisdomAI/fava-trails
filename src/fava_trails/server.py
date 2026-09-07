@@ -1,6 +1,6 @@
 """FAVA Trails MCP Server 🫛👣 — Federated Agents Versioned Audit Trail.
 
-Provides 16 MCP tools for versioned agent memory via JJ (Jujutsu) VCS.
+Provides 17 MCP tools for versioned agent memory via JJ (Jujutsu) VCS.
 All tool responses are token-optimized JSON summaries — no raw VCS output.
 """
 
@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import importlib.resources
+import json
 import logging
 import logging.handlers
 import os
@@ -17,9 +18,18 @@ from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import Any
 
-from mcp.server import Server
+import jsonschema
+from mcp.server import Server, ServerRequestContext
 from mcp.server.stdio import stdio_server
-from mcp.types import TextContent, Tool, ToolAnnotations
+from mcp.types import (
+    CallToolRequestParams,
+    CallToolResult,
+    ListToolsResult,
+    PaginatedRequestParams,
+    TextContent,
+    Tool,
+    ToolAnnotations,
+)
 
 from .config import (
     ConfigStore,
@@ -157,8 +167,6 @@ def _load_usage_guide() -> str:
 
     return "Error: AGENTS_USAGE_INSTRUCTIONS.md not found. Check your installation."
 
-
-server = Server("fava-trails", instructions=_build_server_instructions())
 
 # Trail manager cache: trail_name -> TrailManager
 _trail_managers: dict[str, TrailManager] = {}
@@ -308,6 +316,7 @@ STRUCTURED_RESULT_SCHEMA: dict[str, Any] = {
 def _structured_or_common_error(success_schema: dict[str, Any]) -> dict[str, Any]:
     """Allow a precise success shape while preserving structured error responses."""
     return {
+        "type": "object",
         "anyOf": [
             success_schema,
             STRUCTURED_RESULT_SCHEMA,
@@ -854,22 +863,20 @@ def with_tool_timeout(
     return wrapper
 
 
-@server.list_tools()
 async def handle_list_tools() -> list[Tool]:
     """List all FAVA Trails tools."""
     return [
         Tool(
             name=td["name"],
             description=td["description"],
-            inputSchema=td["inputSchema"],
-            outputSchema=td["outputSchema"],
+            input_schema=td["inputSchema"],
+            output_schema=td["outputSchema"],
             annotations=ToolAnnotations(**td["annotations"]),
         )
         for td in TOOL_DEFINITIONS
     ]
 
 
-@server.call_tool()
 @with_tool_timeout
 async def handle_call_tool(name: str, arguments: dict[str, Any]) -> Any:
     """Route tool calls to handlers. Responses are structured JSON (except get_usage_guide which returns markdown)."""
@@ -1072,6 +1079,57 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     logger.info("Tool call completed: %s %s", name, _summarize_tool_result(result))
     return result
+
+
+async def _list_tools(ctx: ServerRequestContext, params: PaginatedRequestParams | None) -> ListToolsResult:
+    """Adapt the canonical tool catalogue to the SDK's explicit handler API."""
+    return ListToolsResult(tools=await handle_list_tools())
+
+
+def _tool_error(message: str) -> CallToolResult:
+    return CallToolResult(content=[TextContent(type="text", text=message)], is_error=True)
+
+
+async def _call_tool(ctx: ServerRequestContext, params: CallToolRequestParams) -> CallToolResult:
+    """Preserve v1 validation and result semantics at the v2 transport boundary.
+
+    Domain error/blocked dictionaries remain structured results. Invalid schemas
+    and unexpected adapter failures are MCP tool errors; cancellation propagates.
+    """
+    definition = next((tool for tool in TOOL_DEFINITIONS if tool["name"] == params.name), None)
+    arguments = params.arguments or {}
+    if definition is not None:
+        try:
+            jsonschema.validate(arguments, definition["inputSchema"])
+        except jsonschema.ValidationError as exc:
+            return _tool_error(f"Input validation error: {exc.message}")
+
+    try:
+        result = await handle_call_tool(params.name, arguments)
+        if isinstance(result, tuple):
+            content, structured = result
+        else:
+            structured = result
+            content = [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
+        if definition is not None:
+            try:
+                jsonschema.validate(structured, definition["outputSchema"])
+            except jsonschema.ValidationError:
+                # A malformed handler result may contain data that should never
+                # reach this caller. Do not echo the rejected value in the error.
+                return _tool_error("Output validation error: result does not match the tool output schema")
+        return CallToolResult(content=content, structured_content=structured)
+    except Exception:
+        logger.exception("MCP tool adapter failed for %s", params.name)
+        return _tool_error("Tool execution failed")
+
+
+server = Server(
+    "fava-trails",
+    instructions=_build_server_instructions(),
+    on_list_tools=_list_tools,
+    on_call_tool=_call_tool,
+)
 
 
 def run():
