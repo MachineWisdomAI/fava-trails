@@ -928,6 +928,16 @@ def cmd_get(args: argparse.Namespace) -> int:
 # ─── Rich Views reader generation ─────────────────────────────────────────────
 
 
+def _reader_visibility(args: argparse.Namespace):
+    from .governance import Principal, Visibility
+    return Visibility(
+        mode=getattr(args, "mode", "governed"),
+        principal=Principal(operator=True),
+        statuses=tuple(getattr(args, "statuses", None) or ()),
+        include_superseded=getattr(args, "include_superseded", False),
+    )
+
+
 def cmd_rich_view_generate(args: argparse.Namespace) -> int:
     """Generate a minimal plain-Astro reader from FAVA source records."""
     try:
@@ -939,6 +949,7 @@ def cmd_rich_view_generate(args: argparse.Namespace) -> int:
             trails_dir=trails_dir,
             scope=args.scope,
             output_dir=output_dir,
+            visibility=_reader_visibility(args),
         )
     except (OSError, ValueError, yaml.YAMLError) as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -970,6 +981,7 @@ def cmd_rich_view_serve(args: argparse.Namespace) -> int:
                 trails_dir=trails_dir,
                 scopes=args.scope,
                 output_dir=output_dir,
+                visibility=_reader_visibility(args),
             )
 
         _ensure_reader_node_modules(output_dir, skip_install=args.no_install)
@@ -1731,6 +1743,9 @@ def build_parser() -> argparse.ArgumentParser:
     _add_rich_view_scope_arg(p_rich_view_generate, required=True, repeated=False)
     _add_rich_view_out_arg(p_rich_view_generate, required=True)
     _add_rich_view_trails_dir_arg(p_rich_view_generate)
+    p_rich_view_generate.add_argument("--mode", choices=("governed", "history"), default="governed", help="Default current approved records, or explicit local operator archaeology")
+    p_rich_view_generate.add_argument("--status", dest="statuses", action="append", choices=("draft", "proposed", "approved", "rejected", "error", "tombstoned"), help="Select lifecycle statuses in history mode")
+    p_rich_view_generate.add_argument("--include-superseded", action="store_true", help="Include historical predecessors in history mode")
     p_rich_view_generate.set_defaults(func=cmd_rich_view_generate)
 
     p_rich_view_serve = rich_view_sub.add_parser(
@@ -1740,6 +1755,9 @@ def build_parser() -> argparse.ArgumentParser:
     _add_rich_view_scope_arg(p_rich_view_serve, required=False, repeated=True)
     _add_rich_view_out_arg(p_rich_view_serve, required=False)
     _add_rich_view_trails_dir_arg(p_rich_view_serve)
+    p_rich_view_serve.add_argument("--mode", choices=("governed", "history"), default="governed", help="Default current approved records, or explicit local operator archaeology")
+    p_rich_view_serve.add_argument("--status", dest="statuses", action="append", choices=("draft", "proposed", "approved", "rejected", "error", "tombstoned"), help="Select lifecycle statuses in history mode")
+    p_rich_view_serve.add_argument("--include-superseded", action="store_true", help="Include historical predecessors in history mode")
     p_rich_view_serve.add_argument(
         "--host",
         default="127.0.0.1",

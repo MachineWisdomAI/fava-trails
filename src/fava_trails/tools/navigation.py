@@ -115,6 +115,19 @@ async def handle_propose_truth(
         policy = get_trust_gate_policy(trail.trail_name)
 
         trust_result = None
+        reviewed_record = None
+        if arguments.get("approval") == "human":
+            from ..governance import runtime_principal
+            from ..trust_gate import TrustResult
+            principal = runtime_principal()
+            if not principal.operator or not principal.agent_id:
+                raise ValueError("Explicit human approval requires an operator-controlled endpoint")
+            trust_result = TrustResult(
+                verdict="approve", reasoning="Explicit operator approval",
+                reviewer=f"human:{principal.agent_id}", approval_kind="human",
+            )
+            promoted = await trail.propose_truth(thought_id, trust_result=trust_result, reviewed_record=reviewed_record)
+            return {"status": "ok", "thought": _serialize_thought(promoted), "message": "Approved by explicit operator action"}
         if policy == "llm-oneshot" and prompt_cache is None:
             return {
                 "status": "error",
@@ -127,6 +140,7 @@ async def handle_propose_truth(
             if record is None:
                 return {"status": "error", "message": f"Thought {thought_id} not found"}
 
+            reviewed_record = record.model_copy(deep=True)
             try:
                 prompt = prompt_cache.resolve_prompt(trail.trail_name)
             except TrustGateConfigError as e:
@@ -180,7 +194,7 @@ async def handle_propose_truth(
             else:
                 trust_result = await _review_coro
 
-        promoted = await trail.propose_truth(thought_id, trust_result=trust_result)
+        promoted = await trail.propose_truth(thought_id, trust_result=trust_result, reviewed_record=reviewed_record)
         result = {
             "status": "ok",
             "thought": _serialize_thought(promoted),
@@ -229,9 +243,19 @@ async def handle_rollback(trail, arguments: dict) -> dict[str, Any]:
     return {"status": "ok", "message": result}
 
 
-async def handle_sync(trail, arguments: dict) -> dict[str, Any]:
-    """Sync with shared truth. Aborts on conflict."""
+async def handle_sync(trail, arguments: dict, *, private_details: bool = True) -> dict[str, Any]:
+    """Sync with shared truth; repository diagnostics are operator-only."""
     result = await trail.sync()
+    if not private_details:
+        if result.has_case_collisions:
+            return {"status": "blocked", "message": "Sync blocked by repository path conflicts. Operator attention is required."}
+        if result.has_dirty_working_copy:
+            return {"status": "blocked", "message": "Sync blocked by uncommitted repository changes. Operator attention is required."}
+        if result.has_conflicts:
+            return {"status": "conflict", "message": "Sync stopped because of repository conflicts. Pre-sync state restored; operator attention is required."}
+        if not result.success:
+            return {"status": "error", "message": "Sync failed. Ask an operator to check repository state and connectivity."}
+        return {"status": "ok", "message": "Sync complete."}
     if getattr(result, "has_case_collisions", False):
         return {
             "status": "blocked",

@@ -13,7 +13,7 @@ from typing import Any
 import yaml
 
 from .config import sanitize_scope_path
-from .models import ThoughtRecord
+from .governance import RecordSnapshot, Visibility, read_snapshot
 
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", re.MULTILINE)
 _SAFE_THOUGHT_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -58,6 +58,7 @@ def generate_reader(
     scope: str,
     output_dir: Path | str,
     generated_at: datetime | None = None,
+    visibility: Visibility | None = None,
 ) -> GenerationResult:
     """Generate a minimal plain-Astro reader from FAVA source thought records."""
 
@@ -68,7 +69,7 @@ def generate_reader(
     if timestamp.tzinfo is None:
         timestamp = timestamp.replace(tzinfo=UTC)
 
-    thoughts = _load_reader_thoughts(source_root, safe_scope)
+    thoughts = _load_reader_thoughts(source_root, safe_scope, visibility)
     _write_reader(destination, safe_scope, timestamp, thoughts)
 
     return GenerationResult(
@@ -87,6 +88,7 @@ def generate_reader_for_scopes(
     scopes: list[str] | tuple[str, ...] | None,
     output_dir: Path | str,
     generated_at: datetime | None = None,
+    visibility: Visibility | None = None,
 ) -> GenerationResult:
     """Generate a minimal plain-Astro reader for selected or all discovered scopes."""
 
@@ -99,8 +101,9 @@ def generate_reader_for_scopes(
     safe_scopes = tuple(_resolve_reader_scopes(source_root, scopes))
     all_thoughts: list[ReaderThought] = []
     seen: dict[str, Path] = {}
+    snapshot = read_snapshot(source_root, strict=True)
     for scope in safe_scopes:
-        for thought, source_path in _load_reader_thoughts_with_sources(source_root, scope):
+        for thought, source_path in _load_reader_thoughts_with_sources(source_root, scope, visibility, snapshot=snapshot):
             if thought.thought_id in seen:
                 raise ValueError(f"Duplicate thought_id {thought.thought_id} in {source_path} and {seen[thought.thought_id]}")
             seen[thought.thought_id] = source_path
@@ -120,21 +123,29 @@ def generate_reader_for_scopes(
     )
 
 
-def _load_reader_thoughts(trails_dir: Path, scope: str) -> list[ReaderThought]:
-    return [thought for thought, _source_path in _load_reader_thoughts_with_sources(trails_dir, scope)]
+def _load_reader_thoughts(trails_dir: Path, scope: str, visibility: Visibility | None = None) -> list[ReaderThought]:
+    return [thought for thought, _source_path in _load_reader_thoughts_with_sources(trails_dir, scope, visibility)]
 
 
-def _load_reader_thoughts_with_sources(trails_dir: Path, scope: str) -> list[tuple[ReaderThought, Path]]:
+def _load_reader_thoughts_with_sources(
+    trails_dir: Path, scope: str, visibility: Visibility | None = None,
+    *, snapshot: RecordSnapshot | None = None,
+) -> list[tuple[ReaderThought, Path]]:
     thoughts_dir = trails_dir / scope / "thoughts"
     if not thoughts_dir.is_dir():
         raise ValueError(f"No FAVA thoughts found for scope {scope!r} at {thoughts_dir}")
 
+    visibility = visibility or Visibility()
+    snapshot = snapshot if snapshot is not None else read_snapshot(trails_dir, strict=True)
+    texts, records, by_id = snapshot.texts, snapshot.records, snapshot.by_id
     seen: dict[str, Path] = {}
     thoughts: list[tuple[ReaderThought, Path]] = []
-    for path in sorted(p for p in thoughts_dir.rglob("*.md") if p.name != ".gitkeep"):
-        raw_text = path.read_text(encoding="utf-8")
+    for path in sorted(p for p in texts if p.is_relative_to(thoughts_dir)):
+        raw_text = texts[path]
         raw_frontmatter = _read_raw_frontmatter(raw_text)
-        record = ThoughtRecord.from_markdown(raw_text)
+        record = records[path]
+        if not visibility.allows(record, by_id):
+            continue
         thought_id = record.thought_id
         _validate_reader_thought_id(thought_id, path)
         if thought_id in seen:

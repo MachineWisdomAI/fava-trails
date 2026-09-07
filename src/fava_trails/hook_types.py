@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 from ulid import ULID
 
 if TYPE_CHECKING:
+    from .governance import RecordSnapshot
     from .models import ThoughtRecord
     from .trust_gate import TrustResult
 
@@ -356,8 +357,9 @@ class TrailContext:
     All methods are async to match TrailManager's interface.
     """
 
-    def __init__(self, trail_manager: Any) -> None:
+    def __init__(self, trail_manager: Any, *, recall_snapshot: RecordSnapshot | None = None) -> None:
         self._trail = trail_manager
+        self._recall_snapshot = recall_snapshot
 
     async def stats(self) -> dict[str, int]:
         """Thought count by namespace."""
@@ -390,8 +392,10 @@ class TrailContext:
     ) -> list[ThoughtRecord]:
         """Search thoughts using _recall_internal (bypasses hooks)."""
         capped_limit = min(limit, TRAIL_CONTEXT_RECALL_LIMIT)
+        snapshot_args = {"_snapshot": self._recall_snapshot} if self._recall_snapshot is not None else {}
         return await self._trail._recall_internal(
             query=query,
             namespace=namespace,
             limit=capped_limit,
+            **snapshot_args,
         )
