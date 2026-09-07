@@ -8,7 +8,8 @@ const group = relationships => Object.entries(relationships.reduce((groups, edge
   <p class="eyebrow"><a href={`/scopes/${t.scope}/`}>{t.scope}</a> / Thought</p>
   <h1>{t.title}</h1>
   <div class="meta"><span class="badge" data-status={t.validationStatus}>{t.validationStatus}</span><span>{t.sourceType}</span><span>{Math.round(t.confidence * 100)}% confidence</span><span>{t.agentId}</span><time datetime={t.createdAt}>{t.createdAt}</time>{t.tags.map(tag => <span class="tag">#{tag}</span>)}</div>
-  {t.supersededBy && <p class="warning">Superseded — use the replacement record: <ThoughtLink target={t.supersededBy} /></p>}
+  {t.isSuperseded && <p class="warning">Superseded — use the replacement record: <ThoughtLink target={t.supersededBy} /></p>}
+  {t.supersededBy && !t.isSuperseded && <p class="meta">Recorded replacement link (not effective): <ThoughtLink target={t.supersededBy} /></p>}
   <section class="panel provenance-panel" aria-label="Source provenance">
     <dl><dt>Durable ID</dt><dd><a href={t.fallbackRoute}><code>{t.thoughtId}</code></a></dd><dt>Human route</dt><dd><a href={t.route}>{t.route}</a></dd><dt>Namespace</dt><dd>{t.namespace}</dd><dt>Source Markdown</dt><dd><code>{t.sourcePath}</code></dd><dt>Generated at</dt><dd>{t.generatedAt}</dd></dl>
   </section>

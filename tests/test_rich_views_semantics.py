@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from fava_trails.governance import Principal, Visibility
 from fava_trails.models import ThoughtFrontmatter, ThoughtRecord
 from fava_trails.rich_views import generate_reader, generate_reader_for_scopes
 
@@ -39,7 +40,8 @@ def test_descendant_dashboard_and_semantic_detail_preserve_source(tmp_path):
                  source_type="observation", namespace="observations", agent_id="builder")
     write_record(trails, "example/other", "other-00000004", "# Outside selected scope")
     before = source.read_bytes()
-    result = generate_reader(trails_dir=trails, scope="example/team", output_dir=reader, generated_at=STAMP)
+    result = generate_reader(trails_dir=trails, scope="example/team", output_dir=reader, generated_at=STAMP,
+                             visibility=Visibility(mode="history", principal=Principal(operator=True), include_superseded=True))
     assert result.scopes == ("example/team", "example/team/child")
     assert result.thought_count == 3
     assert source.read_bytes() == before

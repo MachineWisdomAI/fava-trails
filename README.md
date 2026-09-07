@@ -10,9 +10,23 @@
 
 Every thought, decision, and observation is stored as a markdown file with YAML frontmatter in a Git repo you control, with crash-proof persistence and a versioned audit trail. Agents interact through [MCP](https://modelcontextprotocol.io/) tools — they never see VCS commands.
 
+## Governed recall
+
+FAVA is the governed institutional record for decisions, observations, validation,
+and lineage. It is not the operational working-context store. Default `recall`
+and `get_thought` expose current approved records only. Explicit `mode="authoring"`
+retrieves only the server-configured agent's draft/proposed records; operator-only
+`mode="history"` selects lifecycle statuses and superseded records. Neither a
+namespace nor a supplied `agent_id` grants access. See [governed-recall.md](docs/governed-recall.md)
+for identity setup, compatibility, approval provenance, and interrupted-write recovery.
+
+The operator configures `FAVA_TRAILS_AGENT_ID` on a dedicated process; caller
+`agent_id` must match it. A shared endpoint is one identity boundary. Configure
+`FAVA_TRAILS_OPERATOR=1` only on a separate operator-controlled endpoint.
+
 ## Why
 
-- **Supersession tracking** — when an agent corrects a belief, the old version is hidden from default recall. No contradictory memories.
+- **Supersession tracking** — a proposed correction leaves the original current; approved replacements make predecessors historical. No contradictory memories.
 - **Draft isolation** — working thoughts stay in `drafts/`. Other agents only see promoted thoughts.
 - **Trust Gate** — an LLM-based reviewer validates thoughts before they enter shared truth. Hallucinations stay contained in draft.
 - **Full lineage** — every thought carries who wrote it, when, and why it changed.

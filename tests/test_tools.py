@@ -2,8 +2,18 @@
 
 import pytest
 
+from fava_trails.governance import Principal, Visibility
 from fava_trails.models import SourceType
 from fava_trails.trail import AmbiguousThoughtID, recall_multi
+from fava_trails.trust_gate import TrustResult
+
+# These existing search/hook tests exercise operator archaeology of synthetic
+# drafts. Governed defaults and author isolation are covered in test_governance.
+HISTORY = Visibility(mode="history", principal=Principal(operator=True), include_superseded=True)
+
+
+def review_approval():
+    return TrustResult(verdict="approve", reasoning="Synthetic test approval", reviewer="fixture")
 
 
 @pytest.mark.asyncio
@@ -57,6 +67,8 @@ async def test_get_thought_finds_exact_ulid_in_other_scope(tmp_fava_home):
     )
     await real_manager.init()
     record = await real_manager.save_thought(content="Makers org chart", agent_id="test")
+
+    await real_manager.propose_truth(record.thought_id, review_approval())
 
     result = await fava_server.handle_call_tool(
         "get_thought",
@@ -136,7 +148,9 @@ async def test_supersede_atomic(trail_manager):
     assert new.thought_id != original.thought_id
     assert new.frontmatter.parent_id == original.thought_id
 
-    # Original should now have superseded_by
+    await trail_manager.propose_truth(new.thought_id, review_approval())
+
+    # Approval installs the original backlink
     refreshed = await trail_manager.get_thought(original.thought_id)
     assert refreshed is not None
     assert refreshed.frontmatter.superseded_by == new.thought_id
@@ -144,30 +158,14 @@ async def test_supersede_atomic(trail_manager):
 
 @pytest.mark.asyncio
 async def test_recall_hides_superseded(trail_manager):
-    """recall should hide superseded thoughts by default."""
-    original = await trail_manager.save_thought(
-        content="Old observation.",
-        agent_id="test-agent",
-        namespace="observations",
-    )
-    new = await trail_manager.supersede(
-        original_id=original.thought_id,
-        new_content="Updated observation.",
-        reason="Corrected error",
-        agent_id="test-agent",
-    )
-
-    # Default: hide superseded
-    results = await trail_manager.recall(namespace="observations")
-    ids = [r.thought_id for r in results]
-    assert new.thought_id in ids
-    assert original.thought_id not in ids
-
-    # With include_superseded
-    results_all = await trail_manager.recall(namespace="observations", include_superseded=True)
-    ids_all = [r.thought_id for r in results_all]
-    assert new.thought_id in ids_all
-    assert original.thought_id in ids_all
+    """Governed recall hides predecessors only after successor approval."""
+    original = await trail_manager.save_thought("Old observation.", agent_id="test-agent")
+    await trail_manager.propose_truth(original.thought_id, review_approval())
+    new = await trail_manager.supersede(original.thought_id, "Updated observation.", agent_id="test-agent")
+    assert [r.thought_id for r in await trail_manager.recall()] == [original.thought_id]
+    await trail_manager.propose_truth(new.thought_id, review_approval())
+    assert [r.thought_id for r in await trail_manager.recall()] == [new.thought_id]
+    assert {r.thought_id for r in await trail_manager.recall(visibility=HISTORY)} == {original.thought_id,new.thought_id}
 
 
 @pytest.mark.asyncio
@@ -176,7 +174,7 @@ async def test_recall_by_query(trail_manager):
     await trail_manager.save_thought(content="JJ is great for versioning.", agent_id="test")
     await trail_manager.save_thought(content="Python is the best language.", agent_id="test")
 
-    results = await trail_manager.recall(query="JJ")
+    results = await trail_manager.recall(visibility=HISTORY, query="JJ")
     assert len(results) >= 1
     assert any("JJ" in r.content for r in results)
 
@@ -192,12 +190,12 @@ async def test_recall_multi_word_query(trail_manager):
     )
 
     # "JJ versioning" — both words present but not contiguous
-    results = await trail_manager.recall(query="JJ versioning")
+    results = await trail_manager.recall(visibility=HISTORY, query="JJ versioning")
     assert len(results) >= 1
     assert any("JJ" in r.content and "versioning" in r.content for r in results)
 
     # Non-matching multi-word query
-    results_none = await trail_manager.recall(query="nonexistent stuff here")
+    results_none = await trail_manager.recall(visibility=HISTORY, query="nonexistent stuff here")
     assert len(results_none) == 0
 
 
@@ -215,7 +213,7 @@ async def test_recall_by_scope(trail_manager):
         metadata={"project": "other-project"},
     )
 
-    results = await trail_manager.recall(scope={"project": "fava-trail"})
+    results = await trail_manager.recall(visibility=HISTORY, scope={"project": "fava-trail"})
     assert len(results) >= 1
     assert all(r.frontmatter.metadata.project == "fava-trail" for r in results)
 
@@ -240,12 +238,12 @@ async def test_recall_by_scope_tags(trail_manager):
     )
 
     # Single tag filter
-    results = await trail_manager.recall(scope={"tags": ["codebase-state"]})
+    results = await trail_manager.recall(visibility=HISTORY, scope={"tags": ["codebase-state"]})
     assert len(results) >= 1
     assert all("codebase-state" in r.frontmatter.metadata.tags for r in results)
 
     # Multi-tag subset match — all required tags must be present
-    results_multi = await trail_manager.recall(scope={"tags": ["arch", "codebase-state"]})
+    results_multi = await trail_manager.recall(visibility=HISTORY, scope={"tags": ["arch", "codebase-state"]})
     assert len(results_multi) >= 1
     assert all(
         {"arch", "codebase-state"}.issubset(set(r.frontmatter.metadata.tags))
@@ -253,7 +251,7 @@ async def test_recall_by_scope_tags(trail_manager):
     )
 
     # Non-matching tag returns empty
-    results_none = await trail_manager.recall(scope={"tags": ["nonexistent-tag"]})
+    results_none = await trail_manager.recall(visibility=HISTORY, scope={"tags": ["nonexistent-tag"]})
     assert len(results_none) == 0
 
 
@@ -271,17 +269,17 @@ async def test_recall_by_scope_branch(trail_manager):
         metadata={"project": "fava-trail", "branch": "feature-xyz"},
     )
 
-    results = await trail_manager.recall(scope={"branch": "main"})
+    results = await trail_manager.recall(visibility=HISTORY, scope={"branch": "main"})
     assert len(results) >= 1
     assert all(r.frontmatter.metadata.branch == "main" for r in results)
 
     # Feature branch isolated
-    results_feature = await trail_manager.recall(scope={"branch": "feature-xyz"})
+    results_feature = await trail_manager.recall(visibility=HISTORY, scope={"branch": "feature-xyz"})
     assert len(results_feature) >= 1
     assert all(r.frontmatter.metadata.branch == "feature-xyz" for r in results_feature)
 
     # Combined scope: project + branch
-    results_combined = await trail_manager.recall(
+    results_combined = await trail_manager.recall(visibility=HISTORY,
         scope={"project": "fava-trail", "branch": "main"}
     )
     assert all(
@@ -300,7 +298,7 @@ async def test_recall_query_finds_tags_in_searchable(trail_manager):
         metadata={"tags": ["needle-tag"]},
     )
 
-    results = await trail_manager.recall(query="needle-tag")
+    results = await trail_manager.recall(visibility=HISTORY, query="needle-tag")
     assert len(results) >= 1
     assert any("needle-tag" in r.frontmatter.metadata.tags for r in results)
 
@@ -314,7 +312,7 @@ async def test_recall_query_searches_metadata_tags(trail_manager):
         metadata={"tags": ["cross-agent-test", "sync"]},
     )
 
-    results = await trail_manager.recall(query="cross-agent-test")
+    results = await trail_manager.recall(visibility=HISTORY, query="cross-agent-test")
     assert len(results) >= 1
     assert any("cross-agent-test" in r.frontmatter.metadata.tags for r in results)
 
@@ -328,7 +326,7 @@ async def test_recall_query_searches_metadata_project(trail_manager):
         metadata={"project": "wise-agents-toolkit"},
     )
 
-    results = await trail_manager.recall(query="wise-agents-toolkit")
+    results = await trail_manager.recall(visibility=HISTORY, query="wise-agents-toolkit")
     assert len(results) >= 1
 
 
@@ -340,7 +338,7 @@ async def test_recall_query_searches_agent_id(trail_manager):
         agent_id="claude-desktop",
     )
 
-    results = await trail_manager.recall(query="claude-desktop")
+    results = await trail_manager.recall(visibility=HISTORY, query="claude-desktop")
     assert len(results) >= 1
     assert any(r.frontmatter.agent_id == "claude-desktop" for r in results)
 
@@ -361,7 +359,7 @@ async def test_recall_with_relationships(trail_manager):
     )
 
     # Search for child, include relationships
-    results = await trail_manager.recall(
+    results = await trail_manager.recall(visibility=HISTORY,
         query="Child",
         namespace="decisions",
         include_relationships=True,
@@ -521,12 +519,14 @@ async def test_update_thought_content_freeze_superseded(trail_manager):
         agent_id="test",
         namespace="observations",
     )
-    await trail_manager.supersede(
+    successor = await trail_manager.supersede(
         original_id=record.thought_id,
         new_content="Replacement.",
         reason="Corrected",
         agent_id="test",
     )
+
+    await trail_manager.propose_truth(successor.thought_id, review_approval())
 
     with pytest.raises(ValueError, match="frozen.*superseded"):
         await trail_manager.update_thought(record.thought_id, "Should fail.")
@@ -572,7 +572,7 @@ async def test_nested_trail_save_and_recall(nested_trail_managers):
     assert "mw/eng/fava-trail" in str(path) or "mw\\eng\\fava-trail" in str(path)
 
     # Recall finds it
-    results = await project.recall(query="auth flow")
+    results = await project.recall(visibility=HISTORY, query="auth flow")
     assert len(results) == 1
     assert results[0].thought_id == record.thought_id
 
@@ -599,7 +599,7 @@ async def test_recall_multi_across_scopes(nested_trail_managers):
     )
 
     # Multi-scope recall
-    results = await recall_multi(
+    results = await recall_multi(visibility=HISTORY,
         trail_managers=[project, team, company],
         query="",  # match all
         limit=50,
@@ -629,7 +629,7 @@ async def test_recall_multi_deduplicates(nested_trail_managers):
     )
 
     # Pass same manager twice
-    results = await recall_multi(
+    results = await recall_multi(visibility=HISTORY,
         trail_managers=[project, project],
         query="Unique",
     )
@@ -665,7 +665,9 @@ async def test_cross_scope_supersede(nested_trail_managers):
     assert found_in_project is not None
     assert "all services" in found_in_project.content
 
-    # Original is marked as superseded in epic scope
+    await project.propose_truth(elevated.thought_id, review_approval())
+
+    # Approval marks the original as superseded in epic scope
     original_updated = await epic.get_thought(original.thought_id)
     assert original_updated.is_superseded
     assert original_updated.frontmatter.superseded_by == elevated.thought_id
@@ -887,7 +889,7 @@ async def test_recall_multi_fires_on_recall_mix(nested_trail_managers, tmp_path)
     await company.save_thought(content="Company standard A", agent_id="test")
     await team.save_thought(content="Team convention B", agent_id="test")
 
-    results = await recall_multi(
+    results = await recall_multi(visibility=HISTORY,
         trail_managers=[company, team],
         query="",
         limit=50,
@@ -915,7 +917,7 @@ async def test_recall_multi_on_recall_mix_reorders(nested_trail_managers, tmp_pa
     registry = _make_hook_registry_with_on_recall_mix(hooks_dir, reorder=[r2.thought_id, r1.thought_id])
     company._hooks = registry
 
-    results = await recall_multi(
+    results = await recall_multi(visibility=HISTORY,
         trail_managers=[company, team],
         query="",
         limit=50,
@@ -932,7 +934,7 @@ async def test_recall_multi_no_on_recall_mix_hooks(nested_trail_managers):
     team = nested_trail_managers["team"]
 
     await company.save_thought(content="Standard C", agent_id="test")
-    results = await recall_multi(trail_managers=[company, team], query="")
+    results = await recall_multi(visibility=HISTORY, trail_managers=[company, team], query="")
     assert any(r[0].content == "Standard C" for r in results)
 
 
@@ -948,7 +950,7 @@ async def test_recall_multi_single_trail_skips_mix(nested_trail_managers, tmp_pa
 
     await company.save_thought(content="Solo thought", agent_id="test")
 
-    await recall_multi(trail_managers=[company], query="")
+    await recall_multi(visibility=HISTORY, trail_managers=[company], query="")
 
     # Feedback should NOT have mix_fired (on_recall_mix skipped for single trail)
     pipeline = company.consume_feedback()
@@ -968,7 +970,7 @@ async def test_recall_multi_duplicate_managers_skip_mix(nested_trail_managers, t
 
     await company.save_thought(content="Dup test", agent_id="test")
 
-    await recall_multi(trail_managers=[company, company], query="")
+    await recall_multi(visibility=HISTORY, trail_managers=[company, company], query="")
 
     pipeline = company.consume_feedback()
     if pipeline is not None:
@@ -988,7 +990,7 @@ async def test_recall_multi_on_recall_mix_empty_results(nested_trail_managers, t
     company._hooks = registry
 
     # No thoughts saved — empty results
-    results = await recall_multi(
+    results = await recall_multi(visibility=HISTORY,
         trail_managers=[company, team],
         query="nonexistent",
         limit=50,
@@ -1032,7 +1034,7 @@ async def test_recall_multi_on_recall_mix_preserves_on_recall_feedback(
     await company.save_thought(content="Feedback test", agent_id="test")
     await team.save_thought(content="Feedback test 2", agent_id="test")
 
-    await recall_multi(trail_managers=[company, team], query="", limit=50)
+    await recall_multi(visibility=HISTORY, trail_managers=[company, team], query="", limit=50)
 
     pipeline = company.consume_feedback()
     assert pipeline is not None
@@ -1163,13 +1165,14 @@ async def test_prefix_match_supersede(trail_manager):
     )
     assert new_record.thought_id != record.thought_id
 
+    await trail_manager.propose_truth(new_record.thought_id, review_approval())
     # Original is now superseded
     original = await trail_manager.get_thought(record.thought_id)
     assert original.is_superseded
 
 
 @pytest.mark.asyncio
-async def test_prefix_match_tool_handler_ambiguous_returns_error(trail_manager):
+async def test_prefix_match_tool_handler_ambiguous_returns_error(trail_manager, monkeypatch):
     """handle_get_thought returns structured error with candidates on ambiguous prefix."""
     from fava_trails.tools.thought import handle_get_thought
 
@@ -1187,7 +1190,8 @@ async def test_prefix_match_tool_handler_ambiguous_returns_error(trail_manager):
     new_path.write_text(loaded.to_markdown())
     path2.unlink()
 
-    result = await handle_get_thought(trail_manager, {"thought_id": shared_prefix})
+    monkeypatch.setenv("FAVA_TRAILS_OPERATOR", "1")
+    result = await handle_get_thought(trail_manager, {"thought_id": shared_prefix, "mode":"history"})
     assert result["status"] == "error"
     assert "candidates" in result
     assert len(result["candidates"]) == 2
@@ -1228,7 +1232,8 @@ async def test_supersede_mcp_without_confidence_preserves_original(trail_manager
     assert new_thought["confidence"] == 0.75, "omitted confidence must preserve original"
     assert result["supersedes_thought_id"] == original.thought_id
 
-    # Verify atomic backlink on original
+    await trail_manager.propose_truth(new_thought["thought_id"], review_approval())
+    # Verify atomic backlink on original after approval
     refreshed = await trail_manager.get_thought(original.thought_id)
     assert refreshed.frontmatter.superseded_by == new_thought["thought_id"]
 

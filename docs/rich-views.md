@@ -15,11 +15,13 @@ npm run build --prefix /path/to/private-reader
 fava-trails rich-view serve --out /path/to/private-reader --no-generate --no-install
 ```
 
+Generation defaults to governed current records: approved records whose approved successor has not retired them. To inspect other lifecycle states locally, pass `--mode history`; add `--include-superseded` to include retired records, and optionally repeat `--status` to select validation states. These explicit local operator views describe only the records included in that snapshot. Generation captures one coherent source snapshot across all selected scopes.
+
 The local server binds to `127.0.0.1:4321` by default. Supply `--port` to choose another local port. To generate and serve in one step, use `rich-view serve` with `--trails-dir` and optional repeated `--scope` arguments. Omitting scope includes all discovered scopes. Manual regeneration replaces generated pages, including obsolete routes. The footer records the input scope and generation time; it never implies that the snapshot is live. A future file watcher or JJ change trigger can invoke the same generator, but automatic regeneration is not included.
 
 ## Read the dashboard
 
-The index and `/scopes/<full-scope>/` dashboards include descendant records. Summary counts describe the included records: total thoughts, descendant scopes, active decisions, draft/proposed records, and superseded records. An active decision is an approved decision without a supersession target.
+The index and `/scopes/<full-scope>/` dashboards include descendant records. Summary counts describe the included records: total thoughts, descendant scopes, active decisions, draft/proposed records, and superseded records. An active decision is an approved decision without an effective approved successor. A raw replacement link alone does not retire it.
 
 Use namespace, source type, validation, tag, contributor, and scope filters together. Quick views show active decisions, unfinished records, or superseded records. Reset clears every filter. Recent activity is ordered by source creation time; contributors and scope links summarize the included records. Excerpts stay compact; source provenance is available on each row.
 
@@ -27,7 +29,7 @@ Use namespace, source type, validation, tag, contributor, and scope filters toge
 
 Human routes include the full scope and a title-derived slug. If titles collide within a scope, only the colliding routes receive a short ID suffix. The canonical and fallback routes are recorded in `src/data/generated.json` under `thoughtRoutes`. `/id/<thought-id>/` remains the durable lookup when a title changes. Source filenames and frontmatter are never renamed to match human routes.
 
-Thought pages show validation, source type, confidence, contributor, tags, creation time, namespace, source path, and durable ID before the full Markdown body. Parentage and supersession form explicit lineage links. The same title never merges two identities. Cyclic source links remain finite to traverse and keep their explicit edge labels.
+Thought pages show validation, source type, confidence, contributor, tags, creation time, namespace, source path, and durable ID before the full Markdown body. Parentage and supersession form explicit lineage links. Proposed replacements remain distinct from effective supersession; scoped predecessor/successor references cannot resolve to an unrelated record with the same identifier. The same title never merges two identities. Cyclic source links remain finite to traverse and keep their explicit edge labels.
 
 Typed relationship sections preserve the stored FAVA types and show inbound links from included records. Targets absent from the selected view remain visible as **Unresolved / outside this view**, without guessing a title or exposing a hidden record. This can mean a missing source record, another scope, or an excluded record; the UI does not invent which explanation applies.
 

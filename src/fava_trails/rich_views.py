@@ -15,7 +15,7 @@ from typing import Any
 import yaml
 
 from .config import sanitize_scope_path
-from .models import ThoughtRecord
+from .governance import RecordSnapshot, Visibility, is_effectively_superseded, read_snapshot
 
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", re.MULTILINE)
 _SAFE_THOUGHT_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -43,6 +43,10 @@ class ReaderThought:
     created_at: str = ""
     parent_id: str | None = None
     superseded_by: str | None = None
+    superseded_scope: str | None = None
+    supersedes_id: str | None = None
+    supersedes_scope: str | None = None
+    is_superseded: bool = False
     intent_ref: str | None = None
     relationships: tuple[tuple[str, str], ...] = ()
     fallback_route: str = ""
@@ -66,11 +70,12 @@ def generate_reader(
     scope: str,
     output_dir: Path | str,
     generated_at: datetime | None = None,
+    visibility: Visibility | None = None,
 ) -> GenerationResult:
     """Generate a minimal plain-Astro reader from FAVA source thought records."""
 
     return generate_reader_for_scopes(
-        trails_dir=trails_dir, scopes=[scope], output_dir=output_dir, generated_at=generated_at,
+        trails_dir=trails_dir, scopes=[scope], output_dir=output_dir, generated_at=generated_at, visibility=visibility,
     )
 
 
@@ -80,6 +85,7 @@ def generate_reader_for_scopes(
     scopes: list[str] | tuple[str, ...] | None,
     output_dir: Path | str,
     generated_at: datetime | None = None,
+    visibility: Visibility | None = None,
 ) -> GenerationResult:
     """Generate a minimal plain-Astro reader for selected or all discovered scopes."""
 
@@ -92,8 +98,9 @@ def generate_reader_for_scopes(
     safe_scopes = tuple(_resolve_reader_scopes(source_root, scopes))
     all_thoughts: list[ReaderThought] = []
     seen: dict[str, Path] = {}
+    snapshot = read_snapshot(source_root, strict=True)
     for scope in safe_scopes:
-        for thought, source_path in _load_reader_thoughts_with_sources(source_root, scope):
+        for thought, source_path in _load_reader_thoughts_with_sources(source_root, scope, visibility, snapshot=snapshot):
             if thought.thought_id in seen:
                 raise ValueError(f"Duplicate thought_id {thought.thought_id} in {source_path} and {seen[thought.thought_id]}")
             seen[thought.thought_id] = source_path
@@ -113,23 +120,31 @@ def generate_reader_for_scopes(
     )
 
 
-def _load_reader_thoughts(trails_dir: Path, scope: str) -> list[ReaderThought]:
-    return [thought for thought, _source_path in _load_reader_thoughts_with_sources(trails_dir, scope)]
+def _load_reader_thoughts(trails_dir: Path, scope: str, visibility: Visibility | None = None) -> list[ReaderThought]:
+    return [thought for thought, _source_path in _load_reader_thoughts_with_sources(trails_dir, scope, visibility)]
 
 
-def _load_reader_thoughts_with_sources(trails_dir: Path, scope: str) -> list[tuple[ReaderThought, Path]]:
+def _load_reader_thoughts_with_sources(
+    trails_dir: Path, scope: str, visibility: Visibility | None = None,
+    *, snapshot: RecordSnapshot | None = None,
+) -> list[tuple[ReaderThought, Path]]:
     thoughts_dir = trails_dir / scope / "thoughts"
     if not thoughts_dir.is_dir():
         raise ValueError(f"No FAVA thoughts found for scope {scope!r} at {thoughts_dir}")
 
+    visibility = visibility or Visibility()
+    snapshot = snapshot if snapshot is not None else read_snapshot(trails_dir, strict=True)
+    texts, records, by_id = snapshot.texts, snapshot.records, snapshot.by_id
     seen: dict[str, Path] = {}
     thoughts: list[tuple[ReaderThought, Path]] = []
-    for path in sorted(p for p in thoughts_dir.rglob("*.md") if p.name != ".gitkeep"):
-        raw_text = path.read_text(encoding="utf-8")
+    for path in sorted(p for p in texts if p.is_relative_to(thoughts_dir)):
+        raw_text = texts[path]
         raw_frontmatter = _read_raw_frontmatter(raw_text)
         if not isinstance(raw_frontmatter.get("thought_id"), str) or not raw_frontmatter["thought_id"]:
             raise ValueError(f"Missing thought_id in FAVA frontmatter: {path}")
-        record = ThoughtRecord.from_markdown(raw_text)
+        record = records[path]
+        if not visibility.allows(record, by_id):
+            continue
         thought_id = record.thought_id
         _validate_reader_thought_id(thought_id, path)
         if thought_id in seen:
@@ -158,6 +173,10 @@ def _load_reader_thoughts_with_sources(trails_dir: Path, scope: str) -> list[tup
             created_at=fm.created_at.isoformat(),
             parent_id=fm.parent_id,
             superseded_by=fm.superseded_by,
+            superseded_scope=fm.superseded_scope,
+            supersedes_id=fm.supersedes_id,
+            supersedes_scope=fm.supersedes_scope,
+            is_superseded=is_effectively_superseded(record, by_id),
             intent_ref=fm.intent_ref,
             relationships=tuple((rel.type.value, rel.target_id) for rel in fm.relationships),
             fallback_route=f"/id/{thought_id}/",
@@ -424,10 +443,16 @@ def _thought_data(thought: ReaderThought, thoughts: list[ReaderThought]) -> dict
     """Project only stored semantics; missing targets carry no inferred metadata."""
     by_id = {item.thought_id: item for item in thoughts}
 
-    def target(thought_id: str) -> dict[str, Any]:
+    def target(thought_id: str, target_scope: str | None = None) -> dict[str, Any]:
         found = by_id.get(thought_id)
+        if found and target_scope and found.scope != target_scope:
+            found = None
         return {"thoughtId": thought_id, "title": found.title if found else thought_id,
-                "route": found.route if found else None, "resolved": found is not None}
+                "route": found.route if found else None, "resolved": found is not None,
+                "scope": target_scope or (found.scope if found else None)}
+
+    def parent_scope(item: ReaderThought) -> str | None:
+        return item.supersedes_scope if item.parent_id == item.supersedes_id else None
 
     outbound = [{"type": kind, **target(tid)} for kind, tid in thought.relationships]
     inbound = [{"type": kind, **target(other.thought_id)} for other in thoughts
@@ -439,21 +464,27 @@ def _thought_data(thought: ReaderThought, thoughts: list[ReaderThought]) -> dict
     edges = []
     for other in thoughts:
         if other.parent_id:
-            edges.append((other.thought_id, "parent", other.parent_id))
+            edges.append((other.thought_id, "parent", other.parent_id, parent_scope(other)))
         if other.superseded_by:
-            edges.append((other.thought_id, "superseded by", other.superseded_by))
+            kind = "superseded by" if other.is_superseded else "replacement link (not effective)"
+            edges.append((other.thought_id, kind, other.superseded_by, other.superseded_scope))
+        if other.supersedes_id:
+            kind = "supersedes" if other.validation_status == "approved" else "replacement proposal for"
+            edges.append((other.thought_id, kind, other.supersedes_id, other.supersedes_scope))
     while pending:
         current = pending.pop()
         if current in visited:
             continue
         visited.add(current)
-        for source, kind, dest in edges:
-            if current not in (source, dest):
+        for source, kind, dest, dest_scope in edges:
+            destination = target(dest, dest_scope)
+            if current != source and not (current == dest and destination["resolved"]):
                 continue
-            edge = {"source": target(source), "type": kind, "target": target(dest)}
+            edge = {"source": target(source), "type": kind, "target": destination}
             if edge not in lineage:
                 lineage.append(edge)
-            for neighbor in (source, dest):
+            neighbors = (source, dest) if destination["resolved"] else (source,)
+            for neighbor in neighbors:
                 if neighbor in by_id and neighbor not in visited:
                     pending.append(neighbor)
 
@@ -465,8 +496,9 @@ def _thought_data(thought: ReaderThought, thoughts: list[ReaderThought]) -> dict
         "scope": thought.scope, "agentId": thought.agent_id, "confidence": thought.confidence,
         "tags": thought.tags, "createdAt": thought.created_at,
         "excerpt": _WHITESPACE_RE.sub(" ", thought.content).strip()[:200],
-        "supersededBy": target(thought.superseded_by) if thought.superseded_by else None,
-        "parent": target(thought.parent_id) if thought.parent_id else None,
+        "supersededBy": target(thought.superseded_by, thought.superseded_scope) if thought.superseded_by else None,
+        "isSuperseded": thought.is_superseded,
+        "parent": target(thought.parent_id, parent_scope(thought)) if thought.parent_id else None,
         "intent": target(thought.intent_ref) if thought.intent_ref else None,
         "outbound": outbound, "inbound": inbound, "lineage": lineage,
         "relationshipCount": len(outbound) + len(inbound),

@@ -14,6 +14,20 @@ Agent-facing reference for FAVA Trails MCP tools. For project setup and configur
   ```
 - If another agent or branch is active on this repo, coordinate or use a separate worktree.
 
+## Governed recall
+
+FAVA is the governed institutional record for decisions, observations, validation,
+and lineage. It is not the operational working-context store. Default `recall`
+and `get_thought` expose current approved records only. Explicit `mode="authoring"`
+retrieves only the server-configured agent's draft/proposed records; operator-only
+`mode="history"` selects lifecycle statuses and superseded records. Neither a
+namespace nor a supplied `agent_id` grants access. See [governed-recall.md](docs/governed-recall.md)
+for identity setup, compatibility, approval provenance, and interrupted-write recovery.
+
+The operator configures `FAVA_TRAILS_AGENT_ID` on a dedicated process; caller
+`agent_id` must match it. A shared endpoint is one identity boundary. Configure
+`FAVA_TRAILS_OPERATOR=1` only on a separate operator-controlled endpoint.
+
 ## Scope Discovery
 
 Every tool call requires `trail_name` — a slash-separated scope path (e.g. `mw/eng/fava-trails`). Resolve in priority order:
@@ -90,7 +104,7 @@ Update thought content in-place (same file, same ULID). Use for refining wording
 
 **When to use `update_thought` vs `supersede`:**
 - `update_thought` — Refine wording, add detail, fix typos. Same ULID, same file. **Use for edits.**
-- `supersede` — Replace a thought when the conclusion is wrong. Creates a new ULID, backlinks the original. **Use for corrections.**
+- `supersede` — Replace a thought when the conclusion is wrong. Creates a draft successor; approval later backlinks the original. **Use for corrections.**
 
 ### `get_thought`
 
@@ -109,7 +123,9 @@ Search thoughts by query, namespace, and scope. Hides superseded thoughts by def
 | `query` | string | no | Search terms |
 | `namespace` | string | no | Restrict to namespace (`decisions`, `observations`, `drafts`, etc.) |
 | `scope` | object | no | Filter by `{project, branch, tags}` |
-| `include_superseded` | bool | no | Show superseded thoughts (default: false) |
+| `mode` | string | no | `governed` (default), own `authoring`, or operator `history` |
+| `statuses` | array | no | Lifecycle statuses in authoring/history mode |
+| `include_superseded` | bool | no | Historical predecessors; requires history mode |
 | `include_relationships` | bool | no | Include 1-hop related thoughts (default: false) |
 | `limit` | int | no | Max results (default: 20) |
 | `trail_names` | array | no | Additional scope paths to search. Supports globs: `mw/eng/*` (one level), `mw/**` (any depth) |
@@ -126,7 +142,7 @@ Promote a draft thought to its permanent namespace based on `source_type`. Moves
 
 ### `supersede`
 
-Replace a thought with a corrected version. **Atomic**: creates new thought + backlinks original in a single JJ change. Use for conceptual replacement when the conclusion is wrong. For refining wording, use `update_thought` instead.
+Propose a corrected draft successor. The original remains current until successor approval atomically persists both the approved replacement and the original backlink. For wording refinements use `update_thought` on mutable authoring records.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -138,7 +154,7 @@ Replace a thought with a corrected version. **Atomic**: creates new thought + ba
 
 ### `change_scope`
 
-Elevate a thought to a different scope. Wraps `supersede` with cross-scope arguments — the new thought lands in the target scope while the original is marked superseded in the source scope. Both operations are atomic (single JJ change).
+Elevate a thought to a different scope. Wraps `supersede` with cross-scope arguments — a draft successor lands in the target scope. The original becomes historical only after durable successor approval.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -197,7 +213,7 @@ Discover all available scopes recursively. Finds any directory containing a `tho
 
 ### `learn_preference`
 
-Capture a user correction or preference. Stored in `preferences/` namespace. Bypasses Trust Gate — user input is auto-approved.
+Capture a draft user correction on an operator endpoint. Use `propose_truth` for review or explicit human approval; source type alone does not establish approval.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -225,7 +241,7 @@ start_thought  →  save_thought (drafts/)  →  propose_truth  →  permanent n
    - `decision` → `decisions/`
    - `observation` / `inference` / `tool_output` → `observations/`
    - `user_input` → `preferences/`
-5. **Correct**: `supersede` atomically replaces a thought with a corrected version
+5. **Correct**: `supersede` proposes a corrected successor; approval atomically activates it
 
 ## Namespace Conventions
 
@@ -251,11 +267,11 @@ start_thought  →  save_thought (drafts/)  →  propose_truth  →  permanent n
 
 ### Mandatory Promotion
 
-Drafts are **working memory**. Promoted thoughts are **institutional memory**.
+Drafts are private authoring material. Approved current thoughts are shared institutional records.
 
 - **Always call `propose_truth`** when work is finalized — treat it as a mandatory "commit" step
 - Do NOT leave finalized work as drafts — other agents and sessions cannot distinguish "in progress" from "done" without promotion
-- **Exception:** `learn_preference` bypasses drafts entirely (user input is auto-approved truth)
+- `learn_preference` captures a draft preference; approval provenance must identify the review or explicit human action.
 - In-progress work stays in `drafts/` — that's fine, drafts are meant for working state
 
 ## Key Rules
@@ -266,7 +282,7 @@ Thoughts can be edited in-place via `update_thought` while in `draft` or `propos
 - `validation_status` is `approved`, `rejected`, or `tombstoned`
 - `superseded_by` is set (thought has been replaced)
 
-The `supersede` tool creates a **new** thought with a `parent_id` linking to the original, and sets `superseded_by` on the original — both in a single JJ change (atomic).
+The `supersede` tool creates a new draft with predecessor lineage. Only durable successor approval installs the original backlink atomically.
 
 ### Conflict Interception
 
@@ -278,7 +294,7 @@ All VCS output goes through a semantic translation layer. Raw `jj log` / `jj op 
 
 ### Recall + Preferences
 
-Every `recall` query automatically includes matching preferences from the `preferences/` namespace in the `applicable_preferences` field. Agents don't need to opt in — relevant user corrections are always surfaced.
+Preferences obey the same lifecycle and identity rules as other records. Default recall includes matching approved current preferences; draft or proposed preferences require explicit authoring/history retrieval.
 
 ## Thought File Format
 

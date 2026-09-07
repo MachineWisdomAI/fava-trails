@@ -1,13 +1,13 @@
 ---
 import ReaderLayout from '../layouts/ReaderLayout.astro';
 const { scope, generatedAt, thoughts, scopes } = Astro.props;
-const active = thought => thought.sourceType === 'decision' && thought.validationStatus === 'approved' && !thought.supersededBy;
+const active = thought => thought.sourceType === 'decision' && thought.validationStatus === 'approved' && !thought.isSuperseded;
 const counts = [
   ['Included thoughts', thoughts.length],
   ['Child scopes', scopes.filter(item => item !== scope).length],
   ['Active decisions', thoughts.filter(active).length],
   ['Draft / proposed', thoughts.filter(t => ['draft','proposed'].includes(t.validationStatus)).length],
-  ['Superseded', thoughts.filter(t => t.supersededBy).length],
+  ['Superseded', thoughts.filter(t => t.isSuperseded).length],
 ];
 const facets = [
   ['namespace','Namespace', [...new Set(thoughts.map(t => t.namespace))]],
@@ -27,7 +27,7 @@ const contributors = [...new Set(thoughts.map(t => t.agentId))].map(agent => [ag
   <p class="freshness">Generated <time datetime={generatedAt}>{generatedAt}</time> · This view counts included records only.</p>
   <section class="stats" aria-label="Scope summary">{counts.map(([label,count]) => <div><strong>{count}</strong><span>{label}</span></div>)}</section>
   <div class="overview">
-    <section class="panel"><h2>Recent activity</h2><ul class="clean recent">{recent.map(t => <li><a href={t.route}>{t.title}</a><span class="badge" data-status={t.supersededBy ? "superseded" : t.validationStatus}>{t.supersededBy ? "superseded" : t.validationStatus}</span></li>)}</ul>{!recent.length && <p class="empty">No records included in this view.</p>}</section>
+    <section class="panel"><h2>Recent activity</h2><ul class="clean recent">{recent.map(t => <li><a href={t.route}>{t.title}</a><span class="badge" data-status={t.isSuperseded ? "superseded" : t.validationStatus}>{t.isSuperseded ? "superseded" : t.validationStatus}</span></li>)}</ul>{!recent.length && <p class="empty">No records included in this view.</p>}</section>
     <section class="panel"><h2>Scope & contributors</h2><div class="scope-links">{scopes.map(item => <a href={`/scopes/${item}/`}>{item}<span class="muted"> ({thoughts.filter(t => t.scope === item).length})</span></a>)}</div><p class="contributors">{contributors.map(([agent,count]) => <span>{agent} <b>{count}</b></span>)}</p></section>
   </div>
   <section aria-label="Thought records">
@@ -37,8 +37,8 @@ const contributors = [...new Set(thoughts.map(t => t.agentId))].map(agent => [ag
       <button type="reset">Reset</button>
     </form>
     <div class="quick-filters" aria-label="Quick views"><button type="button" data-view="all" aria-pressed="true">All records</button><button type="button" data-view="active" aria-pressed="false">Active decisions</button><button type="button" data-view="attention" aria-pressed="false">Drafts & proposed</button><button type="button" data-view="superseded" aria-pressed="false">Superseded</button></div>
-    <ul class="clean records">{ordered.map(t => <li class="record" data-record={JSON.stringify({ ...Object.fromEntries(facets.map(([key]) => [key,t[key]])), active:active(t), superseded:!!t.supersededBy })}>
-      <div class="record-title"><a href={t.route}>{t.title}</a><span class="badge" data-status={t.validationStatus}>{t.validationStatus}</span>{t.supersededBy && <span class="badge" data-status="superseded">superseded</span>}</div>
+    <ul class="clean records">{ordered.map(t => <li class="record" data-record={JSON.stringify({ ...Object.fromEntries(facets.map(([key]) => [key,t[key]])), active:active(t), superseded:t.isSuperseded })}>
+      <div class="record-title"><a href={t.route}>{t.title}</a><span class="badge" data-status={t.validationStatus}>{t.validationStatus}</span>{t.isSuperseded && <span class="badge" data-status="superseded">superseded</span>}</div>
       <p class="excerpt">{t.excerpt}</p>
       <div class="meta"><span>{t.sourceType} · {t.namespace}</span><span>{Math.round(t.confidence * 100)}% confidence</span><span>{t.agentId}</span><time datetime={t.createdAt}>{t.createdAt.slice(0,10)}</time><span>{t.relationshipCount} relationships</span>{t.tags.map(tag => <span class="tag">#{tag}</span>)}</div>
       <details class="provenance"><summary>{t.scope} · Source provenance</summary><p><code>{t.thoughtId}</code><br /><code>{t.sourcePath}</code></p></details>
