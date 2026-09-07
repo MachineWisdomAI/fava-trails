@@ -1,0 +1,5 @@
+---
+const { target } = Astro.props;
+---
+{target.resolved ? <a href={target.route} title={target.thoughtId}>{target.title} <small>({target.thoughtId.slice(-6)})</small></a> : <span class="unresolved">Unresolved / outside this view: <code>{target.thoughtId}</code></span>}
+<style>.unresolved { color:#823a31;font-size:.83rem;overflow-wrap:anywhere; }small { color:#657166;font-size:.75em; }</style>
