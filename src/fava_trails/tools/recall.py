@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..governance import runtime_principal, visibility_from_arguments
 from .thought import _serialize_thought
 
 
@@ -13,6 +14,7 @@ async def handle_recall(trail, arguments: dict, additional_trails=None) -> dict[
     When additional_trails is provided, searches across multiple scopes.
     Each result includes source_trail indicating which scope it came from.
     """
+    visibility = visibility_from_arguments(arguments, runtime_principal())
     query = arguments.get("query", "")
     namespace = arguments.get("namespace")
     scope = arguments.get("scope")
@@ -32,6 +34,7 @@ async def handle_recall(trail, arguments: dict, additional_trails=None) -> dict[
             include_superseded=include_superseded,
             include_relationships=include_relationships,
             limit=limit,
+            visibility=visibility,
         )
         thoughts = []
         for record, source_trail_name in multi_results:
@@ -47,6 +50,7 @@ async def handle_recall(trail, arguments: dict, additional_trails=None) -> dict[
             include_superseded=include_superseded,
             include_relationships=include_relationships,
             limit=limit,
+            visibility=visibility,
         )
         thoughts = []
         for r in results:
@@ -59,6 +63,8 @@ async def handle_recall(trail, arguments: dict, additional_trails=None) -> dict[
         "count": len(thoughts),
         "thoughts": thoughts,
         "filters": {
+            "mode": visibility.mode,
+            "statuses": list(visibility.statuses),
             "query": query,
             "namespace": namespace,
             "include_superseded": include_superseded,

@@ -54,6 +54,9 @@ class ThoughtFrontmatter(BaseModel):
     thought_id: str = Field(default_factory=lambda: str(ULID()))
     parent_id: str | None = None
     superseded_by: str | None = None
+    superseded_scope: str | None = None
+    supersedes_id: str | None = None
+    supersedes_scope: str | None = None
     agent_id: str = "unknown"
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     source_type: SourceType = SourceType.OBSERVATION

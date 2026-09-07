@@ -246,6 +246,10 @@ class TestTrailManagerHookIntegration:
         await manager.save_thought("keep this", agent_id="test", metadata={"tags": ["keep"]})
         await manager.save_thought("drop this", agent_id="test", metadata={"tags": ["drop"]})
 
+        from fava_trails.trust_gate import TrustResult
+        for path in manager.trail_path.glob("thoughts/**/*.md"):
+            await manager.propose_truth(path.stem, TrustResult(verdict="approve", reasoning="Fixture", reviewer="fixture"))
+
         _write_hook_file(hooks_dir, "recall_filter", """
             from fava_trails.hook_types import RecallSelect
             async def on_recall(event):
@@ -273,6 +277,10 @@ class TestTrailManagerHookIntegration:
         await manager.save_thought("thought 2", agent_id="test")
 
         # Hook that selects only the first thought
+        from fava_trails.trust_gate import TrustResult
+        for path in manager.trail_path.glob("thoughts/**/*.md"):
+            await manager.propose_truth(path.stem, TrustResult(verdict="approve", reasoning="Fixture", reviewer="fixture"))
+
         _write_hook_file(hooks_dir, "recall_filter", f"""
             from fava_trails.hook_types import RecallSelect
             async def on_recall(event):

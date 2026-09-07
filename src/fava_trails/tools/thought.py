@@ -5,7 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from ..config import get_trails_dir
-from ..models import SourceType, ThoughtRecord
+from ..governance import Visibility, read_records, record_index, runtime_principal, visibility_from_arguments
+from ..models import SourceType
 from ..trail import AmbiguousThoughtID
 
 
@@ -21,10 +22,15 @@ def _serialize_thought(record) -> dict[str, Any]:
         "created_at": fm.created_at.isoformat() if fm.created_at else None,
         "content_preview": record.content[:200] + ("..." if len(record.content) > 200 else ""),
     }
+    if fm.supersedes_id:
+        result["supersedes_id"] = fm.supersedes_id
+        result["supersedes_scope"] = fm.supersedes_scope
     if fm.parent_id:
         result["parent_id"] = fm.parent_id
     if fm.superseded_by:
         result["superseded_by"] = fm.superseded_by
+        if fm.superseded_scope:
+            result["superseded_scope"] = fm.superseded_scope
     if fm.intent_ref:
         result["intent_ref"] = fm.intent_ref
     if fm.relationships:
@@ -93,69 +99,43 @@ async def handle_get_thought(trail, arguments: dict) -> dict[str, Any]:
     if not thought_id:
         return {"status": "error", "message": "thought_id is required"}
 
-    try:
-        record = await trail.get_thought(thought_id)
-    except AmbiguousThoughtID as e:
-        return {"status": "error", "message": str(e), "candidates": e.candidates}
+    visibility = visibility_from_arguments(arguments, runtime_principal())
+    return _find_visible_thought(thought_id, trail.trail_name, visibility)
 
-    if record is None:
-        global_result = _find_thought_globally(thought_id)
-        if global_result is not None:
-            return global_result
-        return {"status": "error", "message": f"Thought {thought_id} not found"}
 
+def _find_visible_thought(thought_id: str, trail_name: str, visibility: Visibility) -> dict[str, Any]:
+    records = read_records(get_trails_dir())
+    by_id = record_index(records, get_trails_dir())
+    scope_root = get_trails_dir() / trail_name / "thoughts"
+    matches = [
+        (record, path) for path, record in records.items()
+        if path.is_relative_to(scope_root)
+        and record.thought_id.startswith(thought_id)
+        and visibility.allows(record, by_id)
+    ]
+    exact = [pair for pair in matches if pair[0].thought_id == thought_id]
+    if exact:
+        matches = exact
+    # Authoring is deliberately scope-local even for an exact ID.
+    if not matches and len(thought_id) == 26 and visibility.mode != "authoring":
+        matches = [(r, p) for p, r in records.items() if r.thought_id == thought_id and visibility.allows(r, by_id)]
+    if not matches:
+        return {"status": "error", "message": "Thought not found in the selected visibility mode"}
+    if len(matches) != 1:
+        return {
+            "status": "error", "message": "Thought ID is ambiguous; provide its full ULID and scope",
+            "candidates": [{"thought_id": r.thought_id} for r, _ in matches[:5]],
+        }
+    record, path = matches[0]
+    source_trail = str(path.relative_to(get_trails_dir())).split("/thoughts/", 1)[0]
     result = _serialize_thought(record)
-    result["content"] = record.content  # Full content for get
+    result.update(content=record.content, source_trail=source_trail)
     return {"status": "ok", "thought": result}
 
 
-def _find_thought_globally(thought_id: str) -> dict[str, Any] | None:
-    """Find a thought by exact ULID across existing scopes without creating scopes."""
-    matches = []
-    trails_dir = get_trails_dir()
-    if len(thought_id) != 26 or not trails_dir.exists():
-        return None
-
-    for path in trails_dir.glob(f"**/thoughts/**/{thought_id}.md"):
-        try:
-            rel_parts = path.relative_to(trails_dir).parts
-            thoughts_dir_index = rel_parts.index("thoughts")
-        except ValueError:
-            continue
-        scope_parts = rel_parts[:thoughts_dir_index]
-        if not scope_parts:
-            continue
-        try:
-            record = ThoughtRecord.from_markdown(path.read_text())
-        except Exception:
-            continue
-        matches.append((record, "/".join(scope_parts)))
-
-    if not matches:
-        return None
-    if len(matches) > 1:
-        return {
-            "status": "error",
-            "message": f"Thought {thought_id} matched multiple scopes",
-            "candidates": [
-                {
-                    "thought_id": record.thought_id,
-                    "source_trail": source_trail,
-                    "content_preview": record.content[:100] + ("..." if len(record.content) > 100 else ""),
-                }
-                for record, source_trail in matches[:10]
-            ],
-        }
-
-    record, source_trail = matches[0]
-    result = _serialize_thought(record)
-    result["content"] = record.content
-    result["source_trail"] = source_trail
-    return {
-        "status": "ok",
-        "thought": result,
-        "message": f"Thought {thought_id} found in source_trail {source_trail}",
-    }
+def _find_thought_globally(thought_id: str, arguments: dict | None = None) -> dict[str, Any] | None:
+    visibility = visibility_from_arguments(arguments or {}, runtime_principal())
+    return _find_visible_thought(thought_id, (arguments or {}).get("trail_name", ""), visibility)
 
 
 async def handle_forget(trail, arguments: dict) -> dict[str, Any]:
@@ -229,7 +209,7 @@ async def handle_supersede(trail, arguments: dict, target_trail=None) -> dict[st
         "new_thought": _serialize_thought(record),
         "supersedes_thought_id": original_id,
         "reason": reason,
-        "message": f"Superseded {original_id[:8]} with {record.thought_id[:8]}: {reason}",
+        "message": f"Proposed replacement {record.thought_id[:8]} for {original_id[:8]}; original remains current until approval: {reason}",
     }
     if target_trail:
         result["source_trail"] = trail.trail_name

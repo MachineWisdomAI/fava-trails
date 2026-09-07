@@ -15,6 +15,7 @@ from .config import (
     sanitize_scope_path,
     save_trail_config,
 )
+from .governance import Visibility, read_records, record_index
 from .hook_manifest import HookRegistry
 from .hook_pipeline import PipelineResult, dispatch_observer, run_pipeline
 from .hook_types import (
@@ -35,6 +36,7 @@ from .models import (
     TrailConfig,
     ValidationStatus,
 )
+from .transactions import persist_governance, recover_governance
 from .trust_gate import TrustResult
 from .vcs.base import RebaseResult, VcsBackend, VcsChange, VcsConflict, VcsDiff, VcsOpLogEntry
 
@@ -343,75 +345,35 @@ class TrailManager:
         target_trail: TrailManager | None = None,
         **kwargs,
     ) -> ThoughtRecord:
-        """Atomically supersede a thought: create new + backlink original in single JJ change.
-
-        This is the SINGLE PERMITTED EXCEPTION to the immutability rule.
-        Both the new thought creation AND the original's superseded_by backlink
-        occur in a single JJ change. If process crashes mid-operation,
-        either both writes exist or neither does.
-
-        When target_trail is provided, the new thought is created in the target trail
-        instead of the source trail (cross-scope supersession / scope elevation).
-        """
+        """Propose a corrected successor; the original remains current until approval."""
         async with self._lock:
-            # Find original in this trail
             original_path = self._find_thought_path(original_id)
             if original_path is None:
                 raise ValueError(f"Thought {original_id} not found")
-
             original = ThoughtRecord.from_markdown(original_path.read_text())
-            namespace = self._get_namespace_from_path(original_path)
-
-            # Determine where the new thought lands
             dest = target_trail or self
-            new_thoughts_dir = dest.trail_path / "thoughts" / namespace
-
-            # Create new thought
-            new_fm = ThoughtFrontmatter(
-                agent_id=agent_id,
-                source_type=original.frontmatter.source_type,
-                confidence=kwargs.get("confidence", original.frontmatter.confidence),
-                parent_id=original_id,
-                intent_ref=original.frontmatter.intent_ref,
-                metadata=original.frontmatter.metadata,
-                relationships=original.frontmatter.relationships,
+            metadata = original.frontmatter.metadata.model_copy(deep=True)
+            metadata.extra.pop("trust_gate", None)
+            metadata.extra.pop("approval", None)
+            new_record = ThoughtRecord(
+                frontmatter=ThoughtFrontmatter(
+                    agent_id=agent_id,
+                    source_type=original.frontmatter.source_type,
+                    confidence=kwargs.get("confidence", original.frontmatter.confidence),
+                    parent_id=original.thought_id,
+                    supersedes_id=original.thought_id,
+                    supersedes_scope=self.trail_name,
+                    intent_ref=original.frontmatter.intent_ref,
+                    metadata=metadata,
+                    relationships=original.frontmatter.relationships,
+                ),
+                content=new_content,
             )
-
-            new_record = ThoughtRecord(frontmatter=new_fm, content=new_content)
-            new_path = new_thoughts_dir / f"{new_record.thought_id}.md"
-
-            # ATOMIC: Write both files before committing
-            # 1. Write new thought (may be in a different trail)
-            new_path.parent.mkdir(parents=True, exist_ok=True)
-            new_path.write_text(new_record.to_markdown())
-
-            # 2. Backlink original (the ONLY permitted mutation)
-            original.frontmatter.superseded_by = new_record.thought_id
-            original_path.write_text(original.to_markdown())
-
-            # 3. Single JJ change for both writes
-            desc = f"Supersede {original_id[:8]} with {new_record.thought_id[:8]}"
-            if target_trail:
-                desc += f" (scope: {self.trail_name} → {target_trail.trail_name})"
-            if reason:
-                desc += f": {reason}"
-
-            # For cross-scope supersede, allow both trail prefixes
-            allowed_prefixes = None
-            if target_trail and target_trail.trail_name != self.trail_name:
-                trails_dir = get_trails_dir()
-                repo_root = trails_dir.parent
-                source_rel = str(self.trail_path.relative_to(repo_root))
-                target_rel = str(dest.trail_path.relative_to(repo_root))
-                allowed_prefixes = [source_rel, target_rel]
-
-            await self.vcs.commit_files(
-                desc,
-                [str(new_path), str(original_path)],
-                allowed_prefixes=allowed_prefixes,
+            new_path = dest._thought_path(new_record.thought_id, "drafts")
+            await persist_governance(
+                self.vcs, {new_path: new_record.to_markdown()},
+                f"Propose replacement {new_record.thought_id[:8]} for {original.thought_id[:8]}: {reason}",
             )
-
-            await self._maybe_gc()
 
         # after_supersede hook — runs inline so feedback reaches the caller
         if self._hooks and self._hooks.has_hooks:
@@ -447,9 +409,13 @@ class TrailManager:
         include_relationships: bool = False,
         limit: int = 20,
         _skip_hooks: bool = False,
+        visibility: Visibility | None = None,
     ) -> list[ThoughtRecord]:
         """Search thoughts by query, namespace, and scope. Hides superseded by default."""
         self._set_feedback(None)
+        visibility = visibility or Visibility(include_superseded=include_superseded)
+        records = read_records(get_trails_dir())
+        by_id = record_index(records, get_trails_dir())
         results = []
         search_dirs = []
 
@@ -460,19 +426,10 @@ class TrailManager:
             search_dirs.append(self.trail_path / "thoughts")
 
         for search_dir in search_dirs:
-            if not search_dir.exists():
-                continue
-            for path in search_dir.rglob("*.md"):
-                if path.name == ".gitkeep":
+            for path, record in records.items():
+                if not path.is_relative_to(search_dir):
                     continue
-                try:
-                    record = ThoughtRecord.from_markdown(path.read_text())
-                except Exception as e:
-                    logger.debug("Failed to parse thought file %s: %s", path, e)
-                    continue
-
-                # Filter superseded
-                if not include_superseded and record.is_superseded:
+                if not visibility.allows(record, by_id):
                     continue
 
                 meta = record.frontmatter.metadata
@@ -521,8 +478,8 @@ class TrailManager:
             for rid in related_ids:
                 if any(r.thought_id == rid for r in results):
                     continue
-                related = await self.get_thought(rid)
-                if related and (include_superseded or not related.is_superseded):
+                related = next((r for p, r in records.items() if r.thought_id == rid and p.is_relative_to(self.trail_path / "thoughts")), None)
+                if related and visibility.allows(related, by_id):
                     results.append(related)
 
         # on_recall hook — filter/reorder results
@@ -551,35 +508,23 @@ class TrailManager:
         self,
         thought_id: str,
         trust_result: TrustResult | None = None,
+        reviewed_record: ThoughtRecord | None = None,
     ) -> ThoughtRecord:
-        """Promote a thought from drafts/ to its permanent namespace based on source_type.
-
-        When trust_result is provided, applies the review verdict:
-          - approve: move to permanent namespace, set validation_status = "approved"
-          - reject: keep in drafts, set validation_status = "rejected", attach reasoning
-          - error: keep in drafts, set validation_status = "error", attach error reason
-        When trust_result is None (backward compat): promotes without review.
-        """
+        """Apply an advisory or human verdict, publishing replacement lineage atomically."""
+        await recover_governance(self.vcs)
         async with self._lock:
-            # Find the thought in drafts
-            drafts_path = self._thought_path(thought_id, "drafts")
-            if not drafts_path.exists():
-                # Check other namespaces — persist the status update to disk
-                existing_path = self._find_thought_path(thought_id)
-                if existing_path:
-                    record = ThoughtRecord.from_markdown(existing_path.read_text())
-                    record.frontmatter.validation_status = ValidationStatus.PROPOSED
-                    existing_path.write_text(record.to_markdown())
-                    await self.vcs.commit_files(
-                        f"Propose {thought_id[:8]} (already in {self._get_namespace_from_path(existing_path)}/)",
-                        [str(existing_path)],
-                    )
-                    return record
+            source_path = self._find_thought_path(thought_id)
+            if source_path is None:
                 raise ValueError(f"Thought {thought_id} not found")
-
-            record = ThoughtRecord.from_markdown(drafts_path.read_text())
-
-            # Determine target namespace from source_type
+            record = ThoughtRecord.from_markdown(source_path.read_text())
+            expected = {source_path: record.model_copy(deep=True)}
+            if reviewed_record is not None and reviewed_record != record:
+                raise ValueError("Thought changed during review; re-review before approval")
+            if record.frontmatter.validation_status == ValidationStatus.APPROVED:
+                return record  # Repeated promotion never downgrades approved truth.
+            if record.frontmatter.validation_status == ValidationStatus.TOMBSTONED:
+                raise ValueError("Cannot promote a tombstoned thought")
+            thought_id = record.thought_id
             target_ns = NAMESPACE_ROUTES.get(record.frontmatter.source_type, "observations")
 
             # before_propose hook — can reject, mutate, or redirect promotion
@@ -600,55 +545,62 @@ class TrailManager:
                 if pipeline_result.event and pipeline_result.event.thought:
                     record = pipeline_result.event.thought
 
-            # Apply trust gate result if provided
             if trust_result is not None:
-                # Attach provenance to thought metadata
                 record.frontmatter.metadata.extra["trust_gate"] = {
                     "reviewer": trust_result.reviewer,
                     "reviewed_at": trust_result.reviewed_at.isoformat(),
                     "verdict": trust_result.verdict,
                     "reasoning": trust_result.reasoning,
+                    "kind": trust_result.approval_kind,
                 }
-                if trust_result.confidence is not None:
-                    record.frontmatter.metadata.extra["trust_gate"]["confidence"] = trust_result.confidence
-                if trust_result.provider is not None:
-                    record.frontmatter.metadata.extra["trust_gate"]["provider"] = trust_result.provider
-                if trust_result.model is not None:
-                    record.frontmatter.metadata.extra["trust_gate"]["model"] = trust_result.model
-
-                if trust_result.verdict == "reject":
-                    record.frontmatter.validation_status = ValidationStatus.REJECTED
-                    drafts_path.write_text(record.to_markdown())
-                    await self.vcs.commit_files(
-                        f"Reject {thought_id[:8]} (trust gate: {trust_result.reasoning[:50]})",
-                        [str(drafts_path)],
-                    )
-                    return record
-
-                if trust_result.verdict == "error":
-                    record.frontmatter.validation_status = ValidationStatus.ERROR
-                    drafts_path.write_text(record.to_markdown())
-                    await self.vcs.commit_files(
-                        f"Error reviewing {thought_id[:8]} (trust gate: {trust_result.reasoning[:50]})",
-                        [str(drafts_path)],
-                    )
-                    return record
-
-                # verdict == "approve" — proceed with promotion
-                record.frontmatter.validation_status = ValidationStatus.APPROVED
+                for name in ("confidence", "provider", "model"):
+                    value = getattr(trust_result, name)
+                    if value is not None:
+                        record.frontmatter.metadata.extra["trust_gate"][name] = value
+                record.frontmatter.validation_status = {
+                    "approve": ValidationStatus.APPROVED,
+                    "reject": ValidationStatus.REJECTED,
+                    "error": ValidationStatus.ERROR,
+                }[trust_result.verdict]
+                if trust_result.verdict == "approve":
+                    record.frontmatter.metadata.extra["approval"] = {
+                        "kind": trust_result.approval_kind,
+                        "actor": trust_result.reviewer,
+                        "approved_at": trust_result.reviewed_at.isoformat(),
+                    }
             else:
                 record.frontmatter.validation_status = ValidationStatus.PROPOSED
 
-            target_path = self._thought_path(thought_id, target_ns)
-            target_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # Write to new location and remove from drafts
-            target_path.write_text(record.to_markdown())
-            drafts_path.unlink()
-
-            await self.vcs.commit_files(
-                f"Promote {thought_id[:8]} from drafts/ to {target_ns}/ [{record.frontmatter.source_type.value}]",
-                [str(target_path), str(drafts_path)],
+            status = record.frontmatter.validation_status
+            target_path = self._thought_path(thought_id, target_ns) if status in {
+                ValidationStatus.APPROVED, ValidationStatus.PROPOSED,
+            } else source_path
+            writes = {source_path: None, target_path: record.to_markdown()}
+            if status == ValidationStatus.APPROVED and record.frontmatter.supersedes_id:
+                source_scope = sanitize_scope_path(record.frontmatter.supersedes_scope or self.trail_name)
+                records = read_records(get_trails_dir())
+                candidates = [
+                    (path, candidate) for path, candidate in records.items()
+                    if candidate.thought_id == record.frontmatter.supersedes_id
+                    and path.is_relative_to(get_trails_dir() / source_scope / "thoughts")
+                ]
+                if len(candidates) != 1:
+                    raise ValueError("Replacement predecessor is missing or ambiguous")
+                original_path, original = candidates[0]
+                by_id = record_index(records, get_trails_dir())
+                old_fm = original.frontmatter
+                successor_key = f"{old_fm.superseded_scope}:{old_fm.superseded_by}" if old_fm.superseded_scope else old_fm.superseded_by
+                successor = by_id.get(successor_key or "")
+                if successor and successor.frontmatter.validation_status == ValidationStatus.APPROVED:
+                    raise ValueError("Predecessor already has an approved replacement")
+                expected[original_path] = original.model_copy(deep=True)
+                original.frontmatter.superseded_by = record.thought_id
+                original.frontmatter.superseded_scope = self.trail_name
+                writes[original_path] = original.to_markdown()
+            await persist_governance(
+                self.vcs, writes,
+                f"Review {thought_id[:8]}: {status.value} in {target_ns}/",
+                expected=expected,
             )
 
         # after_propose hook — runs inline so feedback reaches the caller
@@ -744,6 +696,7 @@ async def recall_multi(
     include_superseded: bool = False,
     include_relationships: bool = False,
     limit: int = 20,
+    visibility: Visibility | None = None,
 ) -> list[tuple[ThoughtRecord, str]]:
     """Search across multiple scopes. Returns (thought, source_trail_name) tuples.
 
@@ -761,6 +714,7 @@ async def recall_multi(
             include_superseded=include_superseded,
             include_relationships=include_relationships,
             limit=limit,
+            visibility=visibility,
         ):
             if r.thought_id not in seen_ids:
                 seen_ids.add(r.thought_id)

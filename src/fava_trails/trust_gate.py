@@ -47,6 +47,7 @@ class TrustResult:
     provider: str | None = None
     # Model identifier returned by the provider (may differ from configured id).
     model: str | None = None
+    approval_kind: Literal["llm_advisory", "human"] = "llm_advisory"
 
 
 class TrustGatePromptCache:

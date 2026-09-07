@@ -115,6 +115,19 @@ async def handle_propose_truth(
         policy = get_trust_gate_policy(trail.trail_name)
 
         trust_result = None
+        reviewed_record = None
+        if arguments.get("approval") == "human":
+            from ..governance import runtime_principal
+            from ..trust_gate import TrustResult
+            principal = runtime_principal()
+            if not principal.operator or not principal.agent_id:
+                raise ValueError("Explicit human approval requires an operator-controlled endpoint")
+            trust_result = TrustResult(
+                verdict="approve", reasoning="Explicit operator approval",
+                reviewer=f"human:{principal.agent_id}", approval_kind="human",
+            )
+            promoted = await trail.propose_truth(thought_id, trust_result=trust_result, reviewed_record=reviewed_record)
+            return {"status": "ok", "thought": _serialize_thought(promoted), "message": "Approved by explicit operator action"}
         if policy == "llm-oneshot" and prompt_cache is None:
             return {
                 "status": "error",
@@ -127,6 +140,7 @@ async def handle_propose_truth(
             if record is None:
                 return {"status": "error", "message": f"Thought {thought_id} not found"}
 
+            reviewed_record = record.model_copy(deep=True)
             try:
                 prompt = prompt_cache.resolve_prompt(trail.trail_name)
             except TrustGateConfigError as e:
@@ -180,7 +194,7 @@ async def handle_propose_truth(
             else:
                 trust_result = await _review_coro
 
-        promoted = await trail.propose_truth(thought_id, trust_result=trust_result)
+        promoted = await trail.propose_truth(thought_id, trust_result=trust_result, reviewed_record=reviewed_record)
         result = {
             "status": "ok",
             "thought": _serialize_thought(promoted),
