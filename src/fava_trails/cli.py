@@ -1839,7 +1839,59 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_rlm.set_defaults(func=lambda args: (p_rlm.print_help(), 0)[1])
 
+    p_duplicates = subparsers.add_parser("duplicates", help="Read-only duplicate report or explicit reviewed migration")
+    p_duplicates.add_argument("--repo", required=True, help="Local JJ data repository (trails/ layout)")
+    p_duplicates.add_argument("--scope", help="Exact scope for duplicate groups")
+    p_duplicates.add_argument("--out", help="New owner-only JSON artifact outside the data repository")
+    p_duplicates.add_argument("--canonical", help="JSON map of body SHA256 to canonical repository-relative path")
+    p_duplicates.add_argument("--plan", help="Exact reviewed plan JSON")
+    p_duplicates.add_argument("--confirm-plan", help="Digest copied from the reviewed plan")
+    actions = p_duplicates.add_mutually_exclusive_group()
+    actions.add_argument("--apply", action="store_true", help="Apply the reviewed plan (destructive; explicit operator approval required)")
+    actions.add_argument("--rollback", action="store_true", help="Restore exact before images only if post-migration state still matches")
+    p_duplicates.set_defaults(func=cmd_duplicates)
+
     return parser
+
+
+def cmd_duplicates(args: argparse.Namespace) -> int:
+    """Local operator maintenance; dry-run is the default, never an MCP mutation."""
+    import asyncio
+    import json
+
+    from .duplicates import apply_plan, build_plan, report, write_private
+    from .vcs.jj_backend import JjBackend
+
+    try:
+        root = Path(args.repo).expanduser().resolve(strict=True)
+        output = Path(args.out).expanduser().resolve() if args.out else None
+        if output and output.is_relative_to(root):
+            raise ValueError("Write private reports/plans outside the data repository")
+        if args.apply or args.rollback:
+            if not args.plan or not args.confirm_plan:
+                raise ValueError("Apply/rollback requires --plan and --confirm-plan DIGEST")
+            plan = json.loads(Path(args.plan).read_text())
+            result = asyncio.run(apply_plan(JjBackend(root, root / "trails" / plan["scope"]), plan, args.confirm_plan, rollback=args.rollback))
+        elif args.canonical:
+            if not args.scope or not output:
+                raise ValueError("Planning requires --scope and private --out")
+            selected = json.loads(Path(args.canonical).read_text())
+            result = build_plan(root, args.scope, selected)
+        else:
+            if not args.scope or not output:
+                raise ValueError("Read-only reporting requires --scope and private --out")
+            result = report(root, args.scope)
+        if output:
+            write_private(output, result)
+        # Never echo record content/provenance into shared terminal or CI logs.
+        summary = {key: result[key] for key in ("status", "digest", "counts", "blockers", "receipt") if key in result}
+        if output:
+            summary["artifact"] = str(output)
+        print(json.dumps(summary, indent=2))
+        return 2 if result.get("blockers") else 0
+    except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
 
 
 def main(argv: list[str] | None = None) -> None:
