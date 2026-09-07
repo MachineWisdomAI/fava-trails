@@ -4,6 +4,9 @@ All notable changes to FAVA Trails are documented here.
 
 ## Unreleased
 
+### Changed
+- Support MCP SDK 2.2 with explicit low-level handlers, preserving tool schemas, annotations, input/output validation, structured results, and Markdown usage guidance over stdio and Streamable HTTP. Adds installed-wheel protocol tests for legacy initialization and current SDK clients. Resolves #83.
+
 ## [0.6.1] — 2026-08-01
 
 ### Fixed
