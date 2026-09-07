@@ -243,9 +243,19 @@ async def handle_rollback(trail, arguments: dict) -> dict[str, Any]:
     return {"status": "ok", "message": result}
 
 
-async def handle_sync(trail, arguments: dict) -> dict[str, Any]:
-    """Sync with shared truth. Aborts on conflict."""
+async def handle_sync(trail, arguments: dict, *, private_details: bool = True) -> dict[str, Any]:
+    """Sync with shared truth; repository diagnostics are operator-only."""
     result = await trail.sync()
+    if not private_details:
+        if result.has_case_collisions:
+            return {"status": "blocked", "message": "Sync blocked by repository path conflicts. Operator attention is required."}
+        if result.has_dirty_working_copy:
+            return {"status": "blocked", "message": "Sync blocked by uncommitted repository changes. Operator attention is required."}
+        if result.has_conflicts:
+            return {"status": "conflict", "message": "Sync stopped because of repository conflicts. Pre-sync state restored; operator attention is required."}
+        if not result.success:
+            return {"status": "error", "message": "Sync failed. Ask an operator to check repository state and connectivity."}
+        return {"status": "ok", "message": "Sync complete."}
     if getattr(result, "has_case_collisions", False):
         return {
             "status": "blocked",

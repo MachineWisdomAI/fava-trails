@@ -95,3 +95,15 @@ fava-trails rich-view generate --scope example/engineering --out /tmp/fava-reade
 The generated artifact contains the selected records. Keep authoring/history
 artifacts private, and regenerate an existing artifact when changing modes.
 `serve --no-generate` serves the existing snapshot, not a newly filtered view.
+
+Each recall response and reader generation captures one repository view before
+processing scopes. Per-scope recall hooks and their nested recall queries use
+that same view. An approval committed during processing becomes visible on the
+next request; one response cannot combine an old current record with its newly
+approved replacement.
+
+Configured agents can call `sync` without operator privileges. Their responses
+contain a fixed success, blocked, conflict or error summary; private repository
+paths, conflict descriptions and raw fetch/push diagnostics remain available only
+to operators. Existing conflicts require operator repair. Sync access does not
+grant `diff`, `conflicts`, `rollback`, `forget`, history or human approval access.

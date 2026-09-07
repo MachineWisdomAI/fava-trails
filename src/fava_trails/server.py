@@ -713,7 +713,7 @@ async def _authorize_tool(name: str, arguments: dict, principal: Principal, trai
     extra = metadata.get("extra") or {} if isinstance(metadata, dict) else {}
     if isinstance(extra, dict) and {"approval", "trust_gate"}.intersection(extra):
         raise PermissionError("Approval provenance is server-owned; use the review or explicit approval operation")
-    operator_tools = {"diff", "conflicts", "rollback", "forget", "sync", "learn_preference"}
+    operator_tools = {"diff", "conflicts", "rollback", "forget", "learn_preference"}
     if name in operator_tools and not principal.operator:
         raise PermissionError(f"{name} requires an operator-controlled endpoint")
     if name in OPEN_WORLD_TOOLS and not principal.agent_id:
@@ -895,6 +895,7 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     logger.info("Tool call started: %s %s", name, _summarize_tool_arguments(arguments))
     result: Any
+    safe_sync = False
     try:
         principal = runtime_principal()
         arguments = await _authorize_tool(name, arguments, principal)
@@ -937,6 +938,7 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> Any:
             return result
 
         arguments = await _authorize_tool(name, arguments, principal, trail)
+        safe_sync = name == "sync" and not principal.operator
 
         # Root-level warning for write operations
         warning = None
@@ -964,6 +966,12 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> Any:
                         allow_through = any(target_id in fp for fp in conflicted_files)
 
                 if not allow_through:
+                    if not principal.operator:
+                        # Repository conflicts may belong to another author.
+                        return {
+                            "status": "blocked",
+                            "message": "Operation blocked by repository conflicts. An operator must resolve them before retrying.",
+                        }
                     conflict_result = {
                         "status": "blocked",
                         "message": (
@@ -1017,7 +1025,7 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> Any:
                 "get_thought": lambda: handle_get_thought(trail, arguments),
                 "propose_truth": lambda: handle_propose_truth(trail, arguments, prompt_cache=_prompt_cache),
                 "forget": lambda: handle_forget(trail, arguments),
-                "sync": lambda: handle_sync(trail, arguments),
+                "sync": lambda: handle_sync(trail, arguments, private_details=principal.operator),
                 "conflicts": lambda: handle_conflicts(trail, arguments),
                 "rollback": lambda: handle_rollback(trail, arguments),
                 "diff": lambda: handle_diff(trail, arguments),
@@ -1034,8 +1042,9 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> Any:
         if warning and isinstance(result, dict) and result.get("status") == "ok":
             result["warning"] = warning
 
-        # Attach HookFeedback if hooks produced any (task-scoped, consume-once)
-        if isinstance(result, dict) and result.get("status") == "ok":
+        # Sync exposes only fixed operational summaries to non-operators.
+        # Attach HookFeedback for other operations (task-scoped, consume-once).
+        if not safe_sync and isinstance(result, dict) and result.get("status") == "ok":
             pipeline_result = trail.consume_feedback() if trail else None
             if pipeline_result is not None and not pipeline_result.feedback.is_empty():
                 result["hook_feedback"] = pipeline_result.feedback.to_dict()
@@ -1046,11 +1055,20 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> Any:
             if config.push_strategy == "immediate" and _shared_backend is not None:
                 push_result = await _shared_backend.try_push()
                 if push_result.get("status") == "warning":
-                    result["push_warning"] = push_result["message"]
+                    result["push_warning"] = (
+                        "Publishing local changes did not complete; operator attention is required."
+                        if safe_sync else push_result["message"]
+                    )
 
     except Exception as e:
         logger.exception(f"Tool {name} failed")
-        result = {"status": "error", "message": f"Tool '{name}' failed: {str(e)}"}
+        result = {
+            "status": "error",
+            "message": (
+                "Sync failed. Ask an operator to check repository state and connectivity."
+                if safe_sync else f"Tool '{name}' failed: {str(e)}"
+            ),
+        }
 
     logger.info("Tool call completed: %s %s", name, _summarize_tool_result(result))
     return result

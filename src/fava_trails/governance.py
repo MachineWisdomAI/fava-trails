@@ -6,8 +6,10 @@ Tool arguments select a view; they never establish a caller's authority.
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 
 from .models import ThoughtRecord, ValidationStatus
 from .transactions import snapshot_texts
@@ -50,7 +52,7 @@ class Visibility:
         if self.mode == "authoring" and set(self.statuses) - {"draft", "proposed"}:
             raise ValueError("authoring statuses are limited to draft and proposed")
 
-    def allows(self, record: ThoughtRecord, records: dict[str, ThoughtRecord]) -> bool:
+    def allows(self, record: ThoughtRecord, records: Mapping[str, ThoughtRecord]) -> bool:
         fm = record.frontmatter
         status = fm.validation_status.value
         if self.mode == "governed" and status != "approved":
@@ -65,7 +67,7 @@ class Visibility:
         return self.include_superseded or not is_effectively_superseded(record, records)
 
 
-def is_effectively_superseded(record: ThoughtRecord, records: dict[str, ThoughtRecord]) -> bool:
+def is_effectively_superseded(record: ThoughtRecord, records: Mapping[str, ThoughtRecord]) -> bool:
     """A legacy or current backlink retires truth only with an approved successor."""
     fm = record.frontmatter
     key = f"{fm.superseded_scope}:{fm.superseded_by}" if fm.superseded_scope else fm.superseded_by
@@ -73,17 +75,22 @@ def is_effectively_superseded(record: ThoughtRecord, records: dict[str, ThoughtR
     return successor is not None and successor.frontmatter.validation_status == ValidationStatus.APPROVED
 
 
-def read_records(trails_dir: Path) -> dict[Path, ThoughtRecord]:
+def _parse_records(texts: Mapping[Path, str], *, strict: bool = False) -> dict[Path, ThoughtRecord]:
     result = {}
-    for path, text in snapshot_texts(trails_dir).items():
+    for path, text in texts.items():
         try:
             result[path] = ThoughtRecord.from_markdown(text)
         except Exception:
-            continue
+            if strict:
+                raise
     return result
 
 
-def record_index(records: dict[Path, ThoughtRecord], trails_dir: Path) -> dict[str, ThoughtRecord]:
+def read_records(trails_dir: Path) -> dict[Path, ThoughtRecord]:
+    return _parse_records(snapshot_texts(trails_dir))
+
+
+def record_index(records: Mapping[Path, ThoughtRecord], trails_dir: Path) -> dict[str, ThoughtRecord]:
     """Qualify new lineage by scope; ambiguous legacy IDs never retire originals."""
     index = {}
     duplicates = set()
@@ -96,6 +103,29 @@ def record_index(records: dict[Path, ThoughtRecord], trails_dir: Path) -> dict[s
     for thought_id in duplicates:
         index.pop(thought_id, None)
     return index
+
+
+@dataclass(frozen=True)
+class RecordSnapshot:
+    """One captured read view shared across all scopes of a response.
+
+    Mapping containers cannot change. Parsed records are internal read-only
+    values; recall copies them before returning them or passing them to hooks.
+    """
+
+    texts: Mapping[Path, str]
+    records: Mapping[Path, ThoughtRecord]
+    by_id: Mapping[str, ThoughtRecord]
+
+
+def read_snapshot(trails_dir: Path, *, strict: bool = False) -> RecordSnapshot:
+    texts = snapshot_texts(trails_dir)
+    records = _parse_records(texts, strict=strict)
+    return RecordSnapshot(
+        texts=MappingProxyType(texts),
+        records=MappingProxyType(records),
+        by_id=MappingProxyType(record_index(records, trails_dir)),
+    )
 
 
 def visibility_from_arguments(arguments: dict, principal: Principal) -> Visibility:

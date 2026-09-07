@@ -15,7 +15,7 @@ from .config import (
     sanitize_scope_path,
     save_trail_config,
 )
-from .governance import Visibility, read_records, record_index
+from .governance import RecordSnapshot, Visibility, read_records, read_snapshot, record_index
 from .hook_manifest import HookRegistry
 from .hook_pipeline import PipelineResult, dispatch_observer, run_pipeline
 from .hook_types import (
@@ -391,6 +391,7 @@ class TrailManager:
         query: str = "",
         namespace: str | None = None,
         limit: int = 20,
+        _snapshot: RecordSnapshot | None = None,
     ) -> list[ThoughtRecord]:
         """Internal recall that bypasses hooks. Used by TrailContext to prevent recursion."""
         return await self.recall(
@@ -398,6 +399,7 @@ class TrailManager:
             namespace=namespace,
             limit=limit,
             _skip_hooks=True,
+            _snapshot=_snapshot,
         )
 
     async def recall(
@@ -410,12 +412,13 @@ class TrailManager:
         limit: int = 20,
         _skip_hooks: bool = False,
         visibility: Visibility | None = None,
+        _snapshot: RecordSnapshot | None = None,
     ) -> list[ThoughtRecord]:
         """Search thoughts by query, namespace, and scope. Hides superseded by default."""
         self._set_feedback(None)
         visibility = visibility or Visibility(include_superseded=include_superseded)
-        records = read_records(get_trails_dir())
-        by_id = record_index(records, get_trails_dir())
+        snapshot = _snapshot if _snapshot is not None else read_snapshot(get_trails_dir())
+        records, by_id = snapshot.records, snapshot.by_id
         results = []
         search_dirs = []
 
@@ -463,7 +466,7 @@ class TrailManager:
                     if not all(word in searchable for word in query_words):
                         continue
 
-                results.append(record)
+                results.append(record.model_copy(deep=True))
 
                 if len(results) >= limit:
                     break
@@ -480,7 +483,7 @@ class TrailManager:
                     continue
                 related = next((r for p, r in records.items() if r.thought_id == rid and p.is_relative_to(self.trail_path / "thoughts")), None)
                 if related and visibility.allows(related, by_id):
-                    results.append(related)
+                    results.append(related.model_copy(deep=True))
 
         # on_recall hook — filter/reorder results
         if self._hooks and self._hooks.has_hooks and not _skip_hooks:
@@ -490,7 +493,7 @@ class TrailManager:
                 query=query,
                 namespace=namespace,
                 scope=scope,
-                context=TrailContext(self),
+                context=TrailContext(self, recall_snapshot=snapshot),
             )
             pipeline_result = await run_pipeline(self._hooks, recall_event)
             self._set_feedback(pipeline_result)
@@ -706,6 +709,7 @@ async def recall_multi(
     """
     seen_ids: set[str] = set()
     results: list[tuple[ThoughtRecord, str]] = []
+    snapshot = read_snapshot(get_trails_dir()) if trail_managers else None
     for tm in trail_managers:
         for r in await tm.recall(
             query=query,
@@ -715,6 +719,7 @@ async def recall_multi(
             include_relationships=include_relationships,
             limit=limit,
             visibility=visibility,
+            _snapshot=snapshot,
         ):
             if r.thought_id not in seen_ids:
                 seen_ids.add(r.thought_id)
@@ -732,7 +737,7 @@ async def recall_multi(
             query=query,
             namespace=namespace,
             scope=scope,
-            context=TrailContext(primary),
+            context=TrailContext(primary, recall_snapshot=snapshot),
         )
         pipeline_result = await run_pipeline(primary._hooks, mix_event)
         # Merge with existing on_recall feedback from primary trail so
