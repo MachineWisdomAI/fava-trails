@@ -63,7 +63,10 @@ def _replace(path: Path, text: str | None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_name(path.name + ".governance-tmp")
     try:
-        with temp.open("w", encoding="utf-8") as stream:
+        mode = path.stat().st_mode & 0o777 if path.exists() else 0o600
+        fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as stream:
+            os.chmod(temp, mode)
             stream.write(text)
             stream.flush()
             os.fsync(stream.fileno())
@@ -76,7 +79,7 @@ def _replace(path: Path, text: str | None) -> None:
 def _load_journal(root: Path) -> dict[str, str | None]:
     path = journal_path(root)
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_bytes().decode("utf-8"))
     except FileNotFoundError:
         return {}
     if not isinstance(data, dict) or not isinstance(data.get("before"), dict):
@@ -110,7 +113,7 @@ def _snapshot(trails_dir: Path, root: Path, before=None) -> dict[Path, str]:
     for path in trails_dir.glob("**/thoughts/**/*.md"):
         name = str(path.relative_to(root))
         try:
-            text = before[name] if name in before else path.read_text(encoding="utf-8")
+            text = before[name] if name in before else path.read_bytes().decode("utf-8")
         except FileNotFoundError:
             continue
         if text is not None:
@@ -144,7 +147,7 @@ async def recover_governance(vcs) -> None:
             await _recover(vcs)
 
 
-async def persist_governance(vcs, writes: dict[Path, str | None], message: str, *, expected=None) -> None:
+async def persist_governance(vcs, writes: dict[Path, str | None], message: str, *, expected=None, prepare=None, committed=None) -> None:
     """Commit a bounded set of thought files, preserving a consistent read view."""
     root = vcs.repo_root
     async with vcs.repo_lock:
@@ -153,10 +156,12 @@ async def persist_governance(vcs, writes: dict[Path, str | None], message: str, 
             for path, expected_record in (expected or {}).items():
                 from .models import ThoughtRecord
 
-                if not path.exists() or ThoughtRecord.from_markdown(path.read_text()) != expected_record:
+                if not path.exists() or ThoughtRecord.from_markdown(path.read_bytes().decode("utf-8")) != expected_record:
                     raise ValueError("Thought changed during approval; re-review before retrying")
+            if prepare is not None:
+                await prepare()
             journal = journal_path(root)
-            before = {str(p.relative_to(root)): p.read_text(encoding="utf-8") if p.exists() else None for p in writes}
+            before = {str(p.relative_to(root)): p.read_bytes().decode("utf-8") if p.exists() else None for p in writes}
             _replace(journal, json.dumps({"before": before}))
             try:
                 for path, text in writes.items():
@@ -166,6 +171,8 @@ async def persist_governance(vcs, writes: dict[Path, str | None], message: str, 
                     [str(path) for path in writes],
                     allowed_prefixes=[str(path.parent.relative_to(root)) for path in writes],
                 )
+                if committed is not None:
+                    await committed()
                 _replace(journal, None)
             except BaseException:
                 for name, text in before.items():
