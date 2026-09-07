@@ -79,6 +79,12 @@ fava-trails clone https://github.com/YOUR-ORG/fava-trails-data.git fava-trails-d
 
 ### Register the MCP server
 
+FAVA uses MCP SDK 2.2 or later within the 2.x series. Existing stdio client
+configuration and the private Streamable HTTP endpoint remain supported, including
+legacy `initialize` clients. Tool input/output schemas, annotations, and structured
+responses are preserved. Restart a configured server after updating its package;
+installing the package alone does not update a running process.
+
 Add to your MCP client config:
 - **Claude Code CLI**: `~/.claude.json` (top-level `mcpServers` key)
 - **Claude Desktop**: `claude_desktop_config.json`

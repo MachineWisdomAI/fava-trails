@@ -124,7 +124,7 @@ class TestToolMetadata:
         """Every advertised tool must declare an output schema."""
         for td in TOOL_DEFINITIONS:
             assert "outputSchema" in td, td["name"]
-            assert td["outputSchema"].get("type") == "object" or "anyOf" in td["outputSchema"]
+            assert td["outputSchema"]["type"] == "object"
 
     def test_all_tools_have_annotations(self):
         """Every advertised tool must include MCP tool annotations."""
@@ -165,21 +165,21 @@ class TestToolMetadata:
         by_name = {tool.name: tool for tool in tools}
 
         recall = by_name["recall"]
-        assert recall.outputSchema
-        assert recall.outputSchema["anyOf"][0]["required"] == [
+        assert recall.output_schema
+        assert recall.output_schema["anyOf"][0]["required"] == [
             "status",
             "count",
             "thoughts",
             "filters",
         ]
         assert recall.annotations
-        assert recall.annotations.readOnlyHint is True
+        assert recall.annotations.read_only_hint is True
 
         save_thought = by_name["save_thought"]
-        assert save_thought.outputSchema
+        assert save_thought.output_schema
         assert save_thought.annotations
-        assert save_thought.annotations.readOnlyHint is False
-        assert save_thought.annotations.openWorldHint is True
+        assert save_thought.annotations.read_only_hint is False
+        assert save_thought.annotations.open_world_hint is True
 
     def test_all_tool_schemas_accept_common_error_result(self):
         """Structured error payloads must not be hidden by output validation."""
