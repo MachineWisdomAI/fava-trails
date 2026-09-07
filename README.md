@@ -448,3 +448,11 @@ uv run pytest --cov       # with coverage
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, how to run tests, and PR expectations.
 
 See [CHANGELOG.md](CHANGELOG.md) for release history.
+
+### Duplicate maintenance
+
+Use `fava-trails duplicates` for a read-only exact-body report and a digest-bound,
+reviewed migration plan. Applying or rolling back requires an explicit operator
+command and preserves a JJ recovery point and before images. See
+[reviewed duplicate maintenance](docs/duplicate-migration.md) for private artifacts,
+lifecycle and lineage blockers, crash recovery, and the real-data approval gate.
