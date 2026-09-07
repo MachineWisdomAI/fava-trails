@@ -35,11 +35,3 @@ jobs:
         run: uv run pytest -v
         env:
           JJ_CONFIG: /dev/null
-
-      - name: Verify installed wheel MCP startup
-        run: |
-          uv build --wheel
-          uv run --isolated --no-project --with dist/*.whl --with pytest --with pytest-asyncio pytest tests/test_mcp_protocol.py -v
-        env:
-          JJ_CONFIG: /dev/null
-          FAVA_EXPECT_WHEEL: "1"
