@@ -180,6 +180,10 @@ recall(trail_name="myorg/eng/my-project", query="X")
 
 Agents interact through MCP tools — they never see VCS commands.
 
+## Local scope reader
+
+Generate a private, read-only dashboard from a FAVA scope and its descendants, then follow thought provenance, lineage, and typed relationships. [Generate and serve Rich Views locally](docs/rich-views.md). Source Markdown remains canonical.
+
 ## Cross-Machine Sync
 
 FAVA Trails uses git remotes for cross-machine sync. The `fava-trails bootstrap` command sets `push_strategy: immediate` which auto-pushes after every write.

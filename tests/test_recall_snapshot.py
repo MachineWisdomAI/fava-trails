@@ -104,5 +104,7 @@ async def test_reader_uses_one_committed_view_for_all_scopes(nested_trail_manage
         output_dir=tmp_path / "reader",
     )
     assert result.thought_count == 1
-    assert result.routes == (f"/id/{original.thought_id}/",)
+    assert result.routes == (f"/{first.trail_name}/original-decision/",)
+    assert (tmp_path / "reader/src/pages/id" / f"{original.thought_id}.md").is_file()
+    assert not (tmp_path / "reader/src/pages/id" / f"{successor.thought_id}.md").exists()
     assert reads == 1
