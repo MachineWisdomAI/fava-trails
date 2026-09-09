@@ -95,6 +95,12 @@ def test_parse_and_compare_versions():
     assert is_compatible(Version.parse("0.45.1"))
     assert not is_compatible(Version.parse("0.27.9"))
     assert Version.parse("0.45.1") == Version(0, 45, 1)
+    with pytest.raises(ValueError, match="invalid version"):
+        Version.parse("invalid")
+    with pytest.raises(JjInstallError, match="invalid JJ version override"):
+        from fava_trails.jj_install import require_version
+
+        require_version("not-a-version", what="JJ version override")
 
 
 @pytest.mark.parametrize(
@@ -681,6 +687,92 @@ def test_format_selection_report_includes_fields():
     )
     assert "action:  reuse" in text
     assert "0.45.1" in text
+
+
+def test_invalid_explicit_version_returns_structured_error(tmp_path):
+    """CLI/env overrides must not raise ValueError through the selection boundary."""
+    result = select_or_install(
+        explicit_version="invalid",
+        install_dir=tmp_path / "managed",
+        which_jj=None,
+        os_name="linux",
+        machine="x86_64",
+        fetch_json=lambda *_: (_ for _ in ()).throw(AssertionError("must not fetch")),
+    )
+    assert result.exit_code == 1
+    assert result.action == "error"
+    assert result.path is None
+    assert result.version is None
+    assert "invalid JJ version override" in result.reason
+    report = format_selection_report(result)
+    assert "action:  error" in report
+    assert "version: (none)" in report
+
+
+def test_invalid_explicit_version_with_existing_still_structured(tmp_path):
+    jj = _write_executable(tmp_path / "bin" / "jj", "0.45.1")
+    result = select_or_install(
+        explicit_version="1.2",
+        install_dir=tmp_path / "managed",
+        which_jj=str(jj),
+        os_name="linux",
+        machine="x86_64",
+    )
+    assert result.exit_code == 1
+    assert result.action == "error"
+    assert "invalid JJ version override" in result.reason
+    # Must not touch disk on bad override
+    assert not (tmp_path / "managed" / "jj").exists()
+
+
+def test_module_main_invalid_version_no_traceback(capsys, monkeypatch):
+    from fava_trails.jj_install import main
+
+    monkeypatch.delenv("JJ_VERSION", raising=False)
+    rc = main(["--version", "invalid"])
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert "Traceback" not in captured.out
+    assert "Traceback" not in captured.err
+    assert "action:  error" in captured.out
+    assert "invalid JJ version override" in captured.err
+
+
+def test_module_main_invalid_jj_version_env(capsys, monkeypatch, tmp_path):
+    from fava_trails.jj_install import main
+
+    monkeypatch.setenv("JJ_VERSION", "not.semver")
+    monkeypatch.setenv("INSTALL_DIR", str(tmp_path / "managed"))
+    rc = main([])
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert "Traceback" not in captured.out + captured.err
+    assert "action:  error" in captured.out
+    assert "invalid JJ version override" in captured.err
+
+
+def test_cli_install_jj_invalid_version(capsys, monkeypatch):
+    from fava_trails.cli import cmd_install_jj
+
+    monkeypatch.delenv("JJ_VERSION", raising=False)
+    rc = cmd_install_jj(type("A", (), {"jj_version": "bogus", "force": False})())
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert "Traceback" not in captured.out + captured.err
+    assert "action:  error" in captured.out
+    assert "invalid JJ version override" in captured.err
+
+
+def test_cli_install_jj_invalid_jj_version_env(capsys, monkeypatch):
+    from fava_trails.cli import cmd_install_jj
+
+    monkeypatch.setenv("JJ_VERSION", "v")
+    rc = cmd_install_jj(type("A", (), {"jj_version": None, "force": False})())
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert "Traceback" not in captured.out + captured.err
+    assert "action:  error" in captured.out
+    assert "invalid JJ version override" in captured.err
 
 
 def test_cli_install_jj_reuses(tmp_path, capsys, monkeypatch):

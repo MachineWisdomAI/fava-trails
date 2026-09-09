@@ -41,7 +41,9 @@ Shared behavior:
 2. **Never silently downgrade** or overwrite a **user-managed** executable
    (anything other than the managed `~/.local/bin/jj` path).
 3. When install is needed, **resolve GitHub latest stable** with bounded
-   network timeouts, unless an explicit version override is set.
+   network timeouts, unless an explicit version override is set. Invalid
+   `--version` / `JJ_VERSION` values return a structured
+   `action`/`path`/`version`/`reason` error (no traceback).
 4. **Integrity**: use GitHub release asset `digest` (`sha256:…`) when the API
    publishes it; a published digest is never silently discarded. Older tags
    without digests still verify `--version` after extract.

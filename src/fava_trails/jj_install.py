@@ -81,6 +81,14 @@ class Version:
         return (self.major, self.minor, self.patch) == (other.major, other.minor, other.patch)
 
 
+def require_version(text: str, *, what: str = "JJ version") -> Version:
+    """Parse a version string, raising JjInstallError on invalid input."""
+    try:
+        return Version.parse(text)
+    except ValueError as e:
+        raise JjInstallError(f"invalid {what}: {text!r}") from e
+
+
 @dataclass(frozen=True)
 class ExistingJj:
     path: Path
@@ -284,8 +292,8 @@ def resolve_release(
     """
     if explicit_version:
         version = explicit_version.lstrip("vV")
-        # Validate shape early
-        Version.parse(version)
+        # Validate shape early (JjInstallError, not bare ValueError).
+        require_version(version, what="JJ version override")
         data = fetch_json(GITHUB_API_TAG.format(version=version))
         return _asset_from_release_payload(
             data,
@@ -299,7 +307,7 @@ def resolve_release(
     version = tag.lstrip("vV")
     if not version:
         raise JjInstallError("GitHub latest release response missing tag_name")
-    Version.parse(version)
+    require_version(version, what="GitHub latest release tag")
     return _asset_from_release_payload(
         data,
         version=version,
@@ -523,6 +531,24 @@ def select_or_install(
     install_dir = install_dir or DEFAULT_INSTALL_DIR
     min_version = Version.parse(JJ_MIN_VERSION)
 
+    # Validate CLI / JJ_VERSION overrides once at the selection boundary so callers
+    # get a structured SelectionResult instead of a bare ValueError traceback.
+    want_explicit: Version | None = None
+    if explicit_version is not None:
+        try:
+            want_explicit = require_version(
+                explicit_version.lstrip("vV"),
+                what="JJ version override",
+            )
+        except JjInstallError as e:
+            return SelectionResult(
+                action="error",
+                path=None,
+                version=None,
+                reason=str(e),
+                exit_code=1,
+            )
+
     # Discover existing *before* platform/download checks so compatible reuse works
     # even on hosts with no FAVA-downloadable JJ asset (issue #98).
     existing: ExistingJj | None = None
@@ -535,8 +561,8 @@ def select_or_install(
 
     # Reuse rules
     if existing is not None and not force_install:
-        if explicit_version:
-            want = Version.parse(explicit_version.lstrip("vV"))
+        if want_explicit is not None:
+            want = want_explicit
             if existing.version == want:
                 return SelectionResult(
                     action="reuse",
@@ -630,7 +656,16 @@ def select_or_install(
             exit_code=1,
         )
 
-    expected = Version.parse(release.version)
+    try:
+        expected = require_version(release.version, what="resolved JJ release version")
+    except JjInstallError as e:
+        return SelectionResult(
+            action="error",
+            path=str(existing.path) if existing else None,
+            version=str(existing.version) if existing else None,
+            reason=str(e),
+            exit_code=1,
+        )
     dest = managed_jj_path(install_dir)
 
     # If existing managed and already exact target, reuse
