@@ -6,6 +6,7 @@ All notable changes to FAVA Trails are documented here.
 
 ### Changed
 - Support MCP SDK 2.2 with explicit low-level handlers, preserving tool schemas, annotations, input/output validation, structured results, and Markdown usage guidance over stdio and Streamable HTTP. Adds installed-wheel protocol tests for legacy initialization and current SDK clients. Resolves #83.
+- **JJ installer policy (issue #98):** `fava-trails install-jj` and `scripts/install-jj.sh` reuse any installed JJ `>= 0.28.0` (including newer), never silently downgrade or overwrite a user-managed binary, resolve current GitHub stable when install is needed (explicit `--version` / `JJ_VERSION` override retained), verify GitHub asset SHA-256 digests when published, and install atomically with restore-on-failure. CI matrix covers JJ **0.28.0** and **0.45.1**. See `docs/jj-compatibility.md`.
 
 ## [0.6.1] — 2026-08-01
 

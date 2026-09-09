@@ -11,6 +11,12 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Supported minimum (integration floor) and current official stable.
+        # install-jj resolves "latest" from GitHub; pin via --version for reproducibility.
+        jj_version: ["0.28.0", "0.45.1"]
 
     steps:
       - uses: actions/checkout@v4
@@ -23,10 +29,18 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
-      - name: Install JJ
+      - name: Install JJ (${{ matrix.jj_version }})
         run: |
-          uv run fava-trails install-jj
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          # Explicit pin so CI is reproducible; production default resolves GitHub latest.
+          # Hide any preinstalled jj so we exercise the managed install path.
+          mkdir -p "$HOME/bin-shadow"
+          printf '#!/bin/sh\necho "shadow"\nexit 1\n' > "$HOME/bin-shadow/jj"
+          chmod +x "$HOME/bin-shadow/jj"
+          # Prefer empty PATH segment for jj discovery during install:
+          hash -r || true
+          uv run fava-trails install-jj --version "${{ matrix.jj_version }}" --force
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/jj" --version
 
       - name: Lint
         run: uv run ruff check src/ tests/
