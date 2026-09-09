@@ -25,6 +25,7 @@ import tempfile
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from functools import total_ordering
 from pathlib import Path
 
 # Floor supported by FAVA Trails integration tests (see docs/jj-compatibility.md).
@@ -48,6 +49,7 @@ class JjInstallError(Exception):
     """User-facing installer failure (message already actionable)."""
 
 
+@total_ordering
 @dataclass(frozen=True)
 class Version:
     major: int
@@ -67,8 +69,10 @@ class Version:
     def __str__(self) -> str:
         return f"{self.major}.{self.minor}.{self.patch}"
 
-    def __ge__(self, other: Version) -> bool:
-        return (self.major, self.minor, self.patch) >= (other.major, other.minor, other.patch)
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, Version):
+            return NotImplemented
+        return (self.major, self.minor, self.patch) < (other.major, other.minor, other.patch)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Version):
@@ -410,11 +414,13 @@ def atomic_install(
             try:
                 os.replace(backup, dest)
             except OSError:
+                # Best-effort restore only; the original install failure is re-raised.
                 pass
         if staged.exists():
             try:
                 staged.unlink()
             except OSError:
+                # Staged leftover cleanup is best-effort; original failure is re-raised.
                 pass
         raise
 

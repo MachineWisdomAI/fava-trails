@@ -62,7 +62,14 @@ def test_parse_and_compare_versions():
     assert is_compatible(Version.parse("0.28.0"))
     assert is_compatible(Version.parse("0.45.1"))
     assert not is_compatible(Version.parse("0.27.9"))
-    assert Version.parse("0.45.1") >= Version.parse(JJ_MIN_VERSION)
+    lo = Version.parse(JJ_MIN_VERSION)
+    hi = Version.parse("0.45.1")
+    assert hi >= lo
+    assert lo < hi
+    assert hi > lo
+    assert lo <= hi
+    assert hi == Version(0, 45, 1)
+    assert not (hi < lo)
 
 
 def test_detect_platform_linux_and_windows():

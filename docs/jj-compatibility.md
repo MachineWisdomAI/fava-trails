@@ -54,16 +54,19 @@ supported versions:
 - `jj diff --name-only`, `jj diff --stat`, `jj diff --git`
 - `jj log` with templates / revsets (`conflicts()`, `description(exact:"")`, `@`, `@-`)
 - `jj bookmark set`, `jj git fetch --all-remotes`, `jj rebase -d …`
-- `jj git push --allow-empty-description` / `-b`
+- `jj git push --allow-empty-description` / `-b` (tracked bookmarks)
+- `jj git push --all` when seeding a remote that does not yet have the bookmark
 - `jj abandon`, `jj op log`, `jj op restore`, `jj util gc`
 
 ### Incompatible command changes observed
 
-None between **0.28.0** and **0.45.1** for the surface above. FAVA does not use
-removed legacy names (`jj untrack`, `branches()` revset, etc.).
+| Change | Impact on FAVA |
+|--------|----------------|
+| `jj git push --allow-new` removed (JJ **0.42+**) | Not used by `JjBackend._git_push` (tracked `-b` / `--all` only). Tests that seed a brand-new remote bookmark must use `--all` (or track + push), not `--allow-new`. |
 
-If a future JJ release breaks a listed invocation, raise the documented minimum
-and note the incompatibility here.
+FAVA does not use other removed legacy names (`jj untrack`, `branches()` revset,
+etc.). If a future JJ release breaks a listed invocation, raise the documented
+minimum and note the incompatibility here.
 
 ## CI
 
