@@ -30,6 +30,7 @@ from fava_trails.cli import (
     cmd_scope_set,
     cmd_secom_setup,
     cmd_secom_warmup,
+    cmd_version,
 )
 from fava_trails.config import ConfigStore
 from fava_trails.models import GlobalConfig
@@ -485,6 +486,28 @@ def test_cli_version():
     assert "fava-trails" in result.stdout or "unknown" in result.stdout
 
 
+def test_cli_version_subcommand_reports_loaded_runtime(capsys):
+    """fava-trails version reports product, module path, and MCP SDK without secrets."""
+    rc = cmd_version(_make_args())
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Package version:" in out
+    assert "Module version:" in out
+    assert "Module path:" in out
+    assert "MCP SDK version:" in out
+    assert "OPENROUTER" not in out
+    assert "sk-" not in out
+
+    result = subprocess.run(
+        [sys.executable, "-m", "fava_trails.cli", "version"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+    assert "Package version:" in result.stdout
+    assert "MCP SDK version:" in result.stdout
+
+
 def test_cli_help():
     """fava-trails --help exits 0."""
     result = subprocess.run(
@@ -496,6 +519,7 @@ def test_cli_help():
     assert "init" in result.stdout
     assert "bootstrap" in result.stdout
     assert "scope" in result.stdout
+    assert "version" in result.stdout
 
 
 # ─── cmd_doctor ───────────────────────────────────────────────────────────────
@@ -534,6 +558,8 @@ def test_doctor_all_green(tmp_path, monkeypatch, capsys):
 
     assert rc == 0
     out = capsys.readouterr().out
+    assert "Package version:" in out
+    assert "MCP SDK version:" in out
     assert "JJ:" in out
     assert "Data repo:" in out
     assert "Trust Gate:" in out

@@ -84,6 +84,24 @@ After merging to `main`, point your MCP server at the dev copy to test with real
 
 Restart your MCP client (e.g., Claude Code) and use it for real work. Test the specific changes you made — save thoughts, recall, sync, etc. Use it for at least a working session before releasing.
 
+**Important:** a client config that uses `uv run --directory <checkout>` or a
+vendor path keeps that tree active even after `pip install -U fava-trails`.
+Run `fava-trails version` (or `fava-trails doctor`) in the same environment the
+client launches to see package/module version, module path, and MCP SDK version
+without printing credentials. See
+[docs/runtime-and-upgrade.md](docs/runtime-and-upgrade.md).
+
+Before tagging, build candidate artifacts from the immutable reviewed commit and
+run the packaging gates:
+
+```bash
+uv build
+uv run pytest tests/test_packaged_mcp.py tests/test_governance.py tests/test_mcp_protocol.py tests/test_runtime_info.py -v
+```
+
+Until PyPI/GitHub release metadata match that candidate, label the work **merged
+but unreleased**.
+
 ### 3. Release to PyPI
 
 Once dog-fooding confirms the changes work:

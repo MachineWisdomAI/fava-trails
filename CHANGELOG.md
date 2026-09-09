@@ -4,11 +4,27 @@ All notable changes to FAVA Trails are documented here.
 
 ## Unreleased
 
+### Added
+- `fava-trails version` (and a matching preamble on `fava-trails doctor`) reports
+  the loaded product package/module version, module path/source kind, and the
+  MCP SDK distribution version separately, without credentials. MCP
+  `serverInfo.version` now carries the FAVA product version. Documents identity
+  configuration, local runtime selectors that can keep an old checkout active,
+  and release-candidate install/upgrade verification. Wheel/sdist packaging
+  tests cover fresh install, upgrade from published 0.6.0, installed-entrypoint
+  MCP protocol (#83), and governed recall isolation (#72). Prepares #99; **0.6.1
+  remains merged but unreleased on PyPI until an authorized tag is published.**
+
 ### Changed
 - Support MCP SDK 2.2 with explicit low-level handlers, preserving tool schemas, annotations, input/output validation, structured results, and Markdown usage guidance over stdio and Streamable HTTP. Adds installed-wheel protocol tests for legacy initialization and current SDK clients. Resolves #83.
 - **JJ installer policy (issue #98):** `fava-trails install-jj` (canonical `jj_install.py`; `scripts/install-jj.sh` is a thin Bash 3.2-safe delegate) reuses any installed JJ `>= 0.28.0` before platform checks, never silently downgrades or overwrites a user-managed binary, resolves current GitHub stable when install is needed (explicit `--version` / `JJ_VERSION` override retained), verifies GitHub asset SHA-256 digests when published, requires exactly one safe regular `jj` archive member, installs atomically with restore of the prior managed binary after any post-replacement failure, and PATH-hints the selected install directory. CI matrix covers JJ **0.28.0** and **0.45.1**. See `docs/jj-compatibility.md`.
 
-## [0.6.1] — 2026-08-01
+## [0.6.1] — merged on main, not published (candidate)
+
+> **Publication status:** GitHub/PyPI latest remain **0.6.0**. Main identifies as
+> **0.6.1** and includes governed-read and MCP registration fixes. A normal
+> `pip install fava-trails` does **not** receive those fixes until an authorized
+> release. See [docs/runtime-and-upgrade.md](docs/runtime-and-upgrade.md).
 
 ### Fixed
 - Raised direct MCP (`>=1.28.1`) and Starlette (`>=1.3.1`) floors and refreshed the lockfile to clear open Dependabot advisories (including high-severity transitive updates such as NLTK and Transformers). Supersedes #81.

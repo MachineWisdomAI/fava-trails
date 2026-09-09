@@ -42,6 +42,7 @@ from .config import (
 from .governance import Principal, Visibility, runtime_principal
 from .hook_manifest import HookRegistry
 from .models import ValidationStatus
+from .runtime_info import product_version
 from .trail import TrailManager
 from .trust_gate import TrustGatePromptCache
 from .vcs.jj_backend import JjBackend
@@ -1126,6 +1127,7 @@ async def _call_tool(ctx: ServerRequestContext, params: CallToolRequestParams) -
 
 server = Server(
     "fava-trails",
+    version=product_version(),
     instructions=_build_server_instructions(),
     on_list_tools=_list_tools,
     on_call_tool=_call_tool,

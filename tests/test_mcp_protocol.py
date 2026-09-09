@@ -81,6 +81,14 @@ async def test_installed_stdio_initialize_list_and_call(stdio_rpc, tmp_fava_home
     assert initialized["protocolVersion"] == "2025-11-25"
     assert "tools" in initialized["capabilities"]
     assert "Governed Visibility" in initialized["instructions"]
+    # Handshake serverInfo.version is the FAVA product version, not the MCP SDK.
+    server_info = initialized["serverInfo"]
+    assert server_info["name"] == "fava-trails"
+    assert server_info["version"] == server.server.version
+    assert server_info["version"] == __import__("fava_trails").__version__
+    import importlib.metadata as _md
+
+    assert server_info["version"] != _md.version("mcp")
     await stdio_rpc("notifications/initialized", notification=True)
     listed = await stdio_rpc("tools/list")
     by_name = {tool["name"]: tool for tool in listed["tools"]}
