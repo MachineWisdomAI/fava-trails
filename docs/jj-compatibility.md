@@ -45,15 +45,21 @@ Shared behavior:
 4. **Integrity**: use GitHub release asset `digest` (`sha256:…`) when the API
    publishes it; a published digest is never silently discarded. Older tags
    without digests still verify `--version` after extract.
-5. **Safe archive handling**: only a single regular `jj` member is written;
-   path traversal, absolute paths, and non-regular entries are rejected.
-6. **Atomic install** to `~/.local/bin/jj` with restore of the prior managed
-   binary if verification fails **at any point after replacement begins**
+5. **Safe archive handling**: exactly one regular `jj` member is written;
+   path traversal, absolute paths, non-regular entries (symlinks/dirs), and
+   ambiguous archives with multiple `jj` candidates are rejected.
+6. **Atomic install** to the managed install dir (default `~/.local/bin/jj`;
+   override with `--install-dir` / `INSTALL_DIR`) with restore of the prior
+   managed binary if verification fails **at any point after replacement begins**
    (including post-replace `--version` failure when the new file is already at
-   the destination).
+   the destination). PATH guidance after install refers to the selected install
+   directory, not always `~/.local/bin`.
 7. Offline / API failure: if a compatible JJ is already present, keep it and
    report the resolution error in the reason; otherwise exit non-zero without
    changing disk state.
+8. `scripts/install-jj.sh` builds forwarded argv with `set --` only so the
+   documented no-argument path works under macOS Bash 3.2 + `set -u` (empty
+   array expansion is not used).
 
 ## Command surface FAVA relies on
 

@@ -12,29 +12,45 @@
 #   FORCE=1 scripts/install-jj.sh
 #   INSTALL_DIR=~/.local/bin scripts/install-jj.sh
 # Extra args are forwarded to the Python installer (--version, --force, --install-dir).
+#
+# Bash 3.2 note (macOS /bin/bash): under `set -u`, expanding an empty array via
+# "${arr[@]}" is an unbound-variable error. Build forwarded argv with `set --`
+# only — never copy or expand an empty array.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODULE_PATH="${ROOT}/src/fava_trails/jj_install.py"
 
-ARGS=()
-if [[ -n "${JJ_VERSION:-}" ]]; then
-  ARGS+=(--version "${JJ_VERSION}")
-fi
-if [[ "${FORCE:-0}" == "1" ]]; then
-  ARGS+=(--force)
-fi
-# INSTALL_DIR is read by the Python installer via env; also pass flag for the module CLI.
-MODULE_ARGS=("${ARGS[@]}")
-if [[ -n "${INSTALL_DIR:-}" ]]; then
-  MODULE_ARGS+=(--install-dir "${INSTALL_DIR}")
-fi
-# Allow callers to pass flags directly as well.
-MODULE_ARGS+=("$@")
-CLI_ARGS=("${ARGS[@]}")
-CLI_ARGS+=("$@")
-
 err() { printf '%s\n' "$*" >&2; }
+
+# $@ starts as the original script arguments (may be empty). Prepend env-derived
+# flags via `set --` so zero-arg invocation stays valid under Bash 3.2 + set -u.
+_run_module() {
+  local py="$1"
+  shift
+  if [[ -n "${INSTALL_DIR:-}" ]]; then
+    set -- --install-dir "${INSTALL_DIR}" "$@"
+  fi
+  if [[ "${FORCE:-0}" == "1" ]]; then
+    set -- --force "$@"
+  fi
+  if [[ -n "${JJ_VERSION:-}" ]]; then
+    set -- --version "${JJ_VERSION}" "$@"
+  fi
+  export PYTHONPATH="${ROOT}/src${PYTHONPATH:+:${PYTHONPATH}}"
+  exec "${py}" -m fava_trails.jj_install "$@"
+}
+
+_run_cli() {
+  # INSTALL_DIR is honored by the packaged CLI via env; only forward flag-like env.
+  if [[ "${FORCE:-0}" == "1" ]]; then
+    set -- --force "$@"
+  fi
+  if [[ -n "${JJ_VERSION:-}" ]]; then
+    set -- --version "${JJ_VERSION}" "$@"
+  fi
+  exec fava-trails install-jj "$@"
+}
 
 # Prefer the in-tree canonical module when this script lives in a source checkout.
 # That keeps INSTALL_DIR / policy aligned with this revision (not a stale packaged CLI).
@@ -50,13 +66,12 @@ if [[ -f "${MODULE_PATH}" ]]; then
   else
     PY="$(command -v python)"
   fi
-  export PYTHONPATH="${ROOT}/src${PYTHONPATH:+:${PYTHONPATH}}"
-  exec "${PY}" -m fava_trails.jj_install "${MODULE_ARGS[@]}"
+  _run_module "${PY}" "$@"
 fi
 
 # Packaged install: delegate to the CLI (INSTALL_DIR env is honored by the installer).
 if command -v fava-trails >/dev/null 2>&1; then
-  exec fava-trails install-jj "${CLI_ARGS[@]}"
+  _run_cli "$@"
 fi
 
 err "Could not find src/fava_trails/jj_install.py or the fava-trails CLI."

@@ -14,11 +14,14 @@ import pytest
 
 from fava_trails.jj_install import (
     JJ_MIN_VERSION,
+    JjInstallError,
     Version,
     detect_platform,
+    extract_jj_from_tarball,
     format_selection_report,
     is_compatible,
     parse_version_from_output,
+    path_hint,
     select_or_install,
 )
 
@@ -31,6 +34,34 @@ def _make_tarball(jj_script: str) -> bytes:
         info.size = len(data)
         info.mode = 0o755
         tf.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+def _make_tarball_from_members(members: list[tuple[str, bytes | None, str]]) -> bytes:
+    """Build a gzipped tar.
+
+    Each member is ``(name, content_or_none, kind)`` where kind is
+    ``file`` | ``symlink`` | ``dir``.
+    """
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        for name, content, kind in members:
+            info = tarfile.TarInfo(name=name)
+            if kind == "dir":
+                info.type = tarfile.DIRTYPE
+                info.mode = 0o755
+                tf.addfile(info)
+            elif kind == "symlink":
+                info.type = tarfile.SYMTYPE
+                info.linkname = content.decode() if isinstance(content, bytes) else (content or "x")
+                info.mode = 0o777
+                tf.addfile(info)
+            else:
+                data = content or b""
+                info.size = len(data)
+                info.mode = 0o755
+                info.type = tarfile.REGTYPE
+                tf.addfile(info, io.BytesIO(data))
     return buf.getvalue()
 
 
@@ -331,7 +362,100 @@ def test_shell_install_jj_is_thin_delegate():
     assert "tar -xzf" not in text
     assert "RESOLVED_SHA256" not in text
     assert "exec" in text
+    # Bash 3.2 + set -u forbids expanding empty arrays; wrapper must not do that.
+    assert "ARGS=()" not in text
+    assert '("${ARGS[@]}")' not in text
+    assert "Bash 3.2" in text
 
+
+def test_shell_install_jj_bash32_empty_argv_safe(tmp_path):
+    """No-arg path must not trip set -u (macOS Bash 3.2 empty-array footgun).
+
+    Bash 3.2 treats ``\"${empty[@]}\"`` under ``set -u`` as unbound; Bash 4.4+
+    does not. CI may only have modern Bash, so we (1) forbid the historical
+    pattern in the script, (2) prove the ``set --`` rebuild works with zero
+    args under ``set -u``, and (3) run the live no-arg wrapper path.
+    """
+    import os
+    import shutil
+    import subprocess
+    import textwrap
+
+    bash = shutil.which("bash")
+    assert bash
+
+    # Pattern used by install-jj.sh: set -- rebuild with zero incoming args.
+    safe = textwrap.dedent(
+        r"""
+        set -euo pipefail
+        _run() {
+          shift
+          if [[ -n "${INSTALL_DIR:-}" ]]; then
+            set -- --install-dir "${INSTALL_DIR}" "$@"
+          fi
+          if [[ "${FORCE:-0}" == "1" ]]; then
+            set -- --force "$@"
+          fi
+          if [[ -n "${JJ_VERSION:-}" ]]; then
+            set -- --version "${JJ_VERSION}" "$@"
+          fi
+          printf 'argc=%s\n' "$#"
+          printf 'ok\n'
+        }
+        _run python3
+        """
+    )
+    good = subprocess.run([bash, "-c", safe], capture_output=True, text=True)
+    assert good.returncode == 0, good.stderr + good.stdout
+    assert "argc=0" in good.stdout
+    assert "ok" in good.stdout
+
+    # On Bash < 4.4, also prove the old empty-array copy fails under set -u.
+    ver = subprocess.run(
+        [bash, "-c", 'printf "%s.%s\\n" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}"'],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    major_s, _, minor_s = ver.partition(".")
+    try:
+        major, minor = int(major_s), int(minor_s or "0")
+    except ValueError:
+        major, minor = 99, 0
+    if (major, minor) < (4, 4):
+        footgun = textwrap.dedent(
+            r"""
+            set -euo pipefail
+            ARGS=()
+            MODULE_ARGS=("${ARGS[@]}")
+            printf 'should-not-reach\n'
+            """
+        )
+        bad = subprocess.run([bash, "-c", footgun], capture_output=True, text=True)
+        assert bad.returncode != 0, "empty-array expand must fail under Bash 3.2 set -u"
+
+    # Live wrapper: documented no-argument path (reuse).
+    jj = _write_executable(tmp_path / "bin" / "jj", "0.45.1")
+    managed = tmp_path / "managed"
+    managed.mkdir()
+    script = Path(__file__).resolve().parents[1] / "scripts" / "install-jj.sh"
+    py = shutil.which("python3") or shutil.which("python")
+    assert py
+    env = os.environ.copy()
+    env["PATH"] = f"{jj.parent}:{Path(py).parent}:{Path(bash).parent}"
+    env["INSTALL_DIR"] = str(managed)
+    # Explicitly clear optional flag env so this is a pure no-arg invocation.
+    env.pop("JJ_VERSION", None)
+    env.pop("FORCE", None)
+    result = subprocess.run(
+        [bash, str(script)],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=str(script.parent.parent),
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert "reuse" in result.stdout
 
 def test_shell_install_jj_reuses_via_python(tmp_path):
     """Thin shell entrypoint delegates reuse to the Python installer."""
@@ -363,6 +487,71 @@ def test_shell_install_jj_reuses_via_python(tmp_path):
     assert result.returncode == 0, result.stderr + result.stdout
     assert "reuse" in result.stdout
     assert "0.45.1" in result.stdout
+
+
+def test_extract_jj_accepts_single_nested_regular_member(tmp_path):
+    blob = _make_tarball_from_members(
+        [("prefix/jj", b"#!/bin/sh\necho ok\n", "file")]
+    )
+    tar_path = tmp_path / "jj.tar.gz"
+    tar_path.write_bytes(blob)
+    out = extract_jj_from_tarball(tar_path, tmp_path / "out")
+    assert out.name == "jj"
+    assert out.read_bytes().startswith(b"#!/bin/sh")
+
+
+@pytest.mark.parametrize(
+    "members, match",
+    [
+        (
+            [("jj", b"a", "file"), ("other/jj", b"b", "file")],
+            "ambiguous",
+        ),
+        (
+            [("jj", None, "symlink")],
+            "not a regular file",
+        ),
+        (
+            [("jj", None, "dir")],
+            "not a regular file",
+        ),
+        (
+            [("../jj", b"x", "file")],
+            "unsafe",
+        ),
+        (
+            [("/tmp/jj", b"x", "file")],
+            "unsafe",
+        ),
+        (
+            [("bin/not-jj", b"x", "file")],
+            "not found",
+        ),
+    ],
+)
+def test_extract_jj_rejects_adversarial_members(tmp_path, members, match):
+    blob = _make_tarball_from_members(members)
+    tar_path = tmp_path / "jj.tar.gz"
+    tar_path.write_bytes(blob)
+    with pytest.raises(JjInstallError, match=match):
+        extract_jj_from_tarball(tar_path, tmp_path / "out")
+
+
+def test_path_hint_default_mentions_local_bin():
+    text = path_hint()
+    assert "~/.local/bin" in text
+    assert "$HOME/.local/bin" in text
+
+
+def test_path_hint_uses_custom_install_dir(tmp_path):
+    custom = tmp_path / "custom" / "bin"
+    custom.mkdir(parents=True)
+    text = path_hint(custom)
+    assert str(custom.resolve()) in text or str(custom) in text
+    assert "~/.local/bin" not in text
+    # Export line should reference the custom directory, not the default.
+    assert ".local/bin:$PATH" not in text
+
 
 def test_sha256_mismatch_aborts(tmp_path):
     install_dir = tmp_path / "managed"

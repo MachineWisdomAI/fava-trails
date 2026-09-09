@@ -341,21 +341,39 @@ def _sha256_file(path: Path) -> str:
 
 
 def extract_jj_from_tarball(tarball: Path, dest_dir: Path) -> Path:
-    """Safely extract the jj binary member into dest_dir/jj."""
+    """Safely extract the single regular jj binary member into dest_dir/jj.
+
+    Requires exactly one candidate whose basename is ``jj``. Rejects path
+    traversal, absolute paths, non-regular entries (symlinks/dirs), and
+    ambiguous archives with multiple ``jj`` members.
+    """
     with tarfile.open(tarball, "r:gz") as tf:
-        members = [m for m in tf.getmembers() if Path(m.name).name == "jj"]
-        if not members:
+        candidates: list[tarfile.TarInfo] = []
+        for member in tf.getmembers():
+            if Path(member.name).name != "jj":
+                continue
+            member_path = Path(member.name)
+            # Any jj-named member that is unsafe or non-regular fails the archive.
+            if member_path.is_absolute() or ".." in member_path.parts:
+                raise JjInstallError(f"refusing unsafe tarball member path: {member.name!r}")
+            if not member.isfile():
+                raise JjInstallError(
+                    f"jj entry in tarball is not a regular file: {member.name!r}"
+                )
+            candidates.append(member)
+        if not candidates:
             raise JjInstallError("jj binary not found in tarball")
-        member = members[0]
-        if not member.isfile():
-            raise JjInstallError("jj entry in tarball is not a regular file")
-        # Reject path traversal / absolute paths in member name
-        member_path = Path(member.name)
-        if member_path.is_absolute() or ".." in member_path.parts:
-            raise JjInstallError(f"refusing unsafe tarball member path: {member.name!r}")
+        if len(candidates) > 1:
+            names = ", ".join(repr(m.name) for m in candidates)
+            raise JjInstallError(
+                f"ambiguous tarball: expected exactly one regular 'jj' member, "
+                f"found {len(candidates)}: {names}"
+            )
+        member = candidates[0]
         src_f = tf.extractfile(member)
         if src_f is None:
             raise JjInstallError("failed to read jj from tarball")
+        dest_dir.mkdir(parents=True, exist_ok=True)
         extracted = dest_dir / "jj"
         with src_f, open(extracted, "wb") as dst_f:
             shutil.copyfileobj(src_f, dst_f)
@@ -427,13 +445,45 @@ def atomic_install(
         raise
 
 
-def path_hint() -> str:
+def path_hint(bin_dir: Path | str | None = None) -> str:
+    """Advise adding the install directory to PATH.
+
+    ``bin_dir`` should be the directory containing the installed binary (or the
+    binary path's parent). Defaults to the managed install dir. Custom
+    ``--install-dir`` / ``INSTALL_DIR`` results must not always point at
+    ``~/.local/bin``.
+    """
+    directory = Path(bin_dir) if bin_dir is not None else DEFAULT_INSTALL_DIR
+    directory = directory.expanduser()
     shell = os.environ.get("SHELL", "")
     shell_rc = ".zshrc" if "zsh" in shell or sys.platform == "darwin" else ".bashrc"
+
+    display = str(directory)
+    path_export = f'export PATH="{directory}:$PATH"'
+    try:
+        home = Path.home().resolve()
+        resolved = directory.resolve()
+        if resolved == (home / ".local" / "bin"):
+            display = "~/.local/bin"
+            path_export = 'export PATH="$HOME/.local/bin:$PATH"'
+        else:
+            try:
+                rel = resolved.relative_to(home)
+            except ValueError:
+                display = str(resolved)
+                path_export = f'export PATH="{resolved}:$PATH"'
+            else:
+                rel_s = rel.as_posix()
+                display = f"~/{rel_s}"
+                path_export = f'export PATH="$HOME/{rel_s}:$PATH"'
+    except OSError:
+        display = str(directory)
+        path_export = f'export PATH="{directory}:$PATH"'
+
     return (
-        f"Warning: {DEFAULT_INSTALL_DIR} is not in your PATH.\n"
+        f"Warning: {display} is not in your PATH.\n"
         "Add it with:\n"
-        f'  echo \'export PATH="$HOME/.local/bin:$PATH"\' >> ~/{shell_rc} && source ~/{shell_rc}'
+        f"  echo '{path_export}' >> ~/{shell_rc} && source ~/{shell_rc}"
     )
 
 
@@ -683,7 +733,7 @@ def main(argv: list[str] | None = None) -> int:
         return result.exit_code
     if result.action == "install" and result.path and not shutil.which("jj"):
         print()
-        print(path_hint())
+        print(path_hint(Path(result.path).parent))
     return 0
 
 

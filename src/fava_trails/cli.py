@@ -765,7 +765,7 @@ def cmd_install_jj(args: argparse.Namespace) -> int:
 
     if result.action == "install" and result.path and not shutil.which("jj"):
         print()
-        print(path_hint())
+        print(path_hint(Path(result.path).parent))
 
     return 0
 
