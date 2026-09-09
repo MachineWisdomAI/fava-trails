@@ -357,7 +357,7 @@ Hooks that need to query trail state receive a `TrailContext` via `event.context
 
 - `await event.context.stats()` — thought count by namespace
 - `await event.context.count(namespace=None)` — total or per-namespace count
-- `await event.context.recall(query, namespace, limit)` — search thoughts (max 50)
+- `await event.context.recall(query, namespace, limit)` — lexical substring-AND search over thoughts (max 50)
 
 ### Lifecycle Points
 

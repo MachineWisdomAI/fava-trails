@@ -78,6 +78,16 @@ class TestToolDescriptionEnhancements:
         assert "WARNING" in desc
         assert "Trust Gate" in desc
 
+    def test_recall_describes_lexical_matching(self):
+        """recall must not claim semantic search; document lexical AND matching."""
+        desc = _get_tool_desc("recall")
+        assert "Lexical" in desc or "lexical" in desc
+        assert "semantic similarity" in desc.lower()
+        assert "Not semantic" in desc or "not semantic" in desc.lower()
+        instructions = _build_server_instructions()
+        assert "Lexical recall" in instructions
+        assert "substring" in instructions.lower()
+
     def test_propose_truth_contains_mandatory(self):
         """propose_truth description must mention mandatory promotion."""
         desc = _get_tool_desc("propose_truth")

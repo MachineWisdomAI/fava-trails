@@ -29,9 +29,10 @@ For a long-lived private ChatGPT connection, follow the deployment-neutral
 
 ## Why
 
-- **Supersession tracking** — a proposed correction leaves the original current; approved replacements make predecessors historical. No contradictory memories.
-- **Draft isolation** — working thoughts stay in `drafts/`. Other agents only see promoted thoughts.
-- **Trust Gate** — an LLM-based reviewer validates thoughts before they enter shared truth. Hallucinations stay contained in draft.
+- **Supersession tracking** — a proposed correction leaves the original current; approved replacements make predecessors historical in default recall. Lineage is recorded; supersession does **not** prove the replacement is true.
+- **Draft isolation** — working thoughts stay in `drafts/`. Default governed `recall`/`get_thought` expose approved current records only; own drafts need explicit `mode="authoring"` on a configured identity. A shared MCP endpoint or shared data filesystem is one boundary, not per-caller crypto isolation.
+- **Trust Gate** — an LLM-based (or explicit human) reviewer runs before promotion. It is rubric-based process control with limited context — **not** independent verification of project facts, and not a guarantee that hallucinations never enter shared truth.
+- **Lexical recall** — `recall` matches lowercased whitespace-separated query tokens as substrings across content and selected metadata (AND). It is not semantic similarity search. See [docs/retrieval-baseline.md](docs/retrieval-baseline.md).
 - **Full lineage** — every thought carries who wrote it, when, and why it changed.
 - **Crash-proof** — every write is an atomic commit. No unsaved work.
 - **Engine/Fuel split** — this repo is the engine (stateless MCP server). Your data lives in a separate repo you control.
@@ -190,7 +191,7 @@ OPENROUTER_API_KEY = "sk-or-v1-..."
 }
 ```
 
-> **The Trust Gate uses LLM verification:** Thoughts are reviewed before promotion to ensure they're coherent and safe. By default, FAVA Trails uses [OpenRouter](https://openrouter.ai/) to access 300–500+ models from 60+ providers including Anthropic, OpenAI, Google, Qwen, and others. Get a free API key at [openrouter.ai/keys](https://openrouter.ai/keys). The default model (`google/gemini-2.5-flash`) costs ~$0.001 per review. You can instead point Trust Gate at a local OpenAI-compatible endpoint (e.g. [Unsloth Studio](https://unsloth.ai/docs/new/studio)) through the standard per-machine config at `~/.config/fava-trails/config.yaml` — see [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md).
+> **The Trust Gate uses an LLM (or explicit human) review step:** Thoughts can be reviewed before promotion. The reviewer applies a configured rubric with limited context — it does **not** independently verify project facts, your agent safety policy, or ground truth. A convincing false claim can still be approved. By default, FAVA Trails uses [OpenRouter](https://openrouter.ai/) to access 300–500+ models from 60+ providers including Anthropic, OpenAI, Google, Qwen, and others. Get a free API key at [openrouter.ai/keys](https://openrouter.ai/keys). The default model (`google/gemini-2.5-flash`) costs ~$0.001 per review. You can instead point Trust Gate at a local OpenAI-compatible endpoint (e.g. [Unsloth Studio](https://unsloth.ai/docs/new/studio)) through the standard per-machine config at `~/.config/fava-trails/config.yaml` — see [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md).
 
 ### Use it
 
@@ -198,16 +199,19 @@ Agents call MCP tools. Core workflow:
 
 ```
 save_thought(trail_name="myorg/eng/my-project", content="My finding about X", source_type="observation")
-  → creates a draft in drafts/
+  → creates a draft in drafts/ (not visible under default governed recall)
 
 propose_truth(trail_name="myorg/eng/my-project", thought_id=thought_id)
-  → promotes to observations/ (visible to all agents)
+  → Trust Gate / operator review, then promotes to observations/ when approved
 
 recall(trail_name="myorg/eng/my-project", query="X")
-  → finds the promoted thought
+  → finds the promoted thought because token "x" appears in the content
+  → query "finding about X" also matches (whitespace tokens, AND)
+  → query "discovery regarding X" misses unless those words appear in the record
 ```
 
-Agents interact through MCP tools — they never see VCS commands.
+Agents interact through MCP tools — they never see VCS commands. Matching rules and
+a shareable synthetic matrix: [docs/retrieval-baseline.md](docs/retrieval-baseline.md).
 
 ## Local scope reader
 

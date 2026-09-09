@@ -9,13 +9,13 @@
 
 ### Why do agents need a dedicated memory system? Can't I just use a vector database?
 
-You can. And you'll hit the same wall everyone else hits at about hour one.
+You can for similarity search. You will still need governance if agents write durable claims.
 
-DoltHub's independent testing measured the phenomenon precisely: raw coding agent sessions max out at approximately one hour before the agent loses coherence. The reason is architectural, not a model limitation. Vector databases optimize for semantic similarity — "find me something *like* this." But production agents need semantic correctness — "find me the *exact* thing we established on Tuesday, including why we changed our mind about it on Wednesday."
+Vector databases optimize for semantic similarity — "find me something *like* this." Production agents often need provenance and currency — "find the *current approved* claim we established on Tuesday, including why we changed our mind on Wednesday."
 
-When your agent writes a flawed hypothesis (Thought A), then corrects it (Thought A'), a vector search for the topic retrieves *both* — because they're semantically identical. This is what we call Contextual Flattening. Your agent now has contradictory beliefs with no mechanism to distinguish which one is current.
+When an agent writes a flawed hypothesis (Thought A), then proposes a correction (Thought A'), a pure similarity index often retrieves *both* because they are close in embedding space. That Contextual Flattening problem is about ranking and currency, not about FAVA inventing a better embedding model.
 
-FAVA Trails solves this with supersession tracking: Thought A gets tombstoned when Thought A' is created. Default retrieval never surfaces superseded thoughts. The agent sees only the current truth unless it explicitly asks for the full lineage.
+FAVA Trails addresses currency with **supersession lineage** and governed visibility: after durable approval of a successor, default governed recall hides the predecessor. That does **not** prove the replacement is true; it records that an approved replacement exists. Today's `recall` matcher itself is **lexical** (lowercased whitespace tokens as substrings with AND semantics) — not semantic similarity. See [retrieval-baseline.md](retrieval-baseline.md). A future search layer is discovery-only in [issue #59](https://github.com/MachineWisdomAI/fava-trails/issues/59); no embeddings product is selected there yet.
 
 ### What is the "Correctness-Congruence Gap"?
 
@@ -25,15 +25,15 @@ Intent alignment (what we call Congruence) asks: "Is this response consistent wi
 
 FAVA Trails bridges this gap by making version history, relationship graphs, and provenance chains queryable. Every memory carries its full lineage: what was believed, when it changed, why it changed, and who approved the change.
 
-### What is "memory poisoning" and how does FAVA Trails prevent it?
+### What is "memory poisoning" and how does FAVA Trails reduce it?
 
-Memory poisoning occurs when an agent's false beliefs — hallucinations, outdated facts, incorrect inferences — enter shared memory and subsequently inform other agents' reasoning. In systems without governance, every agent write immediately becomes "truth." Bad data propagates exponentially.
+Memory poisoning occurs when an agent's false beliefs — hallucinations, outdated facts, incorrect inferences — enter shared memory and subsequently inform other agents' reasoning. In systems without governance, every agent write immediately becomes "truth." Bad data propagates quickly.
 
-FAVA Trails prevents this through the **Trust Gate** — a gated promotion workflow borrowed directly from software engineering's pull request model. Agents work in isolated draft branches. Their drafts are invisible to other agents. When an agent wants to promote a belief to shared truth, it submits a proposal that passes through a validation gate (a Critic Agent, a human reviewer, or both) before it becomes visible to the broader system.
+FAVA Trails **reduces blast radius** with a gated promotion workflow (the **Trust Gate**), modeled on review-before-merge. Unapproved drafts stay out of default governed recall. Own drafts are visible only via explicit `mode="authoring"` on a server-configured identity. A shared MCP endpoint or shared data directory is still one trust boundary — not cryptographic isolation between concurrent callers on the same process.
 
-If the Trust Gate rejects the proposal, the hallucination stays contained in draft. It never enters shared memory. No cleanup required. No downstream contamination.
+When promotion is requested, an LLM critic and/or explicit human approval can reject or accept under a configured rubric. **Rubric-based review is not independent verification of project facts.** It does not know your agent's system prompt, safety policy, or private environment. A misconfigured gate or a convincing false claim can still be approved. Supersession after the fact records lineage; it does not establish that the replacement is true.
 
-This is not post-hoc rollback — it is **containment at the source**. The hallucination never becomes shared "truth" in the first place. Note: the Trust Gate reduces blast radius; it does not eliminate hallucinations entirely. A misconfigured gate or a sufficiently convincing hallucination can still pass review. Defense-in-depth (multiple reviewers, policy-based strictness per namespace, human override for high-stakes domains) is the correct mitigation.
+Rejected proposals remain drafts with feedback. Defense-in-depth (human approval on high-stakes namespaces, separate operator endpoints, caller-side verification of recalled claims) remains required.
 
 ### How does FAVA Trails relate to Context Engineering protocols like SECOM or ACE?
 
@@ -127,14 +127,15 @@ Core MCP tools:
 
 | Tool | What It Does |
 |------|-------------|
-| `save_thought` | Persist a reasoning artifact to the agent's draft branch |
-| `recall` | Retrieve memories by ID, keyword, semantic similarity, or relationship traversal |
-| `propose_truth` | Submit draft memories for Trust Gate review |
+| `save_thought` | Persist a reasoning artifact to the agent's draft namespace |
+| `recall` | Lexical search: whitespace-separated query tokens must each appear as substrings in content/metadata; optional relationship expansion; governed/authoring/history visibility |
+| `get_thought` | Retrieve one record by ULID |
+| `propose_truth` | Submit draft memories for Trust Gate or explicit human approval |
 | `sync` | Pull latest shared truth into the agent's working context |
 | `forget` | Atomic discard of a reasoning branch |
 | `learn_preference` | Capture human feedback as a versioned preference |
 
-Agents interact with memories as semantic objects (Markdown with structured frontmatter). They never see VCS commands, file paths, or storage internals.
+Agents interact with memories as Markdown objects with structured frontmatter. They never see VCS commands or raw tree algebra. `recall` is not semantic similarity search; measured behavior is in [retrieval-baseline.md](retrieval-baseline.md).
 
 ### What does integration look like for large-scale autonomous agent systems?
 
@@ -148,22 +149,17 @@ For ML engineering agents running long-horizon tasks (12+ hour Kaggle competitio
 
 ### Can I use FAVA Trails as a drop-in replacement for my current memory backend?
 
-FAVA Trails is designed to support adapter patterns for common memory interfaces. A planned mapping layer will map `search()` to `recall_semantic` + `recall`, `readFile()` to `get_thought`, and `sync()` to `sync`.
-
-For frameworks with custom memory abstractions, the MCP interface is the universal integration point today.
+Not as a semantic-RAG drop-in. Today's MCP `recall` is lexical substring-AND search over governed records, plus exact `get_thought` by ULID. A planned adapter that maps foreign `search()` APIs onto a future semantic index is **unreleased** and must not be assumed present. For frameworks with custom memory abstractions, the MCP interface is the integration point today.
 
 ### What about performance? My agent loop runs at millisecond timescales.
 
-FAVA Trails distinguishes between working memory (draft operations) and shared truth (promotion operations). Phase 1 latency targets, measured against single-agent local-disk workloads:
+FAVA Trails distinguishes draft writes from promotion. The following numbers are **design targets only**, not published benchmarks, and they do **not** include a semantic index:
 
-- **Draft save:** < 50ms target. This is the "inner loop" — it must not block the agent's reasoning.
-- **Draft recall:** < 100ms target. Context assembly is latency-sensitive.
-- **Shared truth recall:** < 500ms p95. Includes semantic query + relationship traversal.
-- **Trust Gate evaluation:** Async. The agent continues working while the gate evaluates.
+- **Draft save:** < 50ms target on local disk for the inner loop.
+- **Lexical recall:** depends on corpus size (full scan of visibility-allowed markdown records in-process today).
+- **Trust Gate evaluation:** uses the configured LLM; treat it as a promotion-path cost, not an inner-loop cost.
 
-These are design targets, not published benchmarks. Current prototype measurements will be published alongside the Phase 1 release with hardware specs, dataset sizes, and concurrency conditions.
-
-The architecture separates the hot path (draft reads/writes) from the governance path (promotion, sync). Your agent loop stays fast.
+Publish hardware specs, dataset sizes, and concurrency conditions before treating any latency figure as a guarantee. The architecture still aims to keep draft writes off the governance path.
 
 ---
 
@@ -268,13 +264,11 @@ Thoughts are append-only (immutable content, one exception: the `superseded_by` 
 
 ### What's on the roadmap?
 
-**Phase 1 (Current):** Versioned thought store with crash-proof persistence, draft isolation, Trust Gate, supersession tracking, MCP integration.
+**Shipped (current tree):** Versioned thought store with crash-proof persistence, governed/authoring/history visibility, Trust Gate / human approval provenance, supersession lineage, MCP integration, lexical `recall`, 1-hop relationship expansion, local Rich Views reader.
 
-**Phase 2:** Multi-agent synchronization (Pull Daemon), conflict interception, human-in-the-loop feedback capture, 1-hop relationship traversal.
+**In design / discovery (not shipped by this FAQ):** Continuous Pull Daemon automation; a dedicated search/retrieval layer after Lima Discovery ([issue #59](https://github.com/MachineWisdomAI/fava-trails/issues/59)) — candidates may include full-text indexes or, only if discovery proves need, derived semantic indexes. **No embeddings product, vector database, or retrieval architecture is selected in #59's discovery gate.**
 
-**Phase 3:** Semantic vector index (derived from versioned store, rebuildable from history), temporal queries, data redaction.
-
-**Phase 4:** Temporal Knowledge Graph (entity extraction, property graph projection, episodic summaries), enterprise federation.
+**Later themes (aspirational):** richer temporal queries, redaction workflows, optional graph projections. Treat these as research directions until a commitment-class PRD exists.
 
 ### Is FAVA Trails open source?
 
@@ -292,11 +286,9 @@ The key architectural difference: Beads uses SQL tables (Dolt) while FAVA Trails
 
 ### How does FAVA Trails compare to Goodmem or other vector memory APIs?
 
-Vector memory APIs (Goodmem, Mem0, Zep) provide zero-friction semantic retrieval. They are excellent for simple RAG over static documentation and optimized for the recall path.
+Vector memory APIs (Goodmem, Mem0, Zep) optimize for semantic retrieval over embeddings. They are strong when the job is similarity RAG over relatively static text.
 
-FAVA Trails optimizes for a different surface: governance, provenance, and state evolution. When agents need temporal queries ("what did we believe last Tuesday?"), supersession tracking (hiding invalidated beliefs from default recall), draft isolation (preventing work-in-progress from polluting shared memory), or audit trails (proving provenance for compliance), these capabilities require versioned persistence as a foundational substrate.
-
-Many memory tools optimize for recall speed and simplicity. FAVA Trails adds governance and provenance as first-class primitives alongside recall. These are complementary concerns, not competing ones — FAVA Trails can optionally use a vector store as a *derived index* for semantic queries, but the vector store is never the source of truth. It can be rebuilt from version history at any time.
+FAVA Trails optimizes for a different surface: governance, provenance, and state evolution — gated promotion, supersession lineage, visibility modes, and an auditable markdown+git substrate. Default `recall` today is lexical, not semantic. A derived full-text or vector index may appear later as a **rebuildable projection** if discovery (#59) justifies it; the versioned store remains the source of truth either way. These are complementary concerns, not a claim that FAVA already ships semantic search.
 
 ### How does FAVA Trails compare to Graphiti or other temporal knowledge graphs?
 

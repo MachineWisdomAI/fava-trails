@@ -685,7 +685,7 @@
     <div class="hero-eyebrow">Federated Agentic Versioned Audit Trail</div>
     <h1>Your agents forget.<br>FAVA Trails makes them <em>remember.</em></h1>
     <p class="hero-sub">
-      Version-controlled memory for AI agents. Crash-safe persistence, hallucination containment through gated promotion, and multi-agent coordination through shared ground truth.
+      Version-controlled memory for AI agents. Crash-safe persistence, gated promotion that reduces unreviewed draft blast radius, and multi-agent coordination through shared governed records.
     </p>
     <div class="hero-stats">
       <div class="stat">
@@ -722,8 +722,9 @@
 <span class="prompt">▸</span> <span class="cmd">propose_truth</span> <span class="output">thought_ids=["01JML…"]</span><br>
 <span class="success">  ✓ Accepted. Promoted to shared truth. Old claim superseded.</span><br>
 <br>
-<span class="prompt">▸</span> <span class="cmd">recall</span> <span class="output">"model architecture decisions"</span><br>
-<span class="success">  → ViT-Large decision (01JML…)</span> <span class="dim">· ResNet-50 claim hidden (superseded)</span>
+<span class="prompt">▸</span> <span class="cmd">recall</span> <span class="output">"ViT-Large"</span><br>
+<span class="success">  → ViT-Large decision (01JML…)</span> <span class="dim">· lexical token match · ResNet-50 claim hidden after approved supersession</span>
+<span class="dim">  → paraphrase "model architecture decisions" would miss without shared tokens</span>
       </div>
     </div>
   </section>
@@ -802,7 +803,7 @@
         <div class="flow-dot">2</div>
         <div class="flow-content">
           <h3>Trust Gate</h3>
-          <p>Promotion from draft to shared truth requires passing a validation gate — a Critic Agent, a human reviewer, or both. Hallucinations stay contained in draft. They never become shared "truth." This is containment at the source, not cleanup after the fact.</p>
+          <p>Promotion from draft to shared records can require a validation gate — a critic LLM, an explicit human approval, or both. Unapproved drafts stay out of default governed recall. The gate is rubric-based process control with limited context: it does <strong>not</strong> independently verify project facts, and a convincing false claim can still be approved.</p>
         </div>
       </div>
       <div class="flow-step">
@@ -816,7 +817,7 @@
         <div class="flow-dot">4</div>
         <div class="flow-content">
           <h3>Supersession Tracking</h3>
-          <p>When a belief is invalidated, the old memory is tombstoned — hidden from default retrieval but preserved in history. Agents don't re-discover dead ends. The full lineage is available for audit.</p>
+          <p>When a successor is durably approved, the predecessor is hidden from default governed retrieval but kept for history. Lineage is auditable. Supersession does not prove the replacement is true — only that an approved replacement exists.</p>
         </div>
       </div>
     </div>
@@ -876,14 +877,14 @@
           </tr>
           <tr>
             <td>Semantic retrieval</td>
-            <td class="check fava-col">✓</td>
+            <td class="cross fava-col">✗ lexical today</td>
             <td class="check">✓</td>
             <td class="partial">Custom workflow</td>
             <td class="check">✓</td>
           </tr>
           <tr>
             <td>Temporal queries</td>
-            <td class="check fava-col">✓</td>
+            <td class="partial fava-col">lineage / history mode</td>
             <td class="cross">✗</td>
             <td class="check">✓</td>
             <td class="partial">Custom workflow</td>
@@ -935,9 +936,9 @@
       <div class="audience-card">
         <h3>Multi-Agent Orchestrators</h3>
         <ul>
-          <li>Shared ground truth with 30-second eventual consistency</li>
-          <li>Draft isolation prevents inter-agent contamination</li>
-          <li>Trust Gate blocks hallucination propagation at the source</li>
+          <li>Shared governed records via explicit promotion and sync</li>
+          <li>Drafts stay out of default governed recall; authoring mode is identity-scoped</li>
+          <li>Trust Gate reduces unreviewed blast radius; it is not factual verification</li>
           <li>Structured conflict resolution for contradictory findings</li>
         </ul>
       </div>

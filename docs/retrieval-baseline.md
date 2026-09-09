@@ -1,0 +1,117 @@
+# Retrieval baseline (lexical recall)
+
+Shareable synthetic benchmark for the **implemented** `TrailManager.recall`
+matcher. This is not a product claim about future search work (see
+[issue #59](https://github.com/MachineWisdomAI/fava-trails/issues/59)).
+
+## Matcher under test
+
+Source of truth: `src/fava_trails/trail.py` (`TrailManager.recall`).
+
+1. Lowercase the query string.
+2. Split on whitespace into tokens (`str.split()`).
+3. Build a searchable string from content + thought_id + source_type + agent_id
+   + metadata project/branch/tags (all lowercased).
+4. Keep a record only when **every** query token is a **substring** of that
+   searchable string (`all(word in searchable for word in query_words)`).
+5. Empty query matches all visibility-allowed records (subject to `limit`).
+
+This is **lexical substring AND**, not ranking, stemming, phrase search, or
+semantic similarity. Punctuation attached to a query token is part of the token.
+A shared filesystem / shared MCP endpoint is **one** identity and data boundary;
+it does not cryptographically isolate concurrent callers.
+
+## Visibility under test
+
+| Mode | What appears |
+| --- | --- |
+| `governed` (default) | Approved records without an approved successor |
+| `authoring` | Only the configured author's own draft/proposed records in selected scopes |
+| `history` | Operator-selected lifecycle statuses; may include superseded |
+
+Default `recall` does **not** surface another agent's unapproved drafts. Supplying
+`agent_id` or a `drafts/` namespace does not bypass lifecycle or identity checks.
+See [governed-recall.md](governed-recall.md).
+
+## Trust Gate and supersession (limits)
+
+- Trust Gate review is rubric-based LLM (or explicit human) **advisory process
+  control**. It is not independent verification of project facts, safety policy,
+  or the caller's system prompt.
+- Supersession records lineage and hides predecessors from default governed
+  recall after durable successor approval. It does **not** establish that the
+  replacement is true.
+
+## Tested version
+
+| Field | Value |
+| --- | --- |
+| Product version | `0.6.1` (`pyproject.toml`) |
+| Git baseline | recorded by `tests/test_retrieval_baseline.py` at run time |
+| Runner | `uv run pytest tests/test_retrieval_baseline.py -v` |
+| Issue | [#100](https://github.com/MachineWisdomAI/fava-trails/issues/100) |
+
+Re-run the pytest module to refresh the "actual" column against the checkout you
+have loaded. The table below was produced on the issue-#100 branch against the
+matcher above.
+
+## Synthetic corpus
+
+Stable fixture labels (not ULIDs) used in expected/actual columns:
+
+| Label | Content (abbreviated) | Notes |
+| --- | --- | --- |
+| `exact-jj` | `JJ colocated mode keeps a standard Git remote.` | Approved observation |
+| `punct-api` | `Use the /v1/chat/completions endpoint for local models.` | Slash and dots in body |
+| `short-ulid-tag` | `Short token probe.` tags=`["ab"]` | Very short tag |
+| `synonym-deploy` | `Production rollout uses blue-green deploys.` | "rollout" present; "release" absent |
+| `paraphrase-model` | `ViT-Large outperforms ResNet-50 by 3% on this dataset.` | No phrase "model architecture decisions" |
+| `noise-budget` | `Quarterly budget planning is deferred.` | Irrelevant distractor |
+| `draft-private` | `Unapproved draft about secret migration plan.` | Draft; same author vs other author cases |
+| `superseded-old` / `superseder-new` | old claim vs approved replacement | Lineage pair |
+
+## Results matrix
+
+Legend: **hit** = labeled record present in results; **miss** = absent;
+**empty** = zero results. "Expected" is the behavior of the current matcher, not
+a wishlist.
+
+| Case | Query | Mode / filters | Expected | Actual (0.6.1 matcher) | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Exact token | `colocated` | governed | hit `exact-jj` | hit `exact-jj` | Baseline true positive |
+| Multi-token AND | `JJ Git` | governed | hit `exact-jj` | hit `exact-jj` | Non-contiguous tokens OK |
+| Irrelevant | `budget` | governed | hit only `noise-budget` | hit only `noise-budget` | No false friends from other rows |
+| Short term in tags | `ab` | governed | hit `short-ulid-tag` | hit `short-ulid-tag` | Substring over tags; also risks broad matches |
+| Punctuation in body | `/v1/chat/completions` | governed | hit `punct-api` | hit `punct-api` | Whole token must appear including `/` |
+| Punctuation variant | `v1 chat completions` | governed | hit `punct-api` | hit `punct-api` | Whitespace-split tokens still substrings of body |
+| Synonym miss | `release` | governed | miss `synonym-deploy` | miss `synonym-deploy` | No synonym expansion |
+| Paraphrase miss | `model architecture decisions` | governed | miss `paraphrase-model` | miss `paraphrase-model` | Reported user-shaped failure mode |
+| Partial synonym | `deploy` | governed | hit `synonym-deploy` | hit `synonym-deploy` | Shared stem/substring only |
+| Draft hidden (governed) | `secret migration` | governed | miss `draft-private` | miss `draft-private` | Unapproved drafts not in default view |
+| Own draft (authoring) | `secret migration` | authoring, matching agent | hit `draft-private` | hit `draft-private` | Explicit authoring only |
+| Other draft blocked | `secret migration` | authoring, other agent | miss `draft-private` | miss `draft-private` | No cross-agent draft read |
+| Superseded hidden | `ResNet-50 is optimal` | governed | miss old / may hit new if tokens remain | miss `superseded-old` | Default hides predecessor |
+| Superseded visible | `ResNet-50 is optimal` | history + include_superseded | hit `superseded-old` | hit `superseded-old` | Operator archaeology |
+
+## Measured misses to feed discovery (#59)
+
+These are **real caller needs** the lexical matcher does not satisfy. They are
+inputs to Lima Discovery on #59 — **not** a selection of embeddings, a vector
+database, or a retrieval architecture:
+
+1. **Paraphrase recall** — operators remember the topic ("model architecture
+   decisions") rather than tokens stored in the body.
+2. **Synonym / vocabulary drift** — "release" vs "rollout" / "deploy".
+3. **Short-token ambiguity** — length-2 substrings match broadly and are hard to
+   aim.
+4. **Punctuation-sensitive tokens** — callers may omit path slashes or dots and
+   still expect a hit (sometimes works when pieces remain substrings; not a
+   contract).
+5. **Visibility education** — callers expect drafts or foreign authoring records
+   to appear under default `recall`; governed mode correctly refuses.
+
+## Non-goals of this baseline
+
+- Choosing Pagefind, SQLite FTS5, embeddings, or any index product.
+- Changing matcher behavior in the same change set as documentation correction.
+- Claiming hallucination prevention or factual correctness from Trust Gate.
