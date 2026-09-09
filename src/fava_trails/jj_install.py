@@ -458,8 +458,7 @@ def path_hint(bin_dir: Path | str | None = None) -> str:
     shell = os.environ.get("SHELL", "")
     shell_rc = ".zshrc" if "zsh" in shell or sys.platform == "darwin" else ".bashrc"
 
-    display = str(directory)
-    path_export = f'export PATH="{directory}:$PATH"'
+    # Assign display/path_export once per control-flow path (no dead pre-init).
     try:
         home = Path.home().resolve()
         resolved = directory.resolve()
