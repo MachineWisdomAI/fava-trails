@@ -89,10 +89,20 @@ class TestToolDescriptionEnhancements:
         assert "substring" in instructions.lower()
 
     def test_propose_truth_contains_mandatory(self):
-        """propose_truth description must mention mandatory promotion."""
+        """propose_truth description must mention mandatory promotion and draft visibility bounds."""
         desc = _get_tool_desc("propose_truth")
         assert "mandatory" in desc
-        assert "invisible" in desc
+        assert "governed" in desc.lower()
+        assert 'mode="authoring"' in desc or "mode='authoring'" in desc or "authoring" in desc
+        assert "invisible to other agents" not in desc
+
+    def test_save_thought_describes_governed_draft_hiding(self):
+        """save_thought must not claim absolute cross-agent invisibility."""
+        desc = _get_tool_desc("save_thought")
+        assert "governed" in desc.lower()
+        assert "authoring" in desc
+        assert "invisible to other agents" not in desc
+        assert "invisible to everyone" not in desc
 
     def test_save_thought_contains_agent_identity(self):
         """save_thought description must mention stable role identifier."""

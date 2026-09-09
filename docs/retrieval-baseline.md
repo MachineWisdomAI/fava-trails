@@ -47,13 +47,11 @@ See [governed-recall.md](governed-recall.md).
 | Field | Value |
 | --- | --- |
 | Product version | `0.6.1` (`pyproject.toml`) |
-| Git baseline | recorded by `tests/test_retrieval_baseline.py` at run time |
+| Git baseline (matrix authoring) | `36d6bbbee669891e4b6f5310a0eb991fe043e3df` (PR #110 / issue #100 branch head when the Expected/Actual columns were written) |
 | Runner | `uv run pytest tests/test_retrieval_baseline.py -v` |
 | Issue | [#100](https://github.com/MachineWisdomAI/fava-trails/issues/100) |
 
-Re-run the pytest module to refresh the "actual" column against the checkout you
-have loaded. The table below was produced on the issue-#100 branch against the
-matcher above.
+`tests/test_retrieval_baseline.py` **validates** the static Expected/Actual matrix against the live matcher; it does **not** rewrite this Markdown file, does **not** stamp a Git SHA into the doc, and does **not** refresh the Actual column at run time. If matcher behavior changes, update both the table and the tests in the same change.
 
 ## Synthetic corpus
 
@@ -68,7 +66,8 @@ Stable fixture labels (not ULIDs) used in expected/actual columns:
 | `paraphrase-model` | `ViT-Large outperforms ResNet-50 by 3% on this dataset.` | No phrase "model architecture decisions" |
 | `noise-budget` | `Quarterly budget planning is deferred.` | Irrelevant distractor |
 | `draft-private` | `Unapproved draft about secret migration plan.` | Draft; same author vs other author cases |
-| `superseded-old` / `superseder-new` | old claim vs approved replacement | Lineage pair |
+| `superseded-old` | `ResNet-50 is optimal for this dataset.` | Approved, then superseded |
+| *(successor)* | `ViT-Large is the current model choice for this dataset.` | Fixture dict key `superseder-new` is **not** a persisted `label:` tag; `supersede` inherits predecessor tags, so the successor still carries `label:superseded-old` |
 
 ## Results matrix
 

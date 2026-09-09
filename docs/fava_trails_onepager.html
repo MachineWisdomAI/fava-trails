@@ -713,14 +713,14 @@
 <span class="prompt">▸</span> <span class="cmd">save_thought</span> <span class="output">"ResNet-50 is optimal for this dataset"</span><br>
 <span class="dim">  ✓ Draft saved (12ms) · branch: agent/ml-researcher · id: 01JMK…</span><br>
 <br>
-<span class="prompt">▸</span> <span class="cmd">propose_truth</span> <span class="output">thought_ids=["01JMK…"]</span><br>
-<span class="rejected">  ✗ Trust Gate rejected: "Contradicts benchmark data in shared truth"</span><br>
-<span class="dim">  → Draft preserved for revision. Shared truth uncontaminated.</span><br>
+<span class="prompt">▸</span> <span class="cmd">propose_truth</span> <span class="output">thought_id="01JMK…"</span><br>
+<span class="rejected">  ✗ Trust Gate rejected (synchronous rubric review of this record only): "Schema/confidence issues in proposed claim"</span><br>
+<span class="dim">  → Draft preserved for revision. Shared records unchanged. Gate did not load the corpus.</span><br>
 <br>
 <span class="prompt">▸</span> <span class="cmd">save_thought</span> <span class="output">"ViT-Large outperforms ResNet-50 by 3%"</span> <span class="dim">supersedes: 01JMK…</span><br>
 <span class="dim">  ✓ Draft saved (9ms) · id: 01JML…</span><br>
-<span class="prompt">▸</span> <span class="cmd">propose_truth</span> <span class="output">thought_ids=["01JML…"]</span><br>
-<span class="success">  ✓ Accepted. Promoted to shared truth. Old claim superseded.</span><br>
+<span class="prompt">▸</span> <span class="cmd">propose_truth</span> <span class="output">thought_id="01JML…"</span><br>
+<span class="success">  ✓ Rubric approved. Promoted. Predecessor hidden after durable supersession.</span><br>
 <br>
 <span class="prompt">▸</span> <span class="cmd">recall</span> <span class="output">"ViT-Large"</span><br>
 <span class="success">  → ViT-Large decision (01JML…)</span> <span class="dim">· lexical token match · ResNet-50 claim hidden after approved supersession</span>
@@ -796,7 +796,7 @@
         <div class="flow-dot">1</div>
         <div class="flow-content">
           <h3>Draft Isolation</h3>
-          <p>Every agent works in an isolated branch. Drafts are crash-proof, queryable by the owning agent, and invisible to everyone else. No "dirty working copy" — every state change is persisted before the operation returns.</p>
+          <p>Every agent works in an isolated branch. Drafts are crash-proof and queryable by the owning identity under explicit <code style="font-family: var(--mono); font-size: 0.85em;">mode="authoring"</code>. Default governed reads hide unapproved drafts by lifecycle and process-configured identity — not cryptographic per-caller isolation. Callers on one MCP endpoint share one identity; direct filesystem access remains operator-trusted. No "dirty working copy" — every state change is persisted before the operation returns.</p>
         </div>
       </div>
       <div class="flow-step">
@@ -985,12 +985,12 @@
   <!-- SECURITY + PERFORMANCE -->
   <section class="reveal">
     <div class="section-label">Enterprise Objections, Answered</div>
-    <h2>Your data never leaves your infrastructure</h2>
-    <p>FAVA Trails follows an <strong style="color: var(--accent);">Engine vs. Fuel</strong> architecture. The MCP server (<code style="font-family: var(--mono); font-size: 0.85em; color: var(--green);">fava-trails</code>) is a stateless, open-source engine. Your actual memory graph and versioned repository live entirely in a local-first or privately hosted directory that you control. Context never leaks into the tool's source code. No telemetry. No cloud dependency. Your corporate IP stays on your infrastructure.</p>
+    <h2>Your memory graph stays under your control</h2>
+    <p>FAVA Trails follows an <strong style="color: var(--accent);">Engine vs. Fuel</strong> architecture. The MCP server (<code style="font-family: var(--mono); font-size: 0.85em; color: var(--green);">fava-trails</code>) is a stateless, open-source engine. Your actual memory graph and versioned repository live entirely in a local-first or privately hosted directory that you control. The engine does not embed your corpus in its source, collect product telemetry, or require a FAVA cloud. <strong>Default Trust Gate is different:</strong> when enabled with the shipped OpenRouter default, <code style="font-family: var(--mono); font-size: 0.85em;">propose_truth</code> sends the proposed record content and selected redacted metadata to that LLM provider. Point Trust Gate at a local OpenAI-compatible endpoint (or disable LLM review) when external egress is unacceptable — see issue #101 for local-only hardening.</p>
 
     <div class="ip-bullet">
       <span class="icon">🔒</span>
-      <p><strong>Stateless MCP engine guarantees zero IP leakage</strong> — your corporate memory stays on your hardware. The engine (<code style="font-family: var(--mono); font-size: 0.8em;">fava-trails</code>) holds no state between calls. Your data repository is a separate, isolated directory governed by your access controls and retention policies.</p>
+      <p><strong>Fuel stays where you put it</strong> — the engine (<code style="font-family: var(--mono); font-size: 0.8em;">fava-trails</code>) holds no durable state between calls. Your data repository is a separate directory governed by your access controls and retention policies. Treat Trust Gate provider choice as an explicit egress control, not an implicit air-gap.</p>
     </div>
 
     <h2 style="margin-top: 2.5rem;">No VCS overhead in your agent's context window</h2>

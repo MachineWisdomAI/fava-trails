@@ -443,7 +443,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "save_thought",
-        "description": "Save a thought to the trail. Defaults to drafts/ namespace. Use propose_truth to promote to permanent namespace when finalized — drafts are invisible to other agents until promoted. Use agent_id as a stable role identifier (e.g. 'codex-cli', 'my-agent'), not a runtime fingerprint.",
+        "description": "Save a thought to the trail. Defaults to drafts/ namespace. Use propose_truth to promote to permanent namespace when finalized. Unapproved drafts are hidden from default governed recall/get_thought; they are visible only via explicit mode=\"authoring\" for the process-configured agent identity. Callers on one MCP endpoint share that identity; direct filesystem access remains operator-trusted. Use agent_id as a stable role identifier (e.g. 'codex-cli', 'my-agent'), not a runtime fingerprint.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -499,7 +499,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "propose_truth",
-        "description": "Promote a draft thought to its permanent namespace based on source_type. Moves from drafts/ to decisions/, observations/, etc. This is mandatory for finalized work — unpromoted drafts are invisible to other agents and sessions. After promoting, use configured automatic push or operator sync to publish the result.",
+        "description": "Promote a draft thought to its permanent namespace based on source_type. Moves from drafts/ to decisions/, observations/, etc. This is mandatory for finalized work — unpromoted drafts stay out of default governed recall and are readable only under mode=\"authoring\" for the process-configured identity (shared endpoint = shared identity; filesystem access is operator-trusted). When Trust Gate LLM review is enabled, propose_truth awaits a synchronous single-record rubric review before promotion. After promoting, use configured automatic push or operator sync to publish the result.",
         "inputSchema": {
             "type": "object",
             "properties": {

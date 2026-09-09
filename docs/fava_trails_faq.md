@@ -84,14 +84,15 @@ Three critical differences.
 
 ### What is the Trust Gate, concretely?
 
-The Trust Gate is a configurable validation pipeline that evaluates proposed memories before they enter shared truth. In its simplest form, it's an LLM-based Critic Agent that checks for factual consistency, schema compliance, and alignment with existing shared knowledge.
+The Trust Gate is a configurable validation step that can run before a draft is promoted into shared records. In the shipped default, it is a **synchronous** LLM (or explicit human) rubric review of the **current proposed record only**: the configured prompt plus that record's content and selected redacted metadata. It does **not** load the shared corpus, does **not** independently verify project facts, and is **not** a guarantee that hallucinations never enter shared truth.
 
-The key design properties:
+The key design properties today:
 
-- **Async by default.** The proposing agent continues working in draft while the Trust Gate evaluates. It is not a blocking operation.
-- **Policy-configurable.** Different namespaces can have different strictness levels. Client-facing facts might require human approval; internal observations might auto-approve if the Critic Agent gives a confidence score above threshold.
+- **Synchronous on `propose_truth`.** When LLM review is enabled, `handle_propose_truth` awaits the single-record review (subject to `trust_gate_timeout_secs`) before promotion and return. The caller blocks on that tool call; there is no background async queue in the current release.
+- **Limited context.** The LLM request is the configured Trust Gate prompt plus the thought under review — not a retrieval over existing shared knowledge.
+- **Policy-configurable.** Review mode, model/provider, timeouts, and prompts are operator-configured (including local OpenAI-compatible endpoints). Different deployments can require human approval or skip LLM review entirely.
 - **Rejection is non-destructive.** A rejected proposal stays in draft with reviewer feedback attached. The agent can revise and resubmit.
-- **Auditable.** Every Trust Gate decision (accept, reject, revision request) is logged with rationale.
+- **Auditable.** Trust Gate verdicts and reasoning are returned on the tool response and can be logged by operators.
 
 ### What is the Pull Daemon?
 
@@ -178,7 +179,7 @@ FAVA Trails's contribution:
 
 ### My agents run in multi-agent swarms. How does FAVA Trails handle coordination?
 
-Each agent gets its own isolated draft workspace. Agents never step on each other's work because drafts are invisible across workspaces. Coordination happens through shared truth:
+Each configured agent identity gets its own authoring view. Default governed `recall`/`get_thought` hide unapproved drafts by lifecycle status plus the process-configured author identity — not by cryptographic isolation between concurrent callers. Agents sharing one MCP endpoint share one identity boundary; direct filesystem access to the data repo remains operator-trusted. Coordination of *approved* work still happens through shared truth:
 
 1. Agent A discovers that Feature X improves accuracy by 3%. It promotes this finding through the Trust Gate.
 2. The `sync` tool (or the planned Pull Daemon) propagates the accepted finding to all other agents.
@@ -199,7 +200,9 @@ The MCP server (`fava-trails`) is a stateless, open-source engine. It contains z
 
 Your actual data — the memory graph, the versioned repository, every thought your agents have ever produced — lives in a separate, isolated, locally controlled directory. This is the Fuel. You host it wherever your security policy requires: a local directory on the developer's machine, a private NFS mount, an air-gapped server, or a privately hosted Git remote for backup.
 
-The architectural guarantee: **context never leaks into the tool's source code, its dependencies, or any external service.** No telemetry is collected. No cloud dependency exists. The MCP server is a pure function: input in, output out, nothing persisted. Your corporate IP stays on your infrastructure, governed by your access controls, backed up by your retention policies.
+What holds today: the engine does not embed your corpus in its source, does not collect product telemetry, and does not require a FAVA-hosted cloud. The MCP server is effectively request-scoped for durable product state — your Fuel directory is separate and under your controls.
+
+What does **not** hold by default: **Trust Gate can egress content.** With the shipped OpenRouter default, `propose_truth` sends the proposed record content and selected redacted metadata to that provider. Configure a local OpenAI-compatible endpoint, supply human-only approval, or otherwise disable LLM review when external egress is unacceptable (further local-only hardening is tracked in issue #101). Your corporate IP stays on your infrastructure only to the extent your Trust Gate provider and hosting choices keep it there.
 
 This separation also means you can update the engine independently of your data. Upgrading FAVA Trails's MCP server does not touch, migrate, or expose your repository.
 

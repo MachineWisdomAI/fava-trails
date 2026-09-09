@@ -1,7 +1,8 @@
 """Synthetic lexical-recall baseline for docs/retrieval-baseline.md (issue #100).
 
-Records expected vs actual behavior of the shipped substring-AND matcher.
-Does not select a future retrieval architecture (see issue #59).
+Validates the static Expected/Actual matrix in the Markdown doc against the
+shipped substring-AND matcher. Does not rewrite the doc, stamp a Git SHA, or
+select a future retrieval architecture (see issue #59).
 """
 
 from __future__ import annotations
@@ -82,7 +83,8 @@ async def baseline_corpus(tmp_fava_home):
 
     old = await save("ResNet-50 is optimal for this dataset.", "superseded-old")
     await _promote(manager, old)
-    # Successor inherits metadata tags from the original; track it by thought_id.
+    # supersede keeps predecessor metadata tags; successor still has label:superseded-old.
+    # "superseder-new" is only the fixture dict key for the successor thought_id.
     new = await manager.supersede(
         old.thought_id,
         "ViT-Large is the current model choice for this dataset.",
@@ -106,7 +108,7 @@ async def baseline_corpus(tmp_fava_home):
             "noise-budget": noise.thought_id,
             "draft-private": draft.thought_id,
             "superseded-old": old.thought_id,
-            "superseder-new": new.thought_id,
+            "superseder-new": new.thought_id,  # dict key only; not a label: tag
         },
     }
 
