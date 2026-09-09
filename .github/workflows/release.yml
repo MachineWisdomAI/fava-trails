@@ -4,7 +4,8 @@ name: Release
 # any public GitHub Release or PyPI upload exists. Owner-gated via:
 #   - workflow_dispatch on an already-pushed tag
 #   - GitHub Environment `fava-release` (required reviewer: owner)
-#   - peeled tag commit must equal current origin/main (reviewed default branch)
+#   - first publication: peeled tag commit must equal current origin/main
+#   - draft resume: peeled tag commit must be an ancestor of origin/main
 # Never triggers from `release: published`.
 #
 # Recoverability: stage a *draft* GitHub Release after candidate validation, publish
@@ -12,6 +13,8 @@ name: Release
 # may resume a matching draft; a published Release refuses republish. Before undraft,
 # published PyPI wheel/sdist SHA-256 must match candidate-SHA256SUMS (fail closed).
 # Resume normalizes draft title/notes/target to the verified candidate (not isDraft alone).
+# Draft-resume state is resolved *before* the main relationship check so a post-PyPI
+# retry is not stranded when protected main advances after the tag was cut.
 #
 # Provenance env vars (CANDIDATE_*) are written once to $GITHUB_ENV and inherited by
 # later steps as runner environment variables. Do NOT redeclare them via
@@ -76,38 +79,14 @@ jobs:
             exit 1
           fi
 
-          # 3) Fetch current reviewed default branch and peel tag to commit.
-          #    Issue #99 requires an immutable *reviewed* commit: the tag must name
-          #    the same commit as protected origin/main at dispatch time.
+          # 3) Fetch protected main and peel the tag (relationship checked after draft state).
           git fetch --no-tags origin "refs/heads/main:refs/remotes/origin/main"
           MAIN_COMMIT="$(git rev-parse "refs/remotes/origin/main")"
           TAG_COMMIT="$(git rev-parse "refs/tags/${TAG_INPUT}^{commit}")"
-          if [ "$TAG_COMMIT" != "$MAIN_COMMIT" ]; then
-            echo "::error::Peeled tag commit ${TAG_COMMIT} is not current origin/main ${MAIN_COMMIT}. Tag only the reviewed main tip before release."
-            exit 1
-          fi
 
-          # 4) Detach HEAD at the peeled tag and assert equality.
-          git checkout --detach "refs/tags/${TAG_INPUT}"
-          HEAD_COMMIT="$(git rev-parse HEAD)"
-          if [ "$HEAD_COMMIT" != "$TAG_COMMIT" ]; then
-            echo "::error::HEAD ${HEAD_COMMIT} does not equal peeled tag commit ${TAG_COMMIT}"
-            exit 1
-          fi
-          if [ "$HEAD_COMMIT" != "$MAIN_COMMIT" ]; then
-            echo "::error::HEAD ${HEAD_COMMIT} does not equal origin/main ${MAIN_COMMIT}"
-            exit 1
-          fi
-
-          # 5) Package version must match the tag (strip leading v).
-          PKG="$(grep '^version' pyproject.toml | head -1 | cut -d'"' -f2)"
-          EXPECTED="${TAG_INPUT#v}"
-          if [ "$EXPECTED" != "$PKG" ]; then
-            echo "::error::Tag ${TAG_INPUT} does not match pyproject.toml version ${PKG}"
-            exit 1
-          fi
-
-          # 6) Release recoverability: resume matching draft; refuse published Release.
+          # 4) Release recoverability state *before* the main relationship check.
+          #    If PyPI already published and undraft/hash-proof failed, main may have
+          #    advanced; requiring tip equality first would strand a valid tagged draft.
           #    Draft acceptance is not isDraft alone — later steps also normalize and
           #    verify target/title/notes against the verified candidate.
           RESUME_DRAFT=false
@@ -121,6 +100,53 @@ jobs:
             RESUME_DRAFT=true
           fi
 
+          # 5) Main relationship:
+          #    - first publication: tag must equal current protected origin/main tip
+          #    - draft resume: tag must be an ancestor of protected origin/main
+          #      (includes equality; allows main to advance after a partial publish)
+          if [ "$RESUME_DRAFT" = "true" ]; then
+            if ! git merge-base --is-ancestor "$TAG_COMMIT" "$MAIN_COMMIT"; then
+              echo "::error::Resume draft: peeled tag commit ${TAG_COMMIT} is not an ancestor of origin/main ${MAIN_COMMIT}"
+              exit 1
+            fi
+            if [ "$TAG_COMMIT" = "$MAIN_COMMIT" ]; then
+              MAIN_RELATION=exact
+            else
+              MAIN_RELATION=ancestor
+            fi
+            echo "Draft resume main relation=${MAIN_RELATION}: tag ${TAG_COMMIT} ⊆ origin/main ${MAIN_COMMIT}"
+          else
+            if [ "$TAG_COMMIT" != "$MAIN_COMMIT" ]; then
+              echo "::error::First publication: peeled tag commit ${TAG_COMMIT} is not current origin/main ${MAIN_COMMIT}. Tag only the reviewed main tip before release."
+              exit 1
+            fi
+            MAIN_RELATION=exact
+          fi
+
+          # 6) Detach HEAD at the peeled tag and assert checkout identity.
+          git checkout --detach "refs/tags/${TAG_INPUT}"
+          HEAD_COMMIT="$(git rev-parse HEAD)"
+          if [ "$HEAD_COMMIT" != "$TAG_COMMIT" ]; then
+            echo "::error::HEAD ${HEAD_COMMIT} does not equal peeled tag commit ${TAG_COMMIT}"
+            exit 1
+          fi
+          if [ "$RESUME_DRAFT" != "true" ] && [ "$HEAD_COMMIT" != "$MAIN_COMMIT" ]; then
+            echo "::error::First publication: HEAD ${HEAD_COMMIT} does not equal origin/main ${MAIN_COMMIT}"
+            exit 1
+          fi
+          if [ "$RESUME_DRAFT" = "true" ] && ! git merge-base --is-ancestor "$HEAD_COMMIT" "$MAIN_COMMIT"; then
+            echo "::error::Resume draft: HEAD ${HEAD_COMMIT} is not an ancestor of origin/main ${MAIN_COMMIT}"
+            exit 1
+          fi
+
+          # 7) Package version must match the tag (strip leading v).
+          PKG="$(grep '^version' pyproject.toml | head -1 | cut -d'"' -f2)"
+          EXPECTED="${TAG_INPUT#v}"
+          if [ "$EXPECTED" != "$PKG" ]; then
+            echo "::error::Tag ${TAG_INPUT} does not match pyproject.toml version ${PKG}"
+            exit 1
+          fi
+
           # Provenance comes from the verified checkout HEAD — not workflow GITHUB_SHA
           # (which names the ref that *started* workflow_dispatch and can differ).
           # Later steps inherit these as runner env vars via GITHUB_ENV. Do not map
@@ -130,10 +156,11 @@ jobs:
             echo "CANDIDATE_TAG=${TAG_INPUT}"
             echo "CANDIDATE_VERSION=${EXPECTED}"
             echo "CANDIDATE_MAIN=${MAIN_COMMIT}"
+            echo "CANDIDATE_MAIN_RELATION=${MAIN_RELATION}"
             echo "RESUME_DRAFT=${RESUME_DRAFT}"
           } >> "${GITHUB_ENV}"
 
-          echo "Candidate tag=${TAG_INPUT} commit=${HEAD_COMMIT} main=${MAIN_COMMIT} resume_draft=${RESUME_DRAFT}"
+          echo "Candidate tag=${TAG_INPUT} commit=${HEAD_COMMIT} main=${MAIN_COMMIT} relation=${MAIN_RELATION} resume_draft=${RESUME_DRAFT}"
 
       # Build once. Every later step must consume these exact files — never rebuild.
       # CANDIDATE_* come from GITHUB_ENV inheritance (not expression-context remaps).
@@ -143,8 +170,22 @@ jobs:
           test -n "${CANDIDATE_COMMIT}"
           test -n "${CANDIDATE_TAG}"
           test -n "${CANDIDATE_MAIN}"
+          test -n "${CANDIDATE_MAIN_RELATION}"
           test "$(git rev-parse HEAD)" = "${CANDIDATE_COMMIT}"
-          test "${CANDIDATE_COMMIT}" = "${CANDIDATE_MAIN}"
+          # First publication requires tip equality; draft resume allows ancestor.
+          if [ "${RESUME_DRAFT}" = "true" ]; then
+            git merge-base --is-ancestor "${CANDIDATE_COMMIT}" "${CANDIDATE_MAIN}"
+            case "${CANDIDATE_MAIN_RELATION}" in
+              exact|ancestor) ;;
+              *)
+                echo "::error::Unexpected CANDIDATE_MAIN_RELATION=${CANDIDATE_MAIN_RELATION}"
+                exit 1
+                ;;
+            esac
+          else
+            test "${CANDIDATE_COMMIT}" = "${CANDIDATE_MAIN}"
+            test "${CANDIDATE_MAIN_RELATION}" = "exact"
+          fi
 
           uv build
           ls -la dist
@@ -153,13 +194,17 @@ jobs:
             echo "CANDIDATE_COMMIT=${CANDIDATE_COMMIT}"
             echo "CANDIDATE_TAG=${CANDIDATE_TAG}"
             echo "CANDIDATE_MAIN=${CANDIDATE_MAIN}"
+            echo "CANDIDATE_MAIN_RELATION=${CANDIDATE_MAIN_RELATION}"
             echo "CANDIDATE_REF=$(git rev-parse HEAD)"
+            echo "RESUME_DRAFT=${RESUME_DRAFT}"
           } | tee "${RUNNER_TEMP}/candidate-SHA256SUMS"
 
-          # Sanity: provenance commit in the sums file must match verified HEAD/main.
+          # Sanity: provenance fields match the verified checkout (MAIN may differ
+          # from COMMIT on draft resume after protected main advanced).
           grep -qx "CANDIDATE_COMMIT=${CANDIDATE_COMMIT}" "${RUNNER_TEMP}/candidate-SHA256SUMS"
           grep -qx "CANDIDATE_REF=${CANDIDATE_COMMIT}" "${RUNNER_TEMP}/candidate-SHA256SUMS"
-          grep -qx "CANDIDATE_MAIN=${CANDIDATE_COMMIT}" "${RUNNER_TEMP}/candidate-SHA256SUMS"
+          grep -qx "CANDIDATE_MAIN=${CANDIDATE_MAIN}" "${RUNNER_TEMP}/candidate-SHA256SUMS"
+          grep -qx "CANDIDATE_MAIN_RELATION=${CANDIDATE_MAIN_RELATION}" "${RUNNER_TEMP}/candidate-SHA256SUMS"
 
       - name: Install jj (packaged gate dependency)
         run: |
@@ -217,16 +262,25 @@ jobs:
           COMMIT="${CANDIDATE_COMMIT}"
           test -n "$TAG"
           test -n "$COMMIT"
+          test -n "${CANDIDATE_MAIN}"
+          test -n "${CANDIDATE_MAIN_RELATION}"
           test "$(git rev-parse HEAD)" = "$COMMIT"
-          test "$COMMIT" = "${CANDIDATE_MAIN}"
+          if [ "${RESUME_DRAFT}" = "true" ]; then
+            git merge-base --is-ancestor "$COMMIT" "${CANDIDATE_MAIN}"
+          else
+            test "$COMMIT" = "${CANDIDATE_MAIN}"
+            test "${CANDIDATE_MAIN_RELATION}" = "exact"
+          fi
 
           # Canonical notes for both create and resume paths (never leave stale notes).
           NOTES_FILE="${RUNNER_TEMP}/release-notes.md"
           {
             printf '%s\n' "Candidate commit: \`${COMMIT}\`"
-            printf '%s\n' "Reviewed main: \`${CANDIDATE_MAIN}\`"
+            printf '%s\n' "Protected main at dispatch: \`${CANDIDATE_MAIN}\`"
+            printf '%s\n' "Main relation: \`${CANDIDATE_MAIN_RELATION}\` (exact tip for first publish; ancestor allowed on draft resume)"
+            printf '%s\n' "Resume draft: \`${RESUME_DRAFT}\`"
             printf '%s\n' ""
-            printf '%s\n' "Pre-publication gate validated wheel + sdist (packaged MCP, sdist install, 0.6.0 upgrade) on the immutable reviewed main tip via the \`fava-release\` environment. PyPI publish of these exact artifacts runs next; this Release stays draft until PyPI succeeds and published hashes match \`candidate-SHA256SUMS\`."
+            printf '%s\n' "Pre-publication gate validated wheel + sdist (packaged MCP, sdist install, 0.6.0 upgrade) on the immutable tagged candidate via the \`fava-release\` environment. PyPI publish of these exact artifacts runs next; this Release stays draft until PyPI succeeds and published hashes match \`candidate-SHA256SUMS\`."
             printf '%s\n' ""
             printf '%s\n' "See attached \`candidate-SHA256SUMS\` for provenance."
           } > "${NOTES_FILE}"

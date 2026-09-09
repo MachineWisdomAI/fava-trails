@@ -116,15 +116,17 @@ Once dog-fooding confirms the changes work:
    `git tag vX.Y.Z <sha> && git push origin vX.Y.Z`
    Do **not** create the GitHub Release yet — validation must run first.
 4. Owner runs the **Release** workflow (`workflow_dispatch`, GitHub Environment
-   `fava-release`) with input `tag=vX.Y.Z`. CI proves `refs/tags/vX.Y.Z` peels to
-   current protected `origin/main` and the checked-out `HEAD`, builds once, runs
-   packaged gates on the exact wheel+sdist (including sdist install and 0.6.0
-   upgrade), stages or normalizes a **draft** GitHub Release (with
-   `candidate-SHA256SUMS` and verified title/notes/target), publishes those same
-   artifacts to PyPI, verifies published PyPI SHA-256 against
-   `candidate-SHA256SUMS` (fail closed), then undrafts the Release only after
-   that proof (reruns may resume a matching draft after metadata normalize;
-   provenance env is `$GITHUB_ENV`-inherited, not expression-remapped).
+   `fava-release`) with input `tag=vX.Y.Z`. CI resolves draft-resume state first,
+   then proves `refs/tags/vX.Y.Z` peels to checked-out `HEAD` and either equals
+   current protected `origin/main` (first publish) or is an ancestor of it
+   (draft resume after main may have advanced), builds once, runs packaged gates
+   on the exact wheel+sdist (including sdist install and 0.6.0 upgrade), stages
+   or normalizes a **draft** GitHub Release (with `candidate-SHA256SUMS` and
+   verified title/notes/target), publishes those same artifacts to PyPI,
+   verifies published PyPI SHA-256 against `candidate-SHA256SUMS` (fail closed),
+   then undrafts the Release only after that proof (reruns may resume a matching
+   draft after metadata normalize; provenance env is `$GITHUB_ENV`-inherited, not
+   expression-remapped).
 5. Update the vendor copy:
    ```bash
    cd ~/git/vendor/fava-trails

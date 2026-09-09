@@ -113,17 +113,21 @@ Publication is **owner-gated** via `.github/workflows/release.yml`
 
 1. Accepts `tag` only via job `env` (never raw shell interpolation). Validates
    strict `vMAJOR.MINOR.PATCH` grammar, fetches `refs/tags/<tag>` only (not a
-   same-named branch), fetches `refs/heads/main`, requires the peeled tag commit
-   to equal current `origin/main` (protected reviewed tip), detaches `HEAD` at
-   that commit, and asserts `git rev-parse HEAD` equals both the tag peel and
-   `origin/main` before any build. Package version must match the tag.
-   Provenance uses that verified `HEAD` SHA — not workflow `GITHUB_SHA` from the
-   dispatch ref.
+   same-named branch), and fetches `refs/heads/main`. **Draft-resume state is
+   resolved before the main relationship check** so a post-PyPI retry is not
+   stranded when protected `main` advances after the tag was cut. First
+   publication requires the peeled tag commit to equal current `origin/main`;
+   an existing **draft** requires the tag commit to be an **ancestor** of
+   protected `origin/main` (including equality). Detaches `HEAD` at the tag and
+   asserts `git rev-parse HEAD` equals the tag peel (and equals `origin/main` on
+   first publish). Package version must match the tag. Provenance uses that
+   verified `HEAD` SHA — not workflow `GITHUB_SHA` from the dispatch ref.
 2. Refuses a **published** GitHub Release for the tag; a **draft** Release may be
    resumed on rerun only after canonical title/notes/target are regenerated and
    verified against the candidate (not `isDraft` alone).
 3. **Builds once**, records SHA-256 hashes plus `CANDIDATE_COMMIT` /
-   `CANDIDATE_TAG` / `CANDIDATE_MAIN` for the wheel and sdist.
+   `CANDIDATE_TAG` / `CANDIDATE_MAIN` / `CANDIDATE_MAIN_RELATION` for the wheel
+   and sdist.
 4. Sets `FAVA_CANDIDATE_WHEEL` / `FAVA_CANDIDATE_SDIST` to those exact files and
    runs `tests/test_packaged_mcp.py` — fresh wheel install, fresh sdist install,
    real `0.6.0` → candidate upgrade, installed-entrypoint MCP (direct stdio **and**

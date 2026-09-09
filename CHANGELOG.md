@@ -21,14 +21,15 @@ All notable changes to FAVA Trails are documented here.
   packaged verifier binds to `FAVA_CANDIDATE_WHEEL`/`FAVA_CANDIDATE_SDIST` for
   fresh wheel install, sdist install, and 0.6.0→candidate upgrade; `release.yml`
   is a pre-publication `workflow_dispatch` on an existing tag under the
-  `fava-release` environment that proves `refs/tags/*` peel equals both verified
-  `HEAD` and current protected `origin/main` (env-passed tag input; provenance
-  from that commit via `$GITHUB_ENV` inheritance, not dispatch `GITHUB_SHA` or
-  empty expression-context remaps), validates exact artifacts, stages or
-  normalizes a **draft** GitHub Release (title/notes/target bound to the
-  candidate), publishes the same `dist/` to PyPI, requires published PyPI
-  SHA-256 to match `candidate-SHA256SUMS` before undraft (still owner-gated; no
-  automatic publication from this PR).
+  `fava-release` environment that resolves draft-resume before the main check
+  (first publish: tag peel == protected `origin/main`; draft resume: tag peel is
+  an ancestor of `origin/main`), peels to verified `HEAD` (env-passed tag input;
+  provenance via `$GITHUB_ENV` inheritance, not dispatch `GITHUB_SHA` or empty
+  expression-context remaps), validates exact artifacts, stages or normalizes a
+  **draft** GitHub Release (title/notes/target bound to the candidate), publishes
+  the same `dist/` to PyPI, requires published PyPI SHA-256 to match
+  `candidate-SHA256SUMS` before undraft (still owner-gated; no automatic
+  publication from this PR).
 
 ### Changed
 - Support MCP SDK 2.2 with explicit low-level handlers, preserving tool schemas, annotations, input/output validation, structured results, and Markdown usage guidance over stdio and Streamable HTTP. Adds installed-wheel protocol tests for legacy initialization and current SDK clients. Resolves #83.
