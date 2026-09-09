@@ -409,8 +409,10 @@ def atomic_install(
             managed=True,
         )
     except Exception:
-        # Best-effort restore
-        if backup is not None and backup.exists() and not dest.exists():
+        # Best-effort restore of the prior managed binary after *any* failure once
+        # replacement began — including post-replace verification when dest already
+        # holds the failed new bytes (must not require `not dest.exists()`).
+        if backup is not None and backup.exists():
             try:
                 os.replace(backup, dest)
             except OSError:
@@ -454,12 +456,8 @@ def select_or_install(
     install_dir = install_dir or DEFAULT_INSTALL_DIR
     min_version = Version.parse(JJ_MIN_VERSION)
 
-    try:
-        platform_target = detect_platform(os_name=os_name, machine=machine)
-    except JjInstallError as e:
-        return SelectionResult(action="error", path=None, version=None, reason=str(e), exit_code=1)
-
-    # Discover existing
+    # Discover existing *before* platform/download checks so compatible reuse works
+    # even on hosts with no FAVA-downloadable JJ asset (issue #98).
     existing: ExistingJj | None = None
     if which_jj is ...:
         existing = discover_existing(install_dir)
@@ -522,6 +520,18 @@ def select_or_install(
                     exit_code=1,
                 )
             # Managed but too old → upgrade path below
+
+    # Platform detection only when installation (download) is actually required.
+    try:
+        platform_target = detect_platform(os_name=os_name, machine=machine)
+    except JjInstallError as e:
+        return SelectionResult(
+            action="error",
+            path=str(existing.path) if existing else None,
+            version=str(existing.version) if existing else None,
+            reason=str(e),
+            exit_code=1,
+        )
 
     # Resolve target release (needs network unless we already returned)
     try:
@@ -620,3 +630,62 @@ def format_selection_report(result: SelectionResult) -> str:
         f"reason:  {result.reason}",
     ]
     return "\n".join(parts)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry for `python -m fava_trails.jj_install` and scripts/install-jj.sh."""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="fava-trails-jj-install",
+        description=(
+            "Select or install a compatible Jujutsu (JJ) binary for FAVA Trails. "
+            "Reuses any installed JJ at or above the supported minimum; never silently "
+            "downgrades or overwrites a user-managed executable."
+        ),
+    )
+    parser.add_argument(
+        "--version",
+        dest="jj_version",
+        default=None,
+        help="Install this exact JJ version (also via JJ_VERSION). Default: GitHub latest stable.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help=f"Replace the managed {DEFAULT_INSTALL_DIR / MANAGED_BINARY_NAME} even when a compatible JJ is on PATH.",
+    )
+    parser.add_argument(
+        "--install-dir",
+        default=None,
+        help=f"Managed install directory (default: {DEFAULT_INSTALL_DIR}, or INSTALL_DIR env).",
+    )
+    args = parser.parse_args(argv)
+
+    explicit = args.jj_version or os.environ.get("JJ_VERSION") or None
+    if explicit:
+        explicit = str(explicit).strip() or None
+
+    install_dir: Path | None = None
+    if args.install_dir:
+        install_dir = Path(args.install_dir)
+    elif os.environ.get("INSTALL_DIR"):
+        install_dir = Path(os.environ["INSTALL_DIR"])
+
+    result = select_or_install(
+        explicit_version=explicit,
+        force_install=bool(args.force),
+        install_dir=install_dir,
+    )
+    print(format_selection_report(result))
+    if result.exit_code != 0:
+        print(result.reason, file=sys.stderr)
+        return result.exit_code
+    if result.action == "install" and result.path and not shutil.which("jj"):
+        print()
+        print(path_hint())
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

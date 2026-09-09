@@ -259,6 +259,111 @@ def test_failed_install_preserves_prior_managed(tmp_path):
     assert prior.read_bytes() == prior_bytes
 
 
+def test_failed_post_replace_verify_restores_prior(tmp_path):
+    """Regression: restore prior managed bytes even when dest already has the failed new file."""
+    from fava_trails.jj_install import JjInstallError, verify_executable_version
+
+    install_dir = tmp_path / "managed"
+    prior = _write_executable(install_dir / "jj", "0.28.0")
+    prior_bytes = prior.read_bytes()
+    version = "0.45.1"
+    suffix = "x86_64-unknown-linux-musl"
+    # Staged verification succeeds; only the *second* (post-replace) verify fails.
+    blob = _make_tarball(_fake_jj_script(version))
+    payload = _release_payload(version, suffix, blob, with_digest=False)
+
+    real_verify = verify_executable_version
+    calls = {"n": 0}
+
+    def flaky_verify(path, expected=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return real_verify(path, expected)
+        raise JjInstallError("post-replace verification failed (injected)")
+
+    with patch("fava_trails.jj_install.verify_executable_version", side_effect=flaky_verify):
+        result = select_or_install(
+            explicit_version=version,
+            force_install=True,
+            install_dir=install_dir,
+            which_jj=str(prior),
+            fetch_json=lambda _u: payload,
+            download=lambda u, d: d.write_bytes(blob),
+            os_name="linux",
+            machine="x86_64",
+        )
+
+    assert result.exit_code == 1
+    assert result.action == "error"
+    assert prior.exists()
+    assert prior.read_bytes() == prior_bytes
+    # Backup must not strand the prior binary
+    assert not (install_dir / "jj.fava-prev").exists()
+    assert calls["n"] >= 2
+
+
+def test_reuse_compatible_on_unsupported_download_platform(tmp_path):
+    """Reuse must not require a FAVA-downloadable platform asset."""
+    jj = _write_executable(tmp_path / "bin" / "jj", "0.45.1")
+
+    def boom(*_a, **_k):
+        raise AssertionError("must not hit network when reusing")
+
+    result = select_or_install(
+        install_dir=tmp_path / "managed",
+        which_jj=str(jj),
+        fetch_json=boom,
+        download=boom,
+        os_name="linux",
+        machine="mips",  # no downloadable asset for this arch
+    )
+    assert result.exit_code == 0
+    assert result.action == "reuse"
+    assert result.version == "0.45.1"
+    assert "compatible" in result.reason
+
+
+def test_shell_install_jj_is_thin_delegate():
+    """scripts/install-jj.sh must not reimplement installer policy."""
+    script = Path(__file__).resolve().parents[1] / "scripts" / "install-jj.sh"
+    text = script.read_text()
+    assert "fava_trails.jj_install" in text
+    assert "tar -xzf" not in text
+    assert "RESOLVED_SHA256" not in text
+    assert "exec" in text
+
+
+def test_shell_install_jj_reuses_via_python(tmp_path):
+    """Thin shell entrypoint delegates reuse to the Python installer."""
+    import os
+    import shutil
+    import subprocess
+
+    jj = _write_executable(tmp_path / "bin" / "jj", "0.45.1")
+    managed = tmp_path / "managed"
+    managed.mkdir()
+    script = Path(__file__).resolve().parents[1] / "scripts" / "install-jj.sh"
+    # Keep system python/bash on PATH; put fake jj first; omit fava-trails by using a
+    # minimal PATH prefix without a fava-trails shim.
+    py = shutil.which("python3") or shutil.which("python")
+    bash = shutil.which("bash")
+    assert py and bash
+    py_dir = str(Path(py).parent)
+    bash_dir = str(Path(bash).parent)
+    env = os.environ.copy()
+    env["PATH"] = f"{jj.parent}:{py_dir}:{bash_dir}"
+    env["INSTALL_DIR"] = str(managed)
+    result = subprocess.run(
+        ["bash", str(script)],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=str(script.parent.parent),
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert "reuse" in result.stdout
+    assert "0.45.1" in result.stdout
+
 def test_sha256_mismatch_aborts(tmp_path):
     install_dir = tmp_path / "managed"
     version = "0.45.1"

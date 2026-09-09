@@ -26,20 +26,32 @@ Evidence (local + CI matrix, 2026-09-09):
 
 ## Installer policy
 
-Both `fava-trails install-jj` and `scripts/install-jj.sh` share this behavior:
+Canonical implementation: `src/fava_trails/jj_install.py`, exposed as
+`fava-trails install-jj` and as `python -m fava_trails.jj_install`.
+`scripts/install-jj.sh` is a **thin entrypoint** that delegates to that module
+(or the packaged CLI) so digest checks, archive validation, and restore policy
+cannot drift across two implementations.
 
-1. **Reuse** any installed `jj` with version `>= 0.28.0` (including newer than
-   the last CI pin). Report `action` / `path` / `version` / `reason`.
+Shared behavior:
+
+1. **Reuse first** — any installed `jj` with version `>= 0.28.0` (including newer
+   than the last CI pin) is selected **before** platform/download checks, so a
+   compatible binary is kept even on hosts without a FAVA-downloadable asset.
+   Report `action` / `path` / `version` / `reason`.
 2. **Never silently downgrade** or overwrite a **user-managed** executable
    (anything other than the managed `~/.local/bin/jj` path).
 3. When install is needed, **resolve GitHub latest stable** with bounded
    network timeouts, unless an explicit version override is set.
 4. **Integrity**: use GitHub release asset `digest` (`sha256:…`) when the API
-   publishes it; older tags without digests still verify `--version` after
-   extract.
-5. **Atomic install** to `~/.local/bin/jj` with restore of the prior managed
-   binary if verification fails.
-6. Offline / API failure: if a compatible JJ is already present, keep it and
+   publishes it; a published digest is never silently discarded. Older tags
+   without digests still verify `--version` after extract.
+5. **Safe archive handling**: only a single regular `jj` member is written;
+   path traversal, absolute paths, and non-regular entries are rejected.
+6. **Atomic install** to `~/.local/bin/jj` with restore of the prior managed
+   binary if verification fails **at any point after replacement begins**
+   (including post-replace `--version` failure when the new file is already at
+   the destination).
+7. Offline / API failure: if a compatible JJ is already present, keep it and
    report the resolution error in the reason; otherwise exit non-zero without
    changing disk state.
 

@@ -749,10 +749,13 @@ def cmd_install_jj(args: argparse.Namespace) -> int:
         explicit = str(explicit).strip() or None
 
     force = bool(getattr(args, "force", False))
+    install_dir = _JJ_INSTALL_DIR
+    if os.environ.get("INSTALL_DIR"):
+        install_dir = Path(os.environ["INSTALL_DIR"])
     result = select_or_install(
         explicit_version=explicit,
         force_install=force,
-        install_dir=_JJ_INSTALL_DIR,
+        install_dir=install_dir,
     )
     print(format_selection_report(result))
 
