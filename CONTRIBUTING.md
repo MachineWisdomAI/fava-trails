@@ -115,14 +115,16 @@ Once dog-fooding confirms the changes work:
 3. Create and push an immutable tag on the reviewed commit:
    `git tag vX.Y.Z <sha> && git push origin vX.Y.Z`
    Do **not** create the GitHub Release yet — validation must run first.
-4. Owner runs the **Release** workflow (`workflow_dispatch`) with input
-   `tag=vX.Y.Z`. CI proves `refs/tags/vX.Y.Z` peels to the checked-out `HEAD`,
-   builds once, runs packaged gates on the exact wheel+sdist (including sdist
-   install and 0.6.0 upgrade), stages a **draft** GitHub Release (with
-   `candidate-SHA256SUMS`), publishes those same artifacts to PyPI, verifies
-   published PyPI SHA-256 against `candidate-SHA256SUMS` (fail closed), then
-   undrafts the Release only after that proof (reruns may resume a matching
-   draft; provenance env is `$GITHUB_ENV`-inherited, not expression-remapped).
+4. Owner runs the **Release** workflow (`workflow_dispatch`, GitHub Environment
+   `fava-release`) with input `tag=vX.Y.Z`. CI proves `refs/tags/vX.Y.Z` peels to
+   current protected `origin/main` and the checked-out `HEAD`, builds once, runs
+   packaged gates on the exact wheel+sdist (including sdist install and 0.6.0
+   upgrade), stages or normalizes a **draft** GitHub Release (with
+   `candidate-SHA256SUMS` and verified title/notes/target), publishes those same
+   artifacts to PyPI, verifies published PyPI SHA-256 against
+   `candidate-SHA256SUMS` (fail closed), then undrafts the Release only after
+   that proof (reruns may resume a matching draft after metadata normalize;
+   provenance env is `$GITHUB_ENV`-inherited, not expression-remapped).
 5. Update the vendor copy:
    ```bash
    cd ~/git/vendor/fava-trails

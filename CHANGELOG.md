@@ -20,11 +20,13 @@ All notable changes to FAVA Trails are documented here.
   processes for authoring isolation + spoof rejection on the installed wheel;
   packaged verifier binds to `FAVA_CANDIDATE_WHEEL`/`FAVA_CANDIDATE_SDIST` for
   fresh wheel install, sdist install, and 0.6.0→candidate upgrade; `release.yml`
-  is a pre-publication `workflow_dispatch` on an existing tag that proves
-  `refs/tags/*` peel equals verified `HEAD` (env-passed tag input; provenance from
-  that commit via `$GITHUB_ENV` inheritance, not dispatch `GITHUB_SHA` or empty
-  expression-context remaps), validates exact artifacts, stages a **draft**
-  GitHub Release, publishes the same `dist/` to PyPI, requires published PyPI
+  is a pre-publication `workflow_dispatch` on an existing tag under the
+  `fava-release` environment that proves `refs/tags/*` peel equals both verified
+  `HEAD` and current protected `origin/main` (env-passed tag input; provenance
+  from that commit via `$GITHUB_ENV` inheritance, not dispatch `GITHUB_SHA` or
+  empty expression-context remaps), validates exact artifacts, stages or
+  normalizes a **draft** GitHub Release (title/notes/target bound to the
+  candidate), publishes the same `dist/` to PyPI, requires published PyPI
   SHA-256 to match `candidate-SHA256SUMS` before undraft (still owner-gated; no
   automatic publication from this PR).
 

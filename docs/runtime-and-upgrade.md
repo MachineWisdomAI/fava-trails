@@ -108,32 +108,37 @@ Checklist after an upgrade:
 ## Release candidate verification (pre-publish)
 
 Publication is **owner-gated** via `.github/workflows/release.yml`
-(`workflow_dispatch` on an **already-pushed** immutable tag). The job:
+(`workflow_dispatch` on an **already-pushed** immutable tag, job
+`environment: fava-release` with required owner approval). The job:
 
 1. Accepts `tag` only via job `env` (never raw shell interpolation). Validates
    strict `vMAJOR.MINOR.PATCH` grammar, fetches `refs/tags/<tag>` only (not a
-   same-named branch), detaches `HEAD` at the peeled tag commit, and asserts
-   `git rev-parse HEAD` equals that commit before any build. Package version must
-   match the tag. Provenance uses that verified `HEAD` SHA — not workflow
-   `GITHUB_SHA` from the dispatch ref.
+   same-named branch), fetches `refs/heads/main`, requires the peeled tag commit
+   to equal current `origin/main` (protected reviewed tip), detaches `HEAD` at
+   that commit, and asserts `git rev-parse HEAD` equals both the tag peel and
+   `origin/main` before any build. Package version must match the tag.
+   Provenance uses that verified `HEAD` SHA — not workflow `GITHUB_SHA` from the
+   dispatch ref.
 2. Refuses a **published** GitHub Release for the tag; a **draft** Release may be
-   resumed safely on rerun.
+   resumed on rerun only after canonical title/notes/target are regenerated and
+   verified against the candidate (not `isDraft` alone).
 3. **Builds once**, records SHA-256 hashes plus `CANDIDATE_COMMIT` /
-   `CANDIDATE_TAG` for the wheel and sdist.
+   `CANDIDATE_TAG` / `CANDIDATE_MAIN` for the wheel and sdist.
 4. Sets `FAVA_CANDIDATE_WHEEL` / `FAVA_CANDIDATE_SDIST` to those exact files and
    runs `tests/test_packaged_mcp.py` — fresh wheel install, fresh sdist install,
    real `0.6.0` → candidate upgrade, installed-entrypoint MCP (direct stdio **and**
    native Inspector registration), two-process identity isolation, and governed
    recall (#72).
-5. **Only after validation succeeds**, stages a **draft** GitHub Release (wheel,
-   sdist, `candidate-SHA256SUMS`), publishes **the same** `dist/` artifacts to
-   PyPI (with attestations; `skip-existing` for resume), **downloads the
-   published wheel+sdist and requires their SHA-256 to match
-   `candidate-SHA256SUMS`** (fail closed on mismatch — `skip-existing` alone is
-   not byte proof), then undrafts the Release so it becomes public only after
-   that hash proof. Candidate provenance (`CANDIDATE_*`) is exported once via
-   `$GITHUB_ENV` and inherited by later steps; it is not re-mapped through the
-   empty workflow expression `env` context.
+5. **Only after validation succeeds**, stages or normalizes a **draft** GitHub
+   Release (wheel, sdist, `candidate-SHA256SUMS`; target/title/notes bound to the
+   verified candidate), publishes **the same** `dist/` artifacts to PyPI (with
+   attestations; `skip-existing` for resume), **downloads the published
+   wheel+sdist and requires their SHA-256 to match `candidate-SHA256SUMS`**
+   (fail closed on mismatch — `skip-existing` alone is not byte proof), then
+   undrafts the Release so it becomes public only after that hash proof.
+   Candidate provenance (`CANDIDATE_*`) is exported once via `$GITHUB_ENV` and
+   inherited by later steps; it is not re-mapped through the empty workflow
+   expression `env` context.
 
 Validation therefore runs **before** any public GitHub Release or PyPI upload
 exists. The workflow no longer triggers on `release: published`.

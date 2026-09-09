@@ -1,13 +1,17 @@
 name: Release
 
 # Pre-publication gate (issue #99): validate immutable tag artifacts *before*
-# any public GitHub Release or PyPI upload exists. Owner-gated via workflow_dispatch
-# on an already-pushed tag — never triggers from `release: published`.
+# any public GitHub Release or PyPI upload exists. Owner-gated via:
+#   - workflow_dispatch on an already-pushed tag
+#   - GitHub Environment `fava-release` (required reviewer: owner)
+#   - peeled tag commit must equal current origin/main (reviewed default branch)
+# Never triggers from `release: published`.
 #
 # Recoverability: stage a *draft* GitHub Release after candidate validation, publish
 # the same dist/ to PyPI, then undraft the Release only after PyPI succeeds. Reruns
 # may resume a matching draft; a published Release refuses republish. Before undraft,
 # published PyPI wheel/sdist SHA-256 must match candidate-SHA256SUMS (fail closed).
+# Resume normalizes draft title/notes/target to the verified candidate (not isDraft alone).
 #
 # Provenance env vars (CANDIDATE_*) are written once to $GITHUB_ENV and inherited by
 # later steps as runner environment variables. Do NOT redeclare them via
@@ -29,6 +33,8 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # Owner gate: environment requires explicit approval by configured reviewer.
+    environment: fava-release
 
     steps:
       # Resolve refs/tags/* only after shell-side validation — do not let checkout
@@ -49,7 +55,7 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Validate tag ref, peel commit, and check out candidate
+      - name: Validate tag ref, peel commit, bind main, and check out candidate
         env:
           # Pass dispatch input only via env — never interpolate into shell source.
           TAG_INPUT: ${{ inputs.tag }}
@@ -70,16 +76,30 @@ jobs:
             exit 1
           fi
 
-          # 3) Peel annotated/lightweight tag to commit and detach HEAD there.
+          # 3) Fetch current reviewed default branch and peel tag to commit.
+          #    Issue #99 requires an immutable *reviewed* commit: the tag must name
+          #    the same commit as protected origin/main at dispatch time.
+          git fetch --no-tags origin "refs/heads/main:refs/remotes/origin/main"
+          MAIN_COMMIT="$(git rev-parse "refs/remotes/origin/main")"
           TAG_COMMIT="$(git rev-parse "refs/tags/${TAG_INPUT}^{commit}")"
+          if [ "$TAG_COMMIT" != "$MAIN_COMMIT" ]; then
+            echo "::error::Peeled tag commit ${TAG_COMMIT} is not current origin/main ${MAIN_COMMIT}. Tag only the reviewed main tip before release."
+            exit 1
+          fi
+
+          # 4) Detach HEAD at the peeled tag and assert equality.
           git checkout --detach "refs/tags/${TAG_INPUT}"
           HEAD_COMMIT="$(git rev-parse HEAD)"
           if [ "$HEAD_COMMIT" != "$TAG_COMMIT" ]; then
             echo "::error::HEAD ${HEAD_COMMIT} does not equal peeled tag commit ${TAG_COMMIT}"
             exit 1
           fi
+          if [ "$HEAD_COMMIT" != "$MAIN_COMMIT" ]; then
+            echo "::error::HEAD ${HEAD_COMMIT} does not equal origin/main ${MAIN_COMMIT}"
+            exit 1
+          fi
 
-          # 4) Package version must match the tag (strip leading v).
+          # 5) Package version must match the tag (strip leading v).
           PKG="$(grep '^version' pyproject.toml | head -1 | cut -d'"' -f2)"
           EXPECTED="${TAG_INPUT#v}"
           if [ "$EXPECTED" != "$PKG" ]; then
@@ -87,7 +107,9 @@ jobs:
             exit 1
           fi
 
-          # 5) Release recoverability: resume matching draft; refuse published Release.
+          # 6) Release recoverability: resume matching draft; refuse published Release.
+          #    Draft acceptance is not isDraft alone — later steps also normalize and
+          #    verify target/title/notes against the verified candidate.
           RESUME_DRAFT=false
           if gh release view "$TAG_INPUT" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
             IS_DRAFT="$(gh release view "$TAG_INPUT" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft)"
@@ -107,10 +129,11 @@ jobs:
             echo "CANDIDATE_COMMIT=${HEAD_COMMIT}"
             echo "CANDIDATE_TAG=${TAG_INPUT}"
             echo "CANDIDATE_VERSION=${EXPECTED}"
+            echo "CANDIDATE_MAIN=${MAIN_COMMIT}"
             echo "RESUME_DRAFT=${RESUME_DRAFT}"
           } >> "${GITHUB_ENV}"
 
-          echo "Candidate tag=${TAG_INPUT} commit=${HEAD_COMMIT} resume_draft=${RESUME_DRAFT}"
+          echo "Candidate tag=${TAG_INPUT} commit=${HEAD_COMMIT} main=${MAIN_COMMIT} resume_draft=${RESUME_DRAFT}"
 
       # Build once. Every later step must consume these exact files — never rebuild.
       # CANDIDATE_* come from GITHUB_ENV inheritance (not expression-context remaps).
@@ -119,7 +142,9 @@ jobs:
           set -euo pipefail
           test -n "${CANDIDATE_COMMIT}"
           test -n "${CANDIDATE_TAG}"
+          test -n "${CANDIDATE_MAIN}"
           test "$(git rev-parse HEAD)" = "${CANDIDATE_COMMIT}"
+          test "${CANDIDATE_COMMIT}" = "${CANDIDATE_MAIN}"
 
           uv build
           ls -la dist
@@ -127,12 +152,14 @@ jobs:
             sha256sum dist/*.whl dist/*.tar.gz
             echo "CANDIDATE_COMMIT=${CANDIDATE_COMMIT}"
             echo "CANDIDATE_TAG=${CANDIDATE_TAG}"
+            echo "CANDIDATE_MAIN=${CANDIDATE_MAIN}"
             echo "CANDIDATE_REF=$(git rev-parse HEAD)"
           } | tee "${RUNNER_TEMP}/candidate-SHA256SUMS"
 
-          # Sanity: provenance commit in the sums file must match verified HEAD.
+          # Sanity: provenance commit in the sums file must match verified HEAD/main.
           grep -qx "CANDIDATE_COMMIT=${CANDIDATE_COMMIT}" "${RUNNER_TEMP}/candidate-SHA256SUMS"
           grep -qx "CANDIDATE_REF=${CANDIDATE_COMMIT}" "${RUNNER_TEMP}/candidate-SHA256SUMS"
+          grep -qx "CANDIDATE_MAIN=${CANDIDATE_COMMIT}" "${RUNNER_TEMP}/candidate-SHA256SUMS"
 
       - name: Install jj (packaged gate dependency)
         run: |
@@ -191,13 +218,84 @@ jobs:
           test -n "$TAG"
           test -n "$COMMIT"
           test "$(git rev-parse HEAD)" = "$COMMIT"
+          test "$COMMIT" = "${CANDIDATE_MAIN}"
+
+          # Canonical notes for both create and resume paths (never leave stale notes).
+          NOTES_FILE="${RUNNER_TEMP}/release-notes.md"
+          {
+            printf '%s\n' "Candidate commit: \`${COMMIT}\`"
+            printf '%s\n' "Reviewed main: \`${CANDIDATE_MAIN}\`"
+            printf '%s\n' ""
+            printf '%s\n' "Pre-publication gate validated wheel + sdist (packaged MCP, sdist install, 0.6.0 upgrade) on the immutable reviewed main tip via the \`fava-release\` environment. PyPI publish of these exact artifacts runs next; this Release stays draft until PyPI succeeds and published hashes match \`candidate-SHA256SUMS\`."
+            printf '%s\n' ""
+            printf '%s\n' "See attached \`candidate-SHA256SUMS\` for provenance."
+          } > "${NOTES_FILE}"
+
+          resolve_target_commit() {
+            local raw="$1"
+            if git rev-parse -q --verify "${raw}^{commit}" >/dev/null 2>&1; then
+              git rev-parse "${raw}^{commit}"
+              return 0
+            fi
+            if git rev-parse -q --verify "refs/remotes/origin/${raw}^{commit}" >/dev/null 2>&1; then
+              git rev-parse "refs/remotes/origin/${raw}^{commit}"
+              return 0
+            fi
+            if git rev-parse -q --verify "refs/heads/${raw}^{commit}" >/dev/null 2>&1; then
+              git rev-parse "refs/heads/${raw}^{commit}"
+              return 0
+            fi
+            echo ""
+          }
 
           if [ "${RESUME_DRAFT}" = "true" ]; then
-            IS_DRAFT="$(gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft)"
+            META="$(gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" \
+              --json isDraft,tagName,targetCommitish,name)"
+            IS_DRAFT="$(printf '%s' "$META" | jq -r .isDraft)"
+            REL_TAG="$(printf '%s' "$META" | jq -r .tagName)"
+            REL_TARGET_RAW="$(printf '%s' "$META" | jq -r .targetCommitish)"
             if [ "$IS_DRAFT" != "true" ]; then
               echo "::error::Release ${TAG} is no longer a draft; refusing to mutate a public Release"
               exit 1
             fi
+            if [ "$REL_TAG" != "$TAG" ]; then
+              echo "::error::Draft tagName ${REL_TAG} does not match candidate tag ${TAG}"
+              exit 1
+            fi
+            REL_TARGET="$(resolve_target_commit "$REL_TARGET_RAW")"
+            if [ -z "$REL_TARGET" ]; then
+              echo "::error::Unable to resolve draft targetCommitish '${REL_TARGET_RAW}' to a commit"
+              exit 1
+            fi
+            if [ "$REL_TARGET" != "$COMMIT" ]; then
+              echo "::error::Draft target ${REL_TARGET_RAW} resolves to ${REL_TARGET}, not candidate ${COMMIT}; normalizing via gh release edit --target"
+            fi
+
+            # Normalize title, notes, and target to the verified candidate before assets/PyPI.
+            gh release edit "$TAG" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --draft \
+              --title "$TAG" \
+              --notes-file "${NOTES_FILE}" \
+              --target "$COMMIT"
+
+            # Re-read and require target/title/tag match after edit.
+            META="$(gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" \
+              --json isDraft,tagName,targetCommitish,name)"
+            IS_DRAFT="$(printf '%s' "$META" | jq -r .isDraft)"
+            REL_TAG="$(printf '%s' "$META" | jq -r .tagName)"
+            REL_NAME="$(printf '%s' "$META" | jq -r .name)"
+            REL_TARGET_RAW="$(printf '%s' "$META" | jq -r .targetCommitish)"
+            REL_TARGET="$(resolve_target_commit "$REL_TARGET_RAW")"
+            if [ "$IS_DRAFT" != "true" ] || [ "$REL_TAG" != "$TAG" ] || [ "$REL_NAME" != "$TAG" ]; then
+              echo "::error::Draft metadata mismatch after normalize (isDraft=${IS_DRAFT} tag=${REL_TAG} name=${REL_NAME})"
+              exit 1
+            fi
+            if [ -z "$REL_TARGET" ] || [ "$REL_TARGET" != "$COMMIT" ]; then
+              echo "::error::Draft target after normalize is '${REL_TARGET_RAW}' -> '${REL_TARGET}', expected ${COMMIT}"
+              exit 1
+            fi
+
             # Replace draft assets with the freshly validated candidate set.
             # If a prior run already published PyPI, the undraft step fails closed
             # unless these bytes match the public package hashes.
@@ -207,16 +305,8 @@ jobs:
               dist/*.whl \
               dist/*.tar.gz \
               "${RUNNER_TEMP}/candidate-SHA256SUMS"
-            echo "Updated draft release assets for ${TAG} at ${COMMIT}"
+            echo "Normalized and updated draft release ${TAG} targeting ${COMMIT}"
           else
-            NOTES_FILE="${RUNNER_TEMP}/release-notes.md"
-            printf '%s\n' \
-              "Candidate commit: \`${COMMIT}\`" \
-              "" \
-              "Pre-publication gate validated wheel + sdist (packaged MCP, sdist install, 0.6.0 upgrade). PyPI publish of these exact artifacts runs next; this Release stays draft until PyPI succeeds and published hashes match \`candidate-SHA256SUMS\`." \
-              "" \
-              "See attached \`candidate-SHA256SUMS\` for provenance." \
-              > "${NOTES_FILE}"
             gh release create "$TAG" \
               --repo "${GITHUB_REPOSITORY}" \
               --draft \
@@ -229,6 +319,21 @@ jobs:
               "${RUNNER_TEMP}/candidate-SHA256SUMS"
             echo "Created draft release ${TAG} targeting ${COMMIT}"
           fi
+
+          # Common post-condition for create and resume.
+          META="$(gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" \
+            --json isDraft,tagName,targetCommitish,name)"
+          IS_DRAFT="$(printf '%s' "$META" | jq -r .isDraft)"
+          REL_TAG="$(printf '%s' "$META" | jq -r .tagName)"
+          REL_NAME="$(printf '%s' "$META" | jq -r .name)"
+          REL_TARGET_RAW="$(printf '%s' "$META" | jq -r .targetCommitish)"
+          REL_TARGET="$(resolve_target_commit "$REL_TARGET_RAW")"
+          test "$IS_DRAFT" = "true"
+          test "$REL_TAG" = "$TAG"
+          test "$REL_NAME" = "$TAG"
+          test -n "$REL_TARGET"
+          test "$REL_TARGET" = "$COMMIT"
+          echo "Draft release metadata verified: tag=${REL_TAG} title=${REL_NAME} target=${REL_TARGET}"
 
       - name: Publish the same candidate artifacts to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -335,9 +440,44 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${CANDIDATE_TAG}"
+          COMMIT="${CANDIDATE_COMMIT}"
           test -n "$TAG"
+          test -n "$COMMIT"
 
-          IS_DRAFT="$(gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft)"
+          META="$(gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" \
+            --json isDraft,tagName,targetCommitish,name)"
+          IS_DRAFT="$(printf '%s' "$META" | jq -r .isDraft)"
+          REL_TAG="$(printf '%s' "$META" | jq -r .tagName)"
+          REL_NAME="$(printf '%s' "$META" | jq -r .name)"
+          REL_TARGET_RAW="$(printf '%s' "$META" | jq -r .targetCommitish)"
+
+          resolve_target_commit() {
+            local raw="$1"
+            if git rev-parse -q --verify "${raw}^{commit}" >/dev/null 2>&1; then
+              git rev-parse "${raw}^{commit}"
+              return 0
+            fi
+            if git rev-parse -q --verify "refs/remotes/origin/${raw}^{commit}" >/dev/null 2>&1; then
+              git rev-parse "refs/remotes/origin/${raw}^{commit}"
+              return 0
+            fi
+            if git rev-parse -q --verify "refs/heads/${raw}^{commit}" >/dev/null 2>&1; then
+              git rev-parse "refs/heads/${raw}^{commit}"
+              return 0
+            fi
+            echo ""
+          }
+          REL_TARGET="$(resolve_target_commit "$REL_TARGET_RAW")"
+
+          if [ "$REL_TAG" != "$TAG" ] || [ "$REL_NAME" != "$TAG" ]; then
+            echo "::error::Release metadata mismatch before undraft (tag=${REL_TAG} name=${REL_NAME})"
+            exit 1
+          fi
+          if [ -z "$REL_TARGET" ] || [ "$REL_TARGET" != "$COMMIT" ]; then
+            echo "::error::Release target before undraft is '${REL_TARGET_RAW}' -> '${REL_TARGET}', expected ${COMMIT}"
+            exit 1
+          fi
+
           if [ "$IS_DRAFT" = "true" ]; then
             gh release edit "$TAG" \
               --repo "${GITHUB_REPOSITORY}" \
@@ -349,5 +489,5 @@ jobs:
 
           # Final state: public Release + candidate provenance asset present.
           gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" \
-            --json isDraft,tagName,targetCommitish,assets \
-            --jq '{isDraft,tagName,targetCommitish,assets:[.assets[].name]}'
+            --json isDraft,tagName,targetCommitish,name,assets \
+            --jq '{isDraft,tagName,targetCommitish,name,assets:[.assets[].name]}'
