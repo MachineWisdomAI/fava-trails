@@ -92,11 +92,15 @@ without printing credentials. See
 [docs/runtime-and-upgrade.md](docs/runtime-and-upgrade.md).
 
 Before tagging, build candidate artifacts from the immutable reviewed commit and
-run the packaging gates:
+run the packaging gates against **those exact files**:
 
 ```bash
 uv build
+export FAVA_CANDIDATE_WHEEL=$(ls dist/*.whl)
+export FAVA_CANDIDATE_SDIST=$(ls dist/*.tar.gz)
+sha256sum dist/*.whl dist/*.tar.gz | tee candidate-SHA256SUMS
 uv run pytest tests/test_packaged_mcp.py tests/test_governance.py tests/test_mcp_protocol.py tests/test_runtime_info.py -v
+sha256sum -c candidate-SHA256SUMS
 ```
 
 Until PyPI/GitHub release metadata match that candidate, label the work **merged
@@ -108,8 +112,14 @@ Once dog-fooding confirms the changes work:
 
 1. Bump version in `pyproject.toml`
 2. Push the version bump via PR, merge to `main`
-3. Create a GitHub Release: `gh release create vX.Y.Z --generate-notes`
-4. CI builds, verifies the tag matches `pyproject.toml`, and publishes to PyPI
+3. Create and push an immutable tag on the reviewed commit:
+   `git tag vX.Y.Z <sha> && git push origin vX.Y.Z`
+   Do **not** create the GitHub Release yet — validation must run first.
+4. Owner runs the **Release** workflow (`workflow_dispatch`) with input
+   `tag=vX.Y.Z`. CI checks out the tag, builds once, runs packaged gates on the
+   exact wheel+sdist (including sdist install and 0.6.0 upgrade), then — only on
+   success — creates the GitHub Release (with `candidate-SHA256SUMS`) and
+   publishes those same artifacts to PyPI.
 5. Update the vendor copy:
    ```bash
    cd ~/git/vendor/fava-trails

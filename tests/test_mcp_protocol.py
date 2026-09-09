@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -17,6 +18,10 @@ from mcp import Client
 
 from fava_trails import server
 
+# Pin the native MCP client used for registration-load evidence (issue #99).
+# This is a real client binary that loads mcpServers config — not a pytest JSON parse.
+_NATIVE_MCP_CLIENT_PACKAGE = "@modelcontextprotocol/inspector@2.6.0"
+
 
 def _server_executable() -> Path:
     executable = Path(sys.executable).parent / "fava-trails-server"
@@ -26,8 +31,24 @@ def _server_executable() -> Path:
     return executable
 
 
+def _jj_bin() -> str:
+    jj = shutil.which("jj")
+    if jj:
+        return jj
+    fallback = Path.home() / ".local" / "bin" / "jj"
+    assert fallback.is_file(), "jj binary not found — install via: fava-trails install-jj"
+    return str(fallback)
+
+
 def _base_server_env(tmp_fava_home: Path, tmp_path: Path, agent_id: str) -> dict[str, str]:
     env = {key: value for key, value in os.environ.items() if not key.startswith("FAVA_TRAILS_")}
+    path_prefix = os.pathsep.join(
+        [
+            str(Path(sys.executable).parent),
+            str(Path(_jj_bin()).parent),
+            os.environ.get("PATH", ""),
+        ]
+    )
     env.update(
         {
             "FAVA_TRAILS_DATA_REPO": str(tmp_fava_home),
@@ -35,8 +56,8 @@ def _base_server_env(tmp_fava_home: Path, tmp_path: Path, agent_id: str) -> dict
             "FAVA_TRAILS_LOG_DIR": str(tmp_path / "logs" / agent_id),
             "FAVA_TRAILS_AGENT_ID": agent_id,
             "XDG_CONFIG_HOME": str(tmp_path / "xdg-config"),
-            # Ensure registration command resolution finds the installed entrypoint.
-            "PATH": f"{Path(sys.executable).parent}{os.pathsep}{os.environ.get('PATH', '')}",
+            # Ensure registration command resolution finds the installed entrypoint + jj.
+            "PATH": path_prefix,
         }
     )
     return env
@@ -106,6 +127,59 @@ async def _spawn_stdio_rpc(
             stderr=stderr,
         )
     return _StdioRpc(process, stderr_path)
+
+
+def _require_native_mcp_client() -> str:
+    """Return npx path; skip if the native client toolchain is unavailable."""
+    npx = shutil.which("npx")
+    node = shutil.which("node")
+    if not npx or not node:
+        pytest.skip("npx/node not available — native MCP client registration test requires Node/npx")
+    assert npx is not None
+    return npx
+
+
+def _inspector_cli(
+    *,
+    npx: str,
+    config_path: Path,
+    method: str,
+    env: dict[str, str],
+    cwd: Path,
+    extra: list[str] | None = None,
+    timeout: float = 180,
+) -> dict:
+    """Invoke MCP Inspector CLI so *its* config loader resolves mcpServers."""
+    cmd = [
+        npx,
+        "--yes",
+        _NATIVE_MCP_CLIENT_PACKAGE,
+        "--cli",
+        "--config",
+        str(config_path),
+        "--server",
+        "fava-trails",
+        "--method",
+        method,
+        "--format",
+        "json",
+        *(extra or []),
+    ]
+    completed = subprocess.run(
+        cmd,
+        cwd=cwd,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+    assert completed.returncode == 0, (
+        f"native client ({_NATIVE_MCP_CLIENT_PACKAGE}) failed method={method}\n"
+        f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+    )
+    payload = json.loads(completed.stdout)
+    assert "result" in payload, payload
+    return payload["result"]
 
 
 @pytest_asyncio.fixture
@@ -196,17 +270,26 @@ async def test_installed_stdio_initialize_list_and_call(stdio_rpc, tmp_fava_home
     assert missing["structuredContent"]["status"] == "error"
 
 
-@pytest.mark.asyncio
-async def test_native_client_registration_loads_and_initializes(tmp_fava_home, tmp_path):
-    """Issue #99: a real native-client config is loaded, then the registration is launched.
+def test_native_client_registration_loads_and_initializes(tmp_fava_home, tmp_path):
+    """Issue #99: a real native MCP client loads the registration and talks MCP.
 
     Distinct from ``test_installed_stdio_initialize_list_and_call``, which probes the
-    entrypoint binary directly. Here the client config is the source of truth for
-    command/env, matching Claude Code / Claude Desktop ``mcpServers`` shape.
+    entrypoint binary directly via raw JSON-RPC. Here the official MCP Inspector CLI
+    (``@modelcontextprotocol/inspector``) is the client: it reads a Claude-shaped
+    ``mcpServers`` config file, resolves command/env, spawns the server, and performs
+    initialize / tools/list / tools/call. Pytest does not parse or launch the registration.
     """
+    npx = _require_native_mcp_client()
     _server_executable()  # assert entrypoint exists (and wheel layout when requested)
-    env = _base_server_env(tmp_fava_home, tmp_path, "native-registration-agent")
-    # Claude-style registration: command name only (resolved via PATH), plus process env.
+    agent_id = "native-registration-agent"
+    base_env = _base_server_env(tmp_fava_home, tmp_path, agent_id)
+
+    # Isolated HOME so the native client never touches the operator's real config/secrets.
+    client_home = tmp_path / "native-client-home"
+    client_home.mkdir()
+    npm_cache = tmp_path / "npm-cache"
+    npm_cache.mkdir()
+
     registration = {
         "mcpServers": {
             "fava-trails": {
@@ -214,10 +297,13 @@ async def test_native_client_registration_loads_and_initializes(tmp_fava_home, t
                 "command": "fava-trails-server",
                 "args": [],
                 "env": {
-                    "FAVA_TRAILS_DATA_REPO": env["FAVA_TRAILS_DATA_REPO"],
-                    "FAVA_TRAILS_DIR": env["FAVA_TRAILS_DIR"],
-                    "FAVA_TRAILS_LOG_DIR": env["FAVA_TRAILS_LOG_DIR"],
-                    "FAVA_TRAILS_AGENT_ID": env["FAVA_TRAILS_AGENT_ID"],
+                    "FAVA_TRAILS_DATA_REPO": base_env["FAVA_TRAILS_DATA_REPO"],
+                    "FAVA_TRAILS_DIR": base_env["FAVA_TRAILS_DIR"],
+                    "FAVA_TRAILS_LOG_DIR": base_env["FAVA_TRAILS_LOG_DIR"],
+                    "FAVA_TRAILS_AGENT_ID": base_env["FAVA_TRAILS_AGENT_ID"],
+                    "PATH": base_env["PATH"],
+                    "HOME": str(client_home),
+                    "XDG_CONFIG_HOME": base_env["XDG_CONFIG_HOME"],
                 },
             }
         }
@@ -225,44 +311,56 @@ async def test_native_client_registration_loads_and_initializes(tmp_fava_home, t
     config_path = tmp_path / "claude_desktop_config.json"
     config_path.write_text(json.dumps(registration, indent=2) + "\n")
 
-    # Native client load step: read the registration file and resolve the server entry.
-    loaded = json.loads(config_path.read_text())
-    entry = loaded["mcpServers"]["fava-trails"]
-    assert entry["command"] == "fava-trails-server"
-    assert entry.get("type", "stdio") == "stdio"
-    launch_env = dict(env)
-    launch_env.update({str(k): str(v) for k, v in entry.get("env", {}).items()})
+    # Client process env: inspector runs here; it alone loads config_path.
+    client_env = {
+        **base_env,
+        "HOME": str(client_home),
+        "npm_config_cache": str(npm_cache),
+        "MCP_INSPECTOR_SECRET_STORE": "memory",
+        "NO_UPDATE_NOTIFIER": "1",
+    }
 
-    rpc = await _spawn_stdio_rpc(
-        command=entry["command"],
-        args=list(entry.get("args") or []),
-        env=launch_env,
+    initialized = _inspector_cli(
+        npx=npx,
+        config_path=config_path,
+        method="initialize",
+        env=client_env,
         cwd=tmp_path,
-        stderr_path=tmp_path / "native-registration-stderr.log",
     )
-    try:
-        initialized = await rpc.rpc(
-            "initialize",
-            {
-                "protocolVersion": "2025-11-25",
-                "capabilities": {},
-                "clientInfo": {"name": "synthetic-claude-desktop", "version": "1"},
-            },
-        )
-        assert initialized["serverInfo"]["name"] == "fava-trails"
-        assert initialized["serverInfo"]["version"] == __import__("fava_trails").__version__
-        await rpc.rpc("notifications/initialized", notification=True)
-        listed = await rpc.rpc("tools/list")
-        assert len(listed["tools"]) == 17
-        saved = await rpc.call_tool(
+    assert initialized["serverInfo"]["name"] == "fava-trails"
+    assert initialized["serverInfo"]["version"] == __import__("fava_trails").__version__
+
+    listed = _inspector_cli(
+        npx=npx,
+        config_path=config_path,
+        method="tools/list",
+        env=client_env,
+        cwd=tmp_path,
+    )
+    assert len(listed["tools"]) == 17
+
+    saved = _inspector_cli(
+        npx=npx,
+        config_path=config_path,
+        method="tools/call",
+        env=client_env,
+        cwd=tmp_path,
+        extra=[
+            "--tool-name",
             "save_thought",
-            {"trail_name": "synthetic/native-reg", "content": "Loaded via native registration"},
-        )
-        assert not saved.get("isError", False)
-        assert saved["structuredContent"]["status"] == "ok"
-        assert saved["structuredContent"]["thought"]["agent_id"] == "native-registration-agent"
-    finally:
-        await rpc.close()
+            "--tool-args-json",
+            json.dumps(
+                {
+                    "trail_name": "synthetic/native-reg",
+                    "content": "Loaded via native MCP Inspector registration",
+                }
+            ),
+        ],
+    )
+    assert saved.get("isError") is False
+    structured = saved["structuredContent"]
+    assert structured["status"] == "ok"
+    assert structured["thought"]["agent_id"] == agent_id
 
 
 @pytest.mark.asyncio

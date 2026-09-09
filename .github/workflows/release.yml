@@ -1,11 +1,19 @@
 name: Release
 
+# Pre-publication gate (issue #99): validate immutable tag artifacts *before*
+# any public GitHub Release or PyPI upload exists. Owner-gated via workflow_dispatch
+# on an already-pushed tag — never triggers from `release: published` (which would
+# leave a public Release if candidate validation failed).
 on:
-  release:
-    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing immutable tag to validate and publish (e.g. v0.6.1)"
+        required: true
+        type: string
 
 permissions:
-  contents: write       # Attach candidate SHA256SUMS to the GitHub Release
+  contents: write       # Create the GitHub Release + attach candidate SHA256SUMS
   id-token: write       # Required for OIDC Trusted Publishing
   attestations: write   # Required for SLSA provenance attestations
 
@@ -14,21 +22,38 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout the immutable tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
           python-version: "3.11"
 
+      - name: Setup Node (native MCP client registration evidence)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Verify version matches tag
         run: |
-          TAG=${GITHUB_REF#refs/tags/v}
+          set -euo pipefail
+          TAG_INPUT="${{ inputs.tag }}"
+          TAG="${TAG_INPUT#v}"
           PKG=$(grep '^version' pyproject.toml | cut -d'"' -f2)
           if [ "$TAG" != "$PKG" ]; then
             echo "::error::Tag v$TAG does not match pyproject.toml version $PKG"
             exit 1
           fi
+          # Refuse if a public GitHub Release already exists for this tag.
+          if gh release view "$TAG_INPUT" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "::error::GitHub Release $TAG_INPUT already exists. Refusing split-state republish."
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       # Build once. Every later step must consume these exact files — never rebuild.
       - name: Build immutable candidate artifacts
@@ -36,11 +61,11 @@ jobs:
           set -euo pipefail
           uv build
           ls -la dist
-          # Manifest of the exact bytes that will be tested and published.
           {
             sha256sum dist/*.whl dist/*.tar.gz
             echo "CANDIDATE_COMMIT=${GITHUB_SHA}"
-            echo "CANDIDATE_TAG=${GITHUB_REF_NAME}"
+            echo "CANDIDATE_TAG=${{ inputs.tag }}"
+            echo "CANDIDATE_REF=$(git rev-parse HEAD)"
           } | tee "${RUNNER_TEMP}/candidate-SHA256SUMS"
 
       - name: Install jj (packaged gate dependency)
@@ -50,10 +75,11 @@ jobs:
           if ! command -v jj >/dev/null 2>&1; then
             uv run fava-trails install-jj
           fi
-          command -v jj
-          jj --version
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          command -v jj || true
+          "$HOME/.local/bin/jj" --version
 
-      - name: Verify the exact candidate wheel (packaged gates)
+      - name: Verify the exact candidate wheel + sdist (packaged gates)
         run: |
           set -euo pipefail
           WHEEL=$(ls dist/*.whl)
@@ -66,44 +92,42 @@ jobs:
           }
           verify_candidate_hashes
 
-          uv venv "${RUNNER_TEMP}/candidate-venv"
-          # Install the exact built wheel — not a rebuild and not PyPI.
-          uv pip install --python "${RUNNER_TEMP}/candidate-venv/bin/python" "$WHEEL"
-          uv pip install --python "${RUNNER_TEMP}/candidate-venv/bin/python" \
-            "pytest>=9,<10" "pytest-asyncio>=1.3,<2" "jsonschema>=4.26,<5"
-
+          export FAVA_CANDIDATE_WHEEL="$WHEEL"
+          export FAVA_CANDIDATE_SDIST="$SDIST"
           export FAVA_EXPECT_WHEEL=1
-          export PATH="${RUNNER_TEMP}/candidate-venv/bin:${PATH}"
-          "${RUNNER_TEMP}/candidate-venv/bin/fava-trails" version
-          "${RUNNER_TEMP}/candidate-venv/bin/python" - <<'PY'
-          import pathlib
-          import fava_trails
-          path = pathlib.Path(fava_trails.__file__)
-          assert "site-packages" in path.parts, path
-          print("loaded", path)
-          PY
+          export PATH="$HOME/.local/bin:${PATH}"
+          export JJ_CONFIG=/dev/null
 
-          # Direct stdio + native registration + two-process identity (#99/#83)
-          # plus governed recall isolation (#72) against the installed wheel.
-          "${RUNNER_TEMP}/candidate-venv/bin/pytest" \
-            tests/test_mcp_protocol.py \
-            tests/test_runtime_info.py \
-            tests/test_governance.py \
+          # Bind verification to the already-built candidates:
+          # - fresh wheel install + fava-trails version
+          # - real 0.6.0 → candidate wheel upgrade
+          # - fresh sdist install
+          # - installed-wheel MCP (direct stdio + native Inspector registration + two-process)
+          # - governed recall isolation (#72) + runtime_info
+          uv run pytest \
+            tests/test_packaged_mcp.py \
             -v --tb=short
 
-          # Confirm we still publish the same bytes that were just tested.
+          # Confirm we still hold the same bytes that were just tested.
           verify_candidate_hashes
           test "$(ls dist/*.whl)" = "$WHEEL"
           test "$(ls dist/*.tar.gz)" = "$SDIST"
 
-      - name: Attach candidate provenance to the GitHub Release
+      # Public surfaces are created only after validation succeeds.
+      - name: Create GitHub Release with candidate provenance
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "${GITHUB_REF_NAME}" \
-            "${RUNNER_TEMP}/candidate-SHA256SUMS" \
-            --clobber \
-            --repo "${GITHUB_REPOSITORY}"
+          set -euo pipefail
+          TAG="${{ inputs.tag }}"
+          gh release create "$TAG" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "$TAG" \
+            --generate-notes \
+            --verify-tag \
+            dist/*.whl \
+            dist/*.tar.gz \
+            "${RUNNER_TEMP}/candidate-SHA256SUMS"
 
       - name: Publish the same candidate artifacts to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

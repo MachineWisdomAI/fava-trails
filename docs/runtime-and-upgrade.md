@@ -59,11 +59,12 @@ These are two different evidence paths and must not be conflated:
 | Path | What it proves | Automated coverage |
 | --- | --- | --- |
 | **Direct stdio probe** | The installed `fava-trails-server` binary speaks MCP over stdio when launched by absolute path | `tests/test_mcp_protocol.py::test_installed_stdio_initialize_list_and_call` |
-| **Native client registration** | A Claude-style `mcpServers` config is **loaded**, the registration's `command`/`env` are resolved, and that entrypoint completes `initialize` + a tool call | `tests/test_mcp_protocol.py::test_native_client_registration_loads_and_initializes` |
+| **Native client registration** | A real native client (`npx @modelcontextprotocol/inspector` CLI) loads a Claude-shaped `mcpServers` config, resolves `command`/`env`, spawns the server, and completes `initialize` + `tools/list` + `tools/call`. Pytest does not parse or launch the registration. | `tests/test_mcp_protocol.py::test_native_client_registration_loads_and_initializes` |
 
 Installing a wheel does not update a running client until the registration is
 restarted. `tests/test_packaged_mcp.py` re-runs the MCP suite against the built
-wheel so both paths are checked on the installed artifact (#83 / #99).
+wheel (or `FAVA_CANDIDATE_WHEEL` / `FAVA_CANDIDATE_SDIST` when set) so both paths
+are checked on the installed artifact (#83 / #99).
 
 ## Identity configuration
 
@@ -106,11 +107,23 @@ Checklist after an upgrade:
 
 ## Release candidate verification (pre-publish)
 
-Publication is tag-driven (`.github/workflows/release.yml` on a GitHub Release).
-The release job **builds once**, records SHA-256 hashes for the wheel and sdist,
-runs packaged gates against **those exact files**, attaches the hash manifest to
-the GitHub Release, and only then publishes **the same** `dist/` artifacts to
-PyPI (with attestations). It does not rebuild between test and publish.
+Publication is **owner-gated** via `.github/workflows/release.yml`
+(`workflow_dispatch` on an **already-pushed** immutable tag). The job:
+
+1. Checks out the tag and refuses to proceed if a public GitHub Release for that
+   tag already exists (avoids split state).
+2. **Builds once**, records SHA-256 hashes for the wheel and sdist.
+3. Sets `FAVA_CANDIDATE_WHEEL` / `FAVA_CANDIDATE_SDIST` to those exact files and
+   runs `tests/test_packaged_mcp.py` — fresh wheel install, fresh sdist install,
+   real `0.6.0` → candidate upgrade, installed-entrypoint MCP (direct stdio **and**
+   native Inspector registration), two-process identity isolation, and governed
+   recall (#72).
+4. **Only after validation succeeds**, creates the GitHub Release (with wheel,
+   sdist, and `candidate-SHA256SUMS`) and publishes **the same** `dist/` artifacts
+   to PyPI (with attestations).
+
+Validation therefore runs **before** any public GitHub Release or PyPI upload
+exists. The workflow no longer triggers on `release: published`.
 
 Local pre-authorization check (binds what you test to files you could tag):
 
@@ -118,6 +131,8 @@ Local pre-authorization check (binds what you test to files you could tag):
 # From an immutable reviewed commit on main / the release branch:
 uv build
 sha256sum dist/*.whl dist/*.tar.gz | tee candidate-SHA256SUMS
+export FAVA_CANDIDATE_WHEEL=$(ls dist/*.whl)
+export FAVA_CANDIDATE_SDIST=$(ls dist/*.tar.gz)
 uv run pytest \
   tests/test_packaged_mcp.py \
   tests/test_governance.py \
@@ -127,10 +142,10 @@ uv run pytest \
 sha256sum -c candidate-SHA256SUMS
 ```
 
-`tests/test_packaged_mcp.py` builds wheel + sdist, verifies a fresh install,
-upgrades an isolated env from published `fava-trails==0.6.0`, and re-runs the
-installed-entrypoint MCP (direct stdio **and** native registration), two-process
-identity isolation, and governed-recall suites against the wheel.
+`tests/test_packaged_mcp.py` uses the env-bound candidates when set; otherwise it
+builds wheel + sdist itself. Either way it verifies fresh wheel install, sdist
+install, upgrade from published `fava-trails==0.6.0`, and re-runs the installed
+MCP + governance suites against the wheel.
 
 Post-publication proof: download the published wheel/sdist (or use the Release
 asset `candidate-SHA256SUMS`) and confirm SHA-256 matches the tested candidate

@@ -14,12 +14,15 @@ All notable changes to FAVA Trails are documented here.
   tests cover fresh install, upgrade from published 0.6.0, installed-entrypoint
   MCP protocol (#83), and governed recall isolation (#72). Prepares #99; **0.6.1
   remains merged but unreleased on PyPI until an authorized tag is published.**
-- Issue #99 verification depth: native-client `mcpServers` registration load
-  (distinct from direct stdio probes), two separately configured ordinary server
-  processes for authoring isolation + spoof rejection on the installed wheel, and
-  `release.yml` gates that hash/build once, test those exact artifacts, attach
-  `candidate-SHA256SUMS` to the GitHub Release, then publish the same `dist/`
-  files (still owner-gated; no automatic publication from this PR).
+- Issue #99 verification depth: real native MCP client registration via
+  `@modelcontextprotocol/inspector` loading Claude-shaped `mcpServers` config
+  (distinct from direct stdio probes); two separately configured ordinary server
+  processes for authoring isolation + spoof rejection on the installed wheel;
+  packaged verifier binds to `FAVA_CANDIDATE_WHEEL`/`FAVA_CANDIDATE_SDIST` for
+  fresh wheel install, sdist install, and 0.6.0→candidate upgrade; `release.yml`
+  is a pre-publication `workflow_dispatch` on an existing tag that validates
+  those exact artifacts **before** creating the GitHub Release or publishing to
+  PyPI (still owner-gated; no automatic publication from this PR).
 
 ### Changed
 - Support MCP SDK 2.2 with explicit low-level handlers, preserving tool schemas, annotations, input/output validation, structured results, and Markdown usage guidance over stdio and Streamable HTTP. Adds installed-wheel protocol tests for legacy initialization and current SDK clients. Resolves #83.
