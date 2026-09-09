@@ -710,19 +710,19 @@
         <span class="terminal-title">agent session — MCP tool calls</span>
       </div>
       <div class="terminal-body">
-<span class="prompt">▸</span> <span class="cmd">save_thought</span> <span class="output">"ResNet-50 is optimal for this dataset"</span><br>
-<span class="dim">  ✓ Draft saved (12ms) · branch: agent/ml-researcher · id: 01JMK…</span><br>
+<span class="prompt">▸</span> <span class="cmd">save_thought</span> <span class="output">trail_name="org/proj" content="ResNet-50 is optimal for this dataset"</span><br>
+<span class="dim">  ✓ Draft saved (12ms) · process identity: ml-researcher · id: 01JMK…</span><br>
 <br>
-<span class="prompt">▸</span> <span class="cmd">propose_truth</span> <span class="output">thought_id="01JMK…"</span><br>
+<span class="prompt">▸</span> <span class="cmd">propose_truth</span> <span class="output">trail_name="org/proj" thought_id="01JMK…"</span><br>
 <span class="rejected">  ✗ Trust Gate rejected (synchronous rubric review of this record only): "Schema/confidence issues in proposed claim"</span><br>
 <span class="dim">  → Draft preserved for revision. Shared records unchanged. Gate did not load the corpus.</span><br>
 <br>
-<span class="prompt">▸</span> <span class="cmd">save_thought</span> <span class="output">"ViT-Large outperforms ResNet-50 by 3%"</span> <span class="dim">supersedes: 01JMK…</span><br>
-<span class="dim">  ✓ Draft saved (9ms) · id: 01JML…</span><br>
-<span class="prompt">▸</span> <span class="cmd">propose_truth</span> <span class="output">thought_id="01JML…"</span><br>
+<span class="prompt">▸</span> <span class="cmd">supersede</span> <span class="output">trail_name="org/proj" thought_id="01JMK…" content="ViT-Large outperforms ResNet-50 by 3%" reason="accuracy"</span><br>
+<span class="dim">  ✓ Draft successor saved (9ms) · id: 01JML… · original remains current until approval</span><br>
+<span class="prompt">▸</span> <span class="cmd">propose_truth</span> <span class="output">trail_name="org/proj" thought_id="01JML…"</span><br>
 <span class="success">  ✓ Rubric approved. Promoted. Predecessor hidden after durable supersession.</span><br>
 <br>
-<span class="prompt">▸</span> <span class="cmd">recall</span> <span class="output">"ViT-Large"</span><br>
+<span class="prompt">▸</span> <span class="cmd">recall</span> <span class="output">trail_name="org/proj" query="ViT-Large"</span><br>
 <span class="success">  → ViT-Large decision (01JML…)</span> <span class="dim">· lexical token match · ResNet-50 claim hidden after approved supersession</span>
 <span class="dim">  → paraphrase "model architecture decisions" would miss without shared tokens</span>
       </div>
@@ -796,14 +796,14 @@
         <div class="flow-dot">1</div>
         <div class="flow-content">
           <h3>Draft Isolation</h3>
-          <p>Every agent works in an isolated branch. Drafts are crash-proof and queryable by the owning identity under explicit <code style="font-family: var(--mono); font-size: 0.85em;">mode="authoring"</code>. Default governed reads hide unapproved drafts by lifecycle and process-configured identity — not cryptographic per-caller isolation. Callers on one MCP endpoint share one identity; direct filesystem access remains operator-trusted. No "dirty working copy" — every state change is persisted before the operation returns.</p>
+          <p>Each ordinary MCP process has one operator-configured identity (<code style="font-family: var(--mono); font-size: 0.85em;">FAVA_TRAILS_AGENT_ID</code>), not automatic per-agent branch allocation. Drafts are crash-proof and queryable under explicit <code style="font-family: var(--mono); font-size: 0.85em;">mode="authoring"</code> for that identity only. Default governed reads hide unapproved drafts by lifecycle and process identity — not cryptographic per-caller isolation. Callers on one MCP endpoint share one identity; direct filesystem access remains operator-trusted. No "dirty working copy" — every state change is persisted before the operation returns.</p>
         </div>
       </div>
       <div class="flow-step">
         <div class="flow-dot">2</div>
         <div class="flow-content">
           <h3>Trust Gate</h3>
-          <p>Promotion from draft to shared records can require a validation gate — a critic LLM, an explicit human approval, or both. Unapproved drafts stay out of default governed recall. The gate is rubric-based process control with limited context: it does <strong>not</strong> independently verify project facts, and a convincing false claim can still be approved.</p>
+          <p>Promotion defaults to a synchronous <code style="font-family: var(--mono); font-size: 0.85em;">llm-oneshot</code> rubric review of the current record. Non-LLM promotion is per-call on an operator endpoint: <code style="font-family: var(--mono); font-size: 0.85em;">propose_truth(..., approval="human")</code> — not a shipped “disable LLM” config switch. Unapproved drafts stay out of default governed recall. The gate is process control with limited context: it does <strong>not</strong> independently verify project facts, and a convincing false claim can still be approved.</p>
         </div>
       </div>
       <div class="flow-step">
@@ -947,7 +947,7 @@
         <ul>
           <li>100% audit coverage — every state change traceable</li>
           <li>Temporal reconstruction for compliance review</li>
-          <li>Namespace isolation between clients, projects, sensitivity levels</li>
+          <li>Scope paths + lifecycle/identity filtering over an operator-trusted filesystem (not multi-tenant sandboxing)</li>
           <li>SOC 2 / ISO 27001 exportable audit trails</li>
         </ul>
       </div>
@@ -957,28 +957,28 @@
   <!-- MCP -->
   <section class="reveal">
     <div class="section-label">Integration</div>
-    <h2>MCP-native. Six tools. Five minutes.</h2>
-    <p>FAVA Trails exposes all operations as Model Context Protocol tools. If your framework speaks MCP, integration is a configuration change. The hero terminal above shows the core save→gate→recall loop. Here's the full surface:</p>
+    <h2>MCP-native. Seventeen tools. Five minutes.</h2>
+    <p>FAVA Trails exposes operations as Model Context Protocol tools (17 registered names, including the <code style="font-family: var(--mono); font-size: 0.85em;">list_trails</code> alias and <code style="font-family: var(--mono); font-size: 0.85em;">get_usage_guide</code>). If your framework speaks MCP, integration is a configuration change. The hero terminal above shows save→supersede→gate→recall. Sample of the surface:</p>
 
     <div class="code-block">
-<pre><span class="comment"># Core loop (shown above): save_thought, propose_truth, recall</span>
+<pre><span class="comment"># Core loop (shown above): save_thought, supersede, propose_truth, recall</span>
+<span class="comment"># Also: start_thought, update_thought, get_thought, change_scope, list_scopes, …</span>
 
-<span class="comment"># Multi-agent sync — pull latest shared truth into this agent's context</span>
-<span class="fn">sync</span>()
-<span class="comment"># → Rebases agent's draft on shared truth. Conflicts surfaced as data.</span>
-<span class="comment"># → Pull Daemon does this automatically every 30s; manual call for on-demand.</span>
+<span class="comment"># Multi-agent sync — pull latest shared truth (manual today)</span>
+<span class="fn">sync</span>(trail_name=<span class="str">"org/proj"</span>)
+<span class="comment"># → Fetches/rebases against shared truth. Conflicts surfaced as data.</span>
+<span class="comment"># → Planned Pull Daemon would automate this (~30s); not shipped yet.</span>
 
-<span class="comment"># Atomic branch discard — abandon a dead-end investigation</span>
-<span class="fn">forget</span>(branch=<span class="str">"hypothesis/resnet-variants"</span>)
-<span class="comment"># → 50 thoughts gone. Zero residue. One operation.</span>
-<span class="comment"># → Future recall never surfaces this abandoned line of reasoning.</span>
+<span class="comment"># Discard current reasoning line (abandons current JJ change)</span>
+<span class="fn">forget</span>(trail_name=<span class="str">"org/proj"</span>, revision=<span class="str">"@"</span>)  <span class="comment"># revision optional; default current</span>
+<span class="comment"># → Abandons the current change. Not a branch-name argument.</span>
 
-<span class="comment"># Human-in-the-loop feedback — capture preferences as versioned memory</span>
+<span class="comment"># Operator endpoint: capture a draft preference (still needs propose_truth)</span>
 <span class="fn">learn_preference</span>(
-    feedback=<span class="str">"Always use PyTorch Lightning, not raw PyTorch"</span>,
-    namespace=<span class="str">"user/style"</span>,
-    source=<span class="str">"human"</span>)
-<span class="comment"># → Versioned, auditable. Can be superseded. Never silently overwritten.</span></pre>
+    trail_name=<span class="str">"org/proj"</span>,
+    content=<span class="str">"Always use PyTorch Lightning, not raw PyTorch"</span>,
+    preference_type=<span class="str">"firm"</span>)
+<span class="comment"># → Draft only until review or propose_truth(..., approval="human") on operator endpoint.</span></pre>
     </div>
   </section>
 
@@ -986,7 +986,7 @@
   <section class="reveal">
     <div class="section-label">Enterprise Objections, Answered</div>
     <h2>Your memory graph stays under your control</h2>
-    <p>FAVA Trails follows an <strong style="color: var(--accent);">Engine vs. Fuel</strong> architecture. The MCP server (<code style="font-family: var(--mono); font-size: 0.85em; color: var(--green);">fava-trails</code>) is a stateless, open-source engine. Your actual memory graph and versioned repository live entirely in a local-first or privately hosted directory that you control. The engine does not embed your corpus in its source, collect product telemetry, or require a FAVA cloud. <strong>Default Trust Gate is different:</strong> when enabled with the shipped OpenRouter default, <code style="font-family: var(--mono); font-size: 0.85em;">propose_truth</code> sends the proposed record content and selected redacted metadata to that LLM provider. Point Trust Gate at a local OpenAI-compatible endpoint (or disable LLM review) when external egress is unacceptable — see issue #101 for local-only hardening.</p>
+    <p>FAVA Trails follows an <strong style="color: var(--accent);">Engine vs. Fuel</strong> architecture. The MCP server (<code style="font-family: var(--mono); font-size: 0.85em; color: var(--green);">fava-trails</code>) is a stateless, open-source engine. Your actual memory graph and versioned repository live entirely in a local-first or privately hosted directory that you control. The engine does not embed your corpus in its source, collect product telemetry, or require a FAVA cloud. <strong>Default Trust Gate is different:</strong> under shipped <code style="font-family: var(--mono); font-size: 0.85em;">trust_gate: llm-oneshot</code> with the OpenRouter default, <code style="font-family: var(--mono); font-size: 0.85em;">propose_truth</code> sends the proposed record content and selected redacted metadata to that LLM provider. Avoid that path today by pointing Trust Gate at a local OpenAI-compatible endpoint, or by promoting on an operator endpoint with <code style="font-family: var(--mono); font-size: 0.85em;">propose_truth(..., approval="human")</code>. There is no shipped global “disable LLM review” config flag (<code style="font-family: var(--mono); font-size: 0.85em;">trust_gate: human</code> is unimplemented) — see issue #101 for further local-only hardening.</p>
 
     <div class="ip-bullet">
       <span class="icon">🔒</span>

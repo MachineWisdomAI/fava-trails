@@ -88,9 +88,9 @@ The Trust Gate is a configurable validation step that can run before a draft is 
 
 The key design properties today:
 
-- **Synchronous on `propose_truth`.** When LLM review is enabled, `handle_propose_truth` awaits the single-record review (subject to `trust_gate_timeout_secs`) before promotion and return. The caller blocks on that tool call; there is no background async queue in the current release.
+- **Synchronous on `propose_truth`.** With the shipped `llm-oneshot` policy, `handle_propose_truth` awaits the single-record review (subject to `trust_gate_timeout_secs`) before promotion and return. The caller blocks on that tool call; there is no background async queue in the current tree.
 - **Limited context.** The LLM request is the configured Trust Gate prompt plus the thought under review — not a retrieval over existing shared knowledge.
-- **Policy-configurable.** Review mode, model/provider, timeouts, and prompts are operator-configured (including local OpenAI-compatible endpoints). Different deployments can require human approval or skip LLM review entirely.
+- **Operator-configured LLM settings.** Provider, model, timeouts, prompts, and local OpenAI-compatible endpoints are operator-configured under the shipped `llm-oneshot` policy. Config does **not** yet expose a working “disable LLM / human-only policy” switch (`trust_gate: human` remains unimplemented). The real non-LLM path is per-call explicit human approval: on an operator endpoint (`FAVA_TRAILS_OPERATOR=1` with a configured `FAVA_TRAILS_AGENT_ID`), call `propose_truth(..., approval="human")`. Further local-only / offline hardening is tracked in issue #101.
 - **Rejection is non-destructive.** A rejected proposal stays in draft with reviewer feedback attached. The agent can revise and resubmit.
 - **Auditable.** Trust Gate verdicts and reasoning are returned on the tool response and can be logged by operators.
 
@@ -202,7 +202,7 @@ Your actual data — the memory graph, the versioned repository, every thought y
 
 What holds today: the engine does not embed your corpus in its source, does not collect product telemetry, and does not require a FAVA-hosted cloud. The MCP server is effectively request-scoped for durable product state — your Fuel directory is separate and under your controls.
 
-What does **not** hold by default: **Trust Gate can egress content.** With the shipped OpenRouter default, `propose_truth` sends the proposed record content and selected redacted metadata to that provider. Configure a local OpenAI-compatible endpoint, supply human-only approval, or otherwise disable LLM review when external egress is unacceptable (further local-only hardening is tracked in issue #101). Your corporate IP stays on your infrastructure only to the extent your Trust Gate provider and hosting choices keep it there.
+What does **not** hold by default: **Trust Gate can egress content.** With the shipped OpenRouter default under `trust_gate: llm-oneshot`, `propose_truth` sends the proposed record content and selected redacted metadata to that provider. To avoid that egress path today: point Trust Gate at a local OpenAI-compatible endpoint, **or** promote on an operator endpoint with `propose_truth(..., approval="human")` (requires `FAVA_TRAILS_OPERATOR=1` and a configured agent identity). There is no shipped config flag that disables LLM review globally; `trust_gate: human` is not implemented. Further local-only hardening is tracked in issue #101. Your corporate IP stays on your infrastructure only to the extent your Trust Gate provider, approval path, and hosting choices keep it there.
 
 This separation also means you can update the engine independently of your data. Upgrading FAVA Trails's MCP server does not touch, migrate, or expose your repository.
 
@@ -267,7 +267,9 @@ Thoughts are append-only (immutable content, one exception: the `superseded_by` 
 
 ### What's on the roadmap?
 
-**Shipped (current tree):** Versioned thought store with crash-proof persistence, governed/authoring/history visibility, Trust Gate / human approval provenance, supersession lineage, MCP integration, lexical `recall`, 1-hop relationship expansion, local Rich Views reader.
+**Current unreleased tree (0.6.1 release candidate on `main` / this docs branch):** Versioned thought store with crash-proof persistence, governed/authoring/history visibility (process-configured identity; #72/#93), Trust Gate LLM review plus per-call operator `approval="human"` provenance, supersession lineage, MCP integration, lexical `recall`, 1-hop relationship expansion, local Rich Views reader. **Not on PyPI yet** — GitHub/PyPI latest remain **0.6.0**. Confirm the loaded runtime with `fava-trails version` (see [runtime-and-upgrade.md](runtime-and-upgrade.md)).
+
+**Published 0.6.0 (what `pip install fava-trails` still resolves):** Trust Gate provider-neutral LLM config and related runtime fields shipped; **does not** include the later governed-read isolation / MCP registration fixes that identify as 0.6.1 on `main`. Do not assume 0.6.0 draft/authoring behavior matches this FAQ’s governed visibility model.
 
 **In design / discovery (not shipped by this FAQ):** Continuous Pull Daemon automation; a dedicated search/retrieval layer after Lima Discovery ([issue #59](https://github.com/MachineWisdomAI/fava-trails/issues/59)) — candidates may include full-text indexes or, only if discovery proves need, derived semantic indexes. **No embeddings product, vector database, or retrieval architecture is selected in #59's discovery gate.**
 

@@ -46,7 +46,7 @@ See [governed-recall.md](governed-recall.md).
 
 | Field | Value |
 | --- | --- |
-| Product version | `0.6.1` (`pyproject.toml`) |
+| Product version | `0.6.1` (`pyproject.toml`) — **unreleased** release candidate on this tree / `main`; PyPI and GitHub Releases latest remain **0.6.0** |
 | Git baseline (matrix authoring) | `36d6bbbee669891e4b6f5310a0eb991fe043e3df` (PR #110 / issue #100 branch head when the Expected/Actual columns were written) |
 | Runner | `uv run pytest tests/test_retrieval_baseline.py -v` |
 | Issue | [#100](https://github.com/MachineWisdomAI/fava-trails/issues/100) |
