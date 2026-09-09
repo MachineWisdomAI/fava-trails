@@ -119,8 +119,10 @@ Once dog-fooding confirms the changes work:
    `tag=vX.Y.Z`. CI proves `refs/tags/vX.Y.Z` peels to the checked-out `HEAD`,
    builds once, runs packaged gates on the exact wheel+sdist (including sdist
    install and 0.6.0 upgrade), stages a **draft** GitHub Release (with
-   `candidate-SHA256SUMS`), publishes those same artifacts to PyPI, then undrafts
-   the Release only after PyPI succeeds (reruns may resume a matching draft).
+   `candidate-SHA256SUMS`), publishes those same artifacts to PyPI, verifies
+   published PyPI SHA-256 against `candidate-SHA256SUMS` (fail closed), then
+   undrafts the Release only after that proof (reruns may resume a matching
+   draft; provenance env is `$GITHUB_ENV`-inherited, not expression-remapped).
 5. Update the vendor copy:
    ```bash
    cd ~/git/vendor/fava-trails

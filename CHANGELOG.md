@@ -22,9 +22,11 @@ All notable changes to FAVA Trails are documented here.
   fresh wheel install, sdist install, and 0.6.0→candidate upgrade; `release.yml`
   is a pre-publication `workflow_dispatch` on an existing tag that proves
   `refs/tags/*` peel equals verified `HEAD` (env-passed tag input; provenance from
-  that commit, not dispatch `GITHUB_SHA`), validates exact artifacts, stages a
-  **draft** GitHub Release, publishes the same `dist/` to PyPI, then undrafts only
-  after PyPI succeeds (still owner-gated; no automatic publication from this PR).
+  that commit via `$GITHUB_ENV` inheritance, not dispatch `GITHUB_SHA` or empty
+  expression-context remaps), validates exact artifacts, stages a **draft**
+  GitHub Release, publishes the same `dist/` to PyPI, requires published PyPI
+  SHA-256 to match `candidate-SHA256SUMS` before undraft (still owner-gated; no
+  automatic publication from this PR).
 
 ### Changed
 - Support MCP SDK 2.2 with explicit low-level handlers, preserving tool schemas, annotations, input/output validation, structured results, and Markdown usage guidance over stdio and Streamable HTTP. Adds installed-wheel protocol tests for legacy initialization and current SDK clients. Resolves #83.

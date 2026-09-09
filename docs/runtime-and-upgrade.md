@@ -127,8 +127,13 @@ Publication is **owner-gated** via `.github/workflows/release.yml`
    recall (#72).
 5. **Only after validation succeeds**, stages a **draft** GitHub Release (wheel,
    sdist, `candidate-SHA256SUMS`), publishes **the same** `dist/` artifacts to
-   PyPI (with attestations; `skip-existing` for resume), then undrafts the
-   Release so it becomes public only after PyPI succeeds.
+   PyPI (with attestations; `skip-existing` for resume), **downloads the
+   published wheel+sdist and requires their SHA-256 to match
+   `candidate-SHA256SUMS`** (fail closed on mismatch — `skip-existing` alone is
+   not byte proof), then undrafts the Release so it becomes public only after
+   that hash proof. Candidate provenance (`CANDIDATE_*`) is exported once via
+   `$GITHUB_ENV` and inherited by later steps; it is not re-mapped through the
+   empty workflow expression `env` context.
 
 Validation therefore runs **before** any public GitHub Release or PyPI upload
 exists. The workflow no longer triggers on `release: published`.

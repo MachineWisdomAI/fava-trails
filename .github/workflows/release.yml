@@ -6,7 +6,13 @@ name: Release
 #
 # Recoverability: stage a *draft* GitHub Release after candidate validation, publish
 # the same dist/ to PyPI, then undraft the Release only after PyPI succeeds. Reruns
-# may resume a matching draft; a published Release refuses republish.
+# may resume a matching draft; a published Release refuses republish. Before undraft,
+# published PyPI wheel/sdist SHA-256 must match candidate-SHA256SUMS (fail closed).
+#
+# Provenance env vars (CANDIDATE_*) are written once to $GITHUB_ENV and inherited by
+# later steps as runner environment variables. Do NOT redeclare them via
+# ${{ env.CANDIDATE_* }} — the workflow expression env context is not updated by
+# GITHUB_ENV writes and would overwrite valid values with empty strings.
 on:
   workflow_dispatch:
     inputs:
@@ -95,19 +101,20 @@ jobs:
 
           # Provenance comes from the verified checkout HEAD — not workflow GITHUB_SHA
           # (which names the ref that *started* workflow_dispatch and can differ).
+          # Later steps inherit these as runner env vars via GITHUB_ENV. Do not map
+          # them again with ${{ env.* }} expression context (that context stays empty).
           {
             echo "CANDIDATE_COMMIT=${HEAD_COMMIT}"
             echo "CANDIDATE_TAG=${TAG_INPUT}"
+            echo "CANDIDATE_VERSION=${EXPECTED}"
             echo "RESUME_DRAFT=${RESUME_DRAFT}"
           } >> "${GITHUB_ENV}"
 
           echo "Candidate tag=${TAG_INPUT} commit=${HEAD_COMMIT} resume_draft=${RESUME_DRAFT}"
 
       # Build once. Every later step must consume these exact files — never rebuild.
+      # CANDIDATE_* come from GITHUB_ENV inheritance (not expression-context remaps).
       - name: Build immutable candidate artifacts
-        env:
-          CANDIDATE_COMMIT: ${{ env.CANDIDATE_COMMIT }}
-          CANDIDATE_TAG: ${{ env.CANDIDATE_TAG }}
         run: |
           set -euo pipefail
           test -n "${CANDIDATE_COMMIT}"
@@ -172,13 +179,11 @@ jobs:
           test "$(ls dist/*.whl)" = "$WHEEL"
           test "$(ls dist/*.tar.gz)" = "$SDIST"
 
-      # Public surfaces: draft Release first, PyPI second, undraft only after PyPI OK.
+      # Public surfaces: draft Release first, PyPI second, undraft only after PyPI OK
+      # and after published PyPI bytes match candidate-SHA256SUMS.
       - name: Stage or resume draft GitHub Release with candidate provenance
         env:
           GH_TOKEN: ${{ github.token }}
-          CANDIDATE_TAG: ${{ env.CANDIDATE_TAG }}
-          CANDIDATE_COMMIT: ${{ env.CANDIDATE_COMMIT }}
-          RESUME_DRAFT: ${{ env.RESUME_DRAFT }}
         run: |
           set -euo pipefail
           TAG="${CANDIDATE_TAG}"
@@ -194,6 +199,8 @@ jobs:
               exit 1
             fi
             # Replace draft assets with the freshly validated candidate set.
+            # If a prior run already published PyPI, the undraft step fails closed
+            # unless these bytes match the public package hashes.
             gh release upload "$TAG" \
               --repo "${GITHUB_REPOSITORY}" \
               --clobber \
@@ -206,7 +213,7 @@ jobs:
             printf '%s\n' \
               "Candidate commit: \`${COMMIT}\`" \
               "" \
-              "Pre-publication gate validated wheel + sdist (packaged MCP, sdist install, 0.6.0 upgrade). PyPI publish of these exact artifacts runs next; this Release stays draft until PyPI succeeds." \
+              "Pre-publication gate validated wheel + sdist (packaged MCP, sdist install, 0.6.0 upgrade). PyPI publish of these exact artifacts runs next; this Release stays draft until PyPI succeeds and published hashes match \`candidate-SHA256SUMS\`." \
               "" \
               "See attached \`candidate-SHA256SUMS\` for provenance." \
               > "${NOTES_FILE}"
@@ -229,13 +236,102 @@ jobs:
           packages-dir: dist
           attestations: true
           # Resume-safe: a prior run may have published PyPI before undraft failed.
+          # skip-existing alone is NOT proof of byte identity — the next step verifies.
           skip-existing: true
 
-      - name: Publish GitHub Release (undraft after PyPI success)
+      - name: Verify published PyPI artifacts match candidate-SHA256SUMS
+        run: |
+          set -euo pipefail
+          test -n "${CANDIDATE_VERSION}"
+          test -f "${RUNNER_TEMP}/candidate-SHA256SUMS"
+
+          PYPI_DIR="${RUNNER_TEMP}/pypi-published"
+          mkdir -p "${PYPI_DIR}"
+
+          # Download the exact version's wheel + sdist from the public index and
+          # compare SHA-256 to the candidate set. skip-existing can leave prior
+          # PyPI bytes in place while a resume rebuilds different draft assets;
+          # fail closed on any mismatch before undrafting the GitHub Release.
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import sys
+          import urllib.request
+          from pathlib import Path
+
+          version = os.environ["CANDIDATE_VERSION"]
+          sums_path = Path(os.environ["RUNNER_TEMP"]) / "candidate-SHA256SUMS"
+          out_dir = Path(os.environ["RUNNER_TEMP"]) / "pypi-published"
+
+          expected: dict[str, str] = {}
+          for line in sums_path.read_text(encoding="utf-8").splitlines():
+              parts = line.split()
+              if len(parts) >= 2 and (
+                  parts[1].endswith(".whl") or parts[1].endswith(".tar.gz")
+              ):
+                  # sha256sum lines: "<hash>  <path>"; normalize to basename
+                  expected[Path(parts[1]).name] = parts[0].lower()
+
+          if len(expected) < 2:
+              print(
+                  f"::error::candidate-SHA256SUMS must list wheel and sdist; got {sorted(expected)}",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          url = f"https://pypi.org/pypi/fava-trails/{version}/json"
+          with urllib.request.urlopen(url, timeout=60) as resp:
+              meta = json.load(resp)
+
+          files = meta.get("urls") or []
+          by_name = {f["filename"]: f for f in files if f.get("filename")}
+          missing = sorted(set(expected) - set(by_name))
+          if missing:
+              print(
+                  f"::error::PyPI fava-trails=={version} missing required artifacts: {missing}",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          mismatches = []
+          for name, want in sorted(expected.items()):
+              info = by_name[name]
+              dest = out_dir / name
+              print(f"Downloading {info['url']} -> {dest}")
+              urllib.request.urlretrieve(info["url"], dest)
+              got = hashlib.sha256(dest.read_bytes()).hexdigest().lower()
+              digests = info.get("digests") or {}
+              pypi_sha = (digests.get("sha256") or "").lower()
+              if pypi_sha and pypi_sha != got:
+                  mismatches.append(
+                      f"{name}: downloaded sha256 {got} != PyPI metadata sha256 {pypi_sha}"
+                  )
+              if got != want:
+                  mismatches.append(
+                      f"{name}: published sha256 {got} != candidate sha256 {want}"
+                  )
+              else:
+                  print(f"OK {name} sha256={got}")
+
+          if mismatches:
+              for msg in mismatches:
+                  print(f"::error::{msg}", file=sys.stderr)
+              print(
+                  "::error::Published PyPI artifacts diverge from candidate-SHA256SUMS; "
+                  "refusing to undraft GitHub Release (fail closed).",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          print(
+              f"Verified PyPI fava-trails=={version} wheel+sdist match candidate-SHA256SUMS"
+          )
+          PY
+
+      - name: Publish GitHub Release (undraft after PyPI hash proof)
         env:
           GH_TOKEN: ${{ github.token }}
-          CANDIDATE_TAG: ${{ env.CANDIDATE_TAG }}
-          CANDIDATE_COMMIT: ${{ env.CANDIDATE_COMMIT }}
         run: |
           set -euo pipefail
           TAG="${CANDIDATE_TAG}"
@@ -246,7 +342,7 @@ jobs:
             gh release edit "$TAG" \
               --repo "${GITHUB_REPOSITORY}" \
               --draft=false
-            echo "Published GitHub Release ${TAG} (undrafted after PyPI)"
+            echo "Published GitHub Release ${TAG} (undrafted after PyPI hash proof)"
           else
             echo "Release ${TAG} already public (idempotent undraft)"
           fi
