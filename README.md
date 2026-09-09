@@ -46,6 +46,8 @@ FAVA Trails uses [Jujutsu (JJ)](https://jj-vcs.github.io/jj/) as its storage eng
 fava-trails install-jj
 ```
 
+This reuses any already-installed JJ at or above the supported minimum (**0.28.0**), including newer versions. It never silently downgrades or overwrites a user-managed `jj`. When installation is needed, it resolves the current official GitHub stable release (override with `--version` / `JJ_VERSION` for reproducible environments). See [docs/jj-compatibility.md](docs/jj-compatibility.md).
+
 ### From PyPI (recommended)
 
 ```bash

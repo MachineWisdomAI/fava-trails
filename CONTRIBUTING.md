@@ -14,7 +14,7 @@ Thank you for your interest in contributing! This guide covers everything you ne
 fava-trails install-jj
 ```
 
-This downloads a pre-built binary for your platform to `~/.local/bin/jj`. Supports Linux (x86_64, aarch64) and macOS (x86_64, arm64). Make sure `~/.local/bin` is in your `PATH`. Alternatively, install manually from [jj-vcs.github.io/jj](https://jj-vcs.github.io/jj/).
+This **reuses** any already-installed JJ at or above the supported minimum (**0.28.0**), including newer versions. It never silently downgrades or overwrites a user-managed `jj`. When installation is needed, it resolves the current official GitHub stable release into the managed path `~/.local/bin/jj` (override with `--version` / `JJ_VERSION` for reproducible environments). Supports Linux (x86_64, aarch64) and macOS (x86_64, arm64). Make sure `~/.local/bin` is in your `PATH` if you rely on the managed binary. From a source checkout you can also run `scripts/install-jj.sh` (thin wrapper around the same Python installer). Alternatively, install manually from [jj-vcs.github.io/jj](https://jj-vcs.github.io/jj/). See [docs/jj-compatibility.md](docs/jj-compatibility.md).
 
 ## Setup
 
