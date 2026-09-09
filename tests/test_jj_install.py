@@ -333,6 +333,47 @@ def test_failed_post_replace_verify_restores_prior(tmp_path):
     assert calls["n"] >= 2
 
 
+def test_failed_post_replace_verify_removes_dest_when_no_prior(tmp_path):
+    """Fresh install: post-replace verify failure must not leave invalid dest bytes."""
+    from fava_trails.jj_install import JjInstallError, verify_executable_version
+
+    install_dir = tmp_path / "managed"
+    dest = install_dir / "jj"
+    version = "0.45.1"
+    suffix = "x86_64-unknown-linux-musl"
+    blob = _make_tarball(_fake_jj_script(version))
+    payload = _release_payload(version, suffix, blob, with_digest=False)
+
+    real_verify = verify_executable_version
+    calls = {"n": 0}
+
+    def flaky_verify(path, expected=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return real_verify(path, expected)
+        raise JjInstallError("post-replace verification failed (injected)")
+
+    assert not dest.exists()
+    with patch("fava_trails.jj_install.verify_executable_version", side_effect=flaky_verify):
+        result = select_or_install(
+            explicit_version=version,
+            force_install=True,
+            install_dir=install_dir,
+            which_jj=None,
+            fetch_json=lambda _u: payload,
+            download=lambda u, d: d.write_bytes(blob),
+            os_name="linux",
+            machine="x86_64",
+        )
+
+    assert result.exit_code == 1
+    assert result.action == "error"
+    assert not dest.exists(), "failed fresh install must not leave unverified dest"
+    assert not (install_dir / "jj.fava-prev").exists()
+    assert not (install_dir / "jj.fava-new").exists()
+    assert calls["n"] >= 2
+
+
 def test_reuse_compatible_on_unsupported_download_platform(tmp_path):
     """Reuse must not require a FAVA-downloadable platform asset."""
     jj = _write_executable(tmp_path / "bin" / "jj", "0.45.1")
@@ -551,6 +592,44 @@ def test_path_hint_uses_custom_install_dir(tmp_path):
     assert "~/.local/bin" not in text
     # Export line should reference the custom directory, not the default.
     assert ".local/bin:$PATH" not in text
+
+
+def test_path_hint_quotes_shell_sensitive_custom_dir(tmp_path):
+    """Apostrophes and shell metacharacters must not break suggested shell commands."""
+    import os
+    import shlex
+    import subprocess
+
+    # Path with apostrophe, space, dollar, backtick, and double-quote.
+    custom = tmp_path / "o'brien bin" / 'x$y`z"w'
+    custom.mkdir(parents=True)
+    text = path_hint(custom)
+    resolved = str(custom.resolve())
+    assert resolved in text or "o'brien" in text
+    assert "~/.local/bin" not in text
+
+    lines = text.splitlines()
+    cmd_line = next(line.strip() for line in lines if line.strip().startswith("echo "))
+    echo_part = cmd_line.split(" >> ", 1)[0]
+    tokens = shlex.split(echo_part)
+    assert tokens[0] == "echo"
+    export_stmt = tokens[1]
+    assert export_stmt.startswith("export PATH=")
+
+    # Evaluate the export in bash; the directory must be PATH's first entry literally.
+    probe = subprocess.run(
+        [
+            "bash",
+            "-c",
+            export_stmt + '; python3 -c "import os; print(os.environ[\'PATH\'].split(\':\')[0])"',
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PATH": "/usr/bin:/bin"},
+    )
+    assert probe.returncode == 0, probe.stderr
+    assert probe.stdout.strip() == resolved
 
 
 def test_sha256_mismatch_aborts(tmp_path):

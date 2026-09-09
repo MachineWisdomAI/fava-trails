@@ -49,11 +49,12 @@ Shared behavior:
    path traversal, absolute paths, non-regular entries (symlinks/dirs), and
    ambiguous archives with multiple `jj` candidates are rejected.
 6. **Atomic install** to the managed install dir (default `~/.local/bin/jj`;
-   override with `--install-dir` / `INSTALL_DIR`) with restore of the prior
-   managed binary if verification fails **at any point after replacement begins**
-   (including post-replace `--version` failure when the new file is already at
-   the destination). PATH guidance after install refers to the selected install
-   directory, not always `~/.local/bin`.
+   override with `--install-dir` / `INSTALL_DIR`). If verification fails **at any
+   point after replacement begins** (including post-replace `--version` when the
+   new file is already at the destination): restore the prior managed binary when
+   one existed; otherwise remove the failed destination so a fresh install does
+   not leave an invalid unverified executable. PATH guidance after install refers
+   to the selected install directory (shell-quoted), not always `~/.local/bin`.
 7. Offline / API failure: if a compatible JJ is already present, keep it and
    report the resolution error in the reason; otherwise exit non-zero without
    changing disk state.

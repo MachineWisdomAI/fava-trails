@@ -17,6 +17,7 @@ import json
 import os
 import platform
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -398,9 +399,16 @@ def atomic_install(
     *,
     expected_version: Version,
 ) -> ExistingJj:
-    """Install extracted binary at dest atomically; restore prior binary on failure."""
+    """Install extracted binary at dest atomically; restore prior binary on failure.
+
+    Once ``dest`` has been replaced, any failure (including post-replace
+    verification) either restores the prior managed binary from backup or, on a
+    fresh install with no prior, removes the failed destination so an invalid
+    unverified executable is not left behind.
+    """
     dest.parent.mkdir(parents=True, exist_ok=True)
     backup: Path | None = None
+    replaced = False
     staged = dest.with_name(dest.name + ".fava-new")
     try:
         # Stage next to dest so os.replace is same-filesystem atomic.
@@ -417,6 +425,7 @@ def atomic_install(
             os.replace(dest, backup)
 
         os.replace(staged, dest)
+        replaced = True
         final = verify_executable_version(dest, expected_version)
         if backup is not None and backup.exists():
             backup.unlink()
@@ -427,14 +436,22 @@ def atomic_install(
             managed=True,
         )
     except Exception:
-        # Best-effort restore of the prior managed binary after *any* failure once
-        # replacement began — including post-replace verification when dest already
-        # holds the failed new bytes (must not require `not dest.exists()`).
+        # Best-effort cleanup after *any* failure once replacement began —
+        # including post-replace verification when dest already holds the failed
+        # new bytes (must not require `not dest.exists()`).
         if backup is not None and backup.exists():
             try:
                 os.replace(backup, dest)
             except OSError:
                 # Best-effort restore only; the original install failure is re-raised.
+                pass
+        elif replaced:
+            # Fresh install: no prior binary to restore — remove failed dest.
+            try:
+                if dest.exists() or dest.is_symlink():
+                    dest.unlink()
+            except OSError:
+                # Best-effort removal only; the original install failure is re-raised.
                 pass
         if staged.exists():
             try:
@@ -451,7 +468,8 @@ def path_hint(bin_dir: Path | str | None = None) -> str:
     ``bin_dir`` should be the directory containing the installed binary (or the
     binary path's parent). Defaults to the managed install dir. Custom
     ``--install-dir`` / ``INSTALL_DIR`` results must not always point at
-    ``~/.local/bin``.
+    ``~/.local/bin``. Suggested shell commands use ``shlex.quote`` so paths with
+    apostrophes or other metacharacters remain literal.
     """
     directory = Path(bin_dir) if bin_dir is not None else DEFAULT_INSTALL_DIR
     directory = directory.expanduser()
@@ -459,6 +477,8 @@ def path_hint(bin_dir: Path | str | None = None) -> str:
     shell_rc = ".zshrc" if "zsh" in shell or sys.platform == "darwin" else ".bashrc"
 
     # Assign display/path_export once per control-flow path (no dead pre-init).
+    # Export always quotes the directory with shlex so shell-sensitive characters
+    # (apostrophes, spaces, $, etc.) stay literal; echo of the export is also quoted.
     try:
         home = Path.home().resolve()
         resolved = directory.resolve()
@@ -468,21 +488,19 @@ def path_hint(bin_dir: Path | str | None = None) -> str:
         else:
             try:
                 rel = resolved.relative_to(home)
+                display = f"~/{rel.as_posix()}"
             except ValueError:
                 display = str(resolved)
-                path_export = f'export PATH="{resolved}:$PATH"'
-            else:
-                rel_s = rel.as_posix()
-                display = f"~/{rel_s}"
-                path_export = f'export PATH="$HOME/{rel_s}:$PATH"'
+            path_export = f"export PATH={shlex.quote(str(resolved))}:\"$PATH\""
     except OSError:
         display = str(directory)
-        path_export = f'export PATH="{directory}:$PATH"'
+        path_export = f"export PATH={shlex.quote(str(directory))}:\"$PATH\""
 
+    echo_cmd = f"echo {shlex.quote(path_export)} >> ~/{shell_rc} && source ~/{shell_rc}"
     return (
         f"Warning: {display} is not in your PATH.\n"
         "Add it with:\n"
-        f"  echo '{path_export}' >> ~/{shell_rc} && source ~/{shell_rc}"
+        f"  {echo_cmd}"
     )
 
 
