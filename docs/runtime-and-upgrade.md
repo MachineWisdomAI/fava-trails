@@ -52,15 +52,22 @@ client UI that shows a single "server version" may be reading either product
 metadata or its own SDK/client field. Do not assume every version string shares
 one meaning. Use `fava-trails version` for the loaded product and SDK pair.
 
-Direct stdio probes (raw JSON-RPC over the `fava-trails-server` entrypoint)
-exercise the process binary. A native client registration also loads that same
-entrypoint from the client's config; installing a wheel does not update a
-running client until the registration is restarted. Coverage for both paths
-lives in `tests/test_mcp_protocol.py` and `tests/test_packaged_mcp.py` (#83).
+### Direct stdio probe vs native client registration
+
+These are two different evidence paths and must not be conflated:
+
+| Path | What it proves | Automated coverage |
+| --- | --- | --- |
+| **Direct stdio probe** | The installed `fava-trails-server` binary speaks MCP over stdio when launched by absolute path | `tests/test_mcp_protocol.py::test_installed_stdio_initialize_list_and_call` |
+| **Native client registration** | A Claude-style `mcpServers` config is **loaded**, the registration's `command`/`env` are resolved, and that entrypoint completes `initialize` + a tool call | `tests/test_mcp_protocol.py::test_native_client_registration_loads_and_initializes` |
+
+Installing a wheel does not update a running client until the registration is
+restarted. `tests/test_packaged_mcp.py` re-runs the MCP suite against the built
+wheel so both paths are checked on the installed artifact (#83 / #99).
 
 ## Identity configuration
 
-Governed read isolation is process-scoped. See
+Governed read isolation is **process-scoped**. See
 [governed-recall.md](governed-recall.md) for the full model. Operators must:
 
 1. Set `FAVA_TRAILS_AGENT_ID` on each ordinary authoring MCP process.
@@ -70,9 +77,15 @@ Governed read isolation is process-scoped. See
 4. Reject caller `agent_id` values that do not match the configured identity.
 
 Default `recall` / `get_thought` remain approved-current only. Authoring is
-explicit and owner-scoped; history is operator-only. Acceptance coverage for
-these behaviors is `tests/test_governance.py` (#72), also executed against the
-built wheel in `tests/test_packaged_mcp.py`.
+explicit and owner-scoped; history is operator-only.
+
+Coverage:
+
+- Source-tree lifecycle and spoof rejection: `tests/test_governance.py` (#72)
+- **Two separately configured ordinary server processes** on one data repo
+  (own-draft visibility + cross-process spoof rejection), including under the
+  installed wheel: `tests/test_mcp_protocol.py::test_two_ordinary_server_processes_isolate_authoring`
+- Packaged re-run of governance + MCP suites: `tests/test_packaged_mcp.py`
 
 ## Upgrade behavior and local runtime selectors
 
@@ -93,18 +106,35 @@ Checklist after an upgrade:
 
 ## Release candidate verification (pre-publish)
 
-Publication is tag-driven (`release.yml` on a GitHub Release). Before
-authorization:
+Publication is tag-driven (`.github/workflows/release.yml` on a GitHub Release).
+The release job **builds once**, records SHA-256 hashes for the wheel and sdist,
+runs packaged gates against **those exact files**, attaches the hash manifest to
+the GitHub Release, and only then publishes **the same** `dist/` artifacts to
+PyPI (with attestations). It does not rebuild between test and publish.
+
+Local pre-authorization check (binds what you test to files you could tag):
 
 ```bash
 # From an immutable reviewed commit on main / the release branch:
 uv build
-uv run pytest tests/test_packaged_mcp.py tests/test_governance.py tests/test_mcp_protocol.py tests/test_runtime_info.py -v
+sha256sum dist/*.whl dist/*.tar.gz | tee candidate-SHA256SUMS
+uv run pytest \
+  tests/test_packaged_mcp.py \
+  tests/test_governance.py \
+  tests/test_mcp_protocol.py \
+  tests/test_runtime_info.py -v
+# After the suite: confirm hashes still match (no rebuild sneaked in)
+sha256sum -c candidate-SHA256SUMS
 ```
 
 `tests/test_packaged_mcp.py` builds wheel + sdist, verifies a fresh install,
 upgrades an isolated env from published `fava-trails==0.6.0`, and re-runs the
-installed-entrypoint MCP and governed-recall suites against the wheel.
+installed-entrypoint MCP (direct stdio **and** native registration), two-process
+identity isolation, and governed-recall suites against the wheel.
+
+Post-publication proof: download the published wheel/sdist (or use the Release
+asset `candidate-SHA256SUMS`) and confirm SHA-256 matches the tested candidate
+set before trusting install instructions.
 
 Until a release is published and verified, label the work **merged but
 unreleased**. After publication, confirm PyPI and GitHub release metadata match

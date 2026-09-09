@@ -100,18 +100,14 @@ def test_candidate_artifacts_support_fresh_install_and_upgrade_from_0_6_0(tmp_pa
     assert uv
 
     def _probe(python: Path) -> str:
-        return subprocess.check_output(
-            [
-                str(python),
-                "-c",
-                "import fava_trails, importlib.metadata as m; "
-                "from fava_trails.runtime_info import runtime_report; "
-                "r=runtime_report(); "
-                "assert r['package_version']==r['module_version']==m.version('fava-trails'); "
-                "print(r['package_version'], r['mcp_sdk_version'], r['source_kind'])",
-            ],
-            text=True,
-        ).strip()
+        probe = (
+            "import importlib.metadata as m\n"
+            "from fava_trails.runtime_info import runtime_report\n"
+            "r = runtime_report()\n"
+            "assert r['package_version'] == r['module_version'] == m.version('fava-trails')\n"
+            "print(r['package_version'], r['mcp_sdk_version'], r['source_kind'])\n"
+        )
+        return subprocess.check_output([str(python), "-c", probe], text=True).strip()
 
     fresh = tmp_path / "fresh"
     fresh.mkdir()

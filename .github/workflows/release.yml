@@ -5,9 +5,9 @@ on:
     types: [published]
 
 permissions:
-  contents: read
-  id-token: write      # Required for OIDC Trusted Publishing
-  attestations: write  # Required for SLSA provenance attestations
+  contents: write       # Attach candidate SHA256SUMS to the GitHub Release
+  id-token: write       # Required for OIDC Trusted Publishing
+  attestations: write   # Required for SLSA provenance attestations
 
 jobs:
   publish:
@@ -30,10 +30,83 @@ jobs:
             exit 1
           fi
 
-      - name: Build package
-        run: uv build
+      # Build once. Every later step must consume these exact files — never rebuild.
+      - name: Build immutable candidate artifacts
+        run: |
+          set -euo pipefail
+          uv build
+          ls -la dist
+          # Manifest of the exact bytes that will be tested and published.
+          {
+            sha256sum dist/*.whl dist/*.tar.gz
+            echo "CANDIDATE_COMMIT=${GITHUB_SHA}"
+            echo "CANDIDATE_TAG=${GITHUB_REF_NAME}"
+          } | tee "${RUNNER_TEMP}/candidate-SHA256SUMS"
 
-      - name: Publish to PyPI
+      - name: Install jj (packaged gate dependency)
+        run: |
+          set -euo pipefail
+          uv sync --frozen
+          if ! command -v jj >/dev/null 2>&1; then
+            uv run fava-trails install-jj
+          fi
+          command -v jj
+          jj --version
+
+      - name: Verify the exact candidate wheel (packaged gates)
+        run: |
+          set -euo pipefail
+          WHEEL=$(ls dist/*.whl)
+          SDIST=$(ls dist/*.tar.gz)
+          test -f "$WHEEL"
+          test -f "$SDIST"
+
+          verify_candidate_hashes() {
+            awk '/\.(whl|tar\.gz)$/ {print $1"  "$2}' "${RUNNER_TEMP}/candidate-SHA256SUMS" | sha256sum -c -
+          }
+          verify_candidate_hashes
+
+          uv venv "${RUNNER_TEMP}/candidate-venv"
+          # Install the exact built wheel — not a rebuild and not PyPI.
+          uv pip install --python "${RUNNER_TEMP}/candidate-venv/bin/python" "$WHEEL"
+          uv pip install --python "${RUNNER_TEMP}/candidate-venv/bin/python" \
+            "pytest>=9,<10" "pytest-asyncio>=1.3,<2" "jsonschema>=4.26,<5"
+
+          export FAVA_EXPECT_WHEEL=1
+          export PATH="${RUNNER_TEMP}/candidate-venv/bin:${PATH}"
+          "${RUNNER_TEMP}/candidate-venv/bin/fava-trails" version
+          "${RUNNER_TEMP}/candidate-venv/bin/python" - <<'PY'
+          import pathlib
+          import fava_trails
+          path = pathlib.Path(fava_trails.__file__)
+          assert "site-packages" in path.parts, path
+          print("loaded", path)
+          PY
+
+          # Direct stdio + native registration + two-process identity (#99/#83)
+          # plus governed recall isolation (#72) against the installed wheel.
+          "${RUNNER_TEMP}/candidate-venv/bin/pytest" \
+            tests/test_mcp_protocol.py \
+            tests/test_runtime_info.py \
+            tests/test_governance.py \
+            -v --tb=short
+
+          # Confirm we still publish the same bytes that were just tested.
+          verify_candidate_hashes
+          test "$(ls dist/*.whl)" = "$WHEEL"
+          test "$(ls dist/*.tar.gz)" = "$SDIST"
+
+      - name: Attach candidate provenance to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" \
+            "${RUNNER_TEMP}/candidate-SHA256SUMS" \
+            --clobber \
+            --repo "${GITHUB_REPOSITORY}"
+
+      - name: Publish the same candidate artifacts to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
+          packages-dir: dist
           attestations: true

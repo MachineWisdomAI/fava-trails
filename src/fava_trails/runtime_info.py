@@ -6,15 +6,15 @@ import importlib.metadata
 from pathlib import Path
 from typing import Any
 
+import fava_trails
+
 
 def product_version() -> str:
     """Return the installed FAVA Trails product version."""
     try:
         return importlib.metadata.version("fava-trails")
     except importlib.metadata.PackageNotFoundError:
-        from fava_trails import __version__
-
-        return __version__
+        return fava_trails.__version__
 
 
 def mcp_sdk_version() -> str:
@@ -31,8 +31,6 @@ def mcp_sdk_version() -> str:
 
 
 def _module_path() -> Path:
-    import fava_trails
-
     return Path(fava_trails.__file__).resolve()
 
 
@@ -48,14 +46,12 @@ def _source_kind(module_path: Path) -> str:
 
 def runtime_report() -> dict[str, Any]:
     """Describe the actually loaded runtime without credentials or secrets."""
-    from fava_trails import __version__ as module_version
-
     module_path = _module_path()
     package_version = product_version()
     return {
         "product_name": "fava-trails",
         "package_version": package_version,
-        "module_version": module_version,
+        "module_version": fava_trails.__version__,
         "module_path": str(module_path),
         "source_kind": _source_kind(module_path),
         "mcp_sdk_version": mcp_sdk_version(),
