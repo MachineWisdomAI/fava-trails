@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import operator
 import stat
 import tarfile
 from pathlib import Path
@@ -62,14 +63,26 @@ def test_parse_and_compare_versions():
     assert is_compatible(Version.parse("0.28.0"))
     assert is_compatible(Version.parse("0.45.1"))
     assert not is_compatible(Version.parse("0.27.9"))
-    lo = Version.parse(JJ_MIN_VERSION)
-    hi = Version.parse("0.45.1")
-    assert hi >= lo
-    assert lo < hi
-    assert hi > lo
-    assert lo <= hi
-    assert hi == Version(0, 45, 1)
-    assert not (hi < lo)
+    assert Version.parse("0.45.1") == Version(0, 45, 1)
+
+
+@pytest.mark.parametrize(
+    "left, right, op, expected",
+    [
+        # Independent cases so each operator is exercised without chained tautologies.
+        (Version(0, 28, 0), Version(0, 45, 1), operator.lt, True),
+        (Version(0, 45, 1), Version(0, 28, 0), operator.gt, True),
+        (Version(0, 28, 0), Version(0, 45, 1), operator.le, True),
+        (Version(0, 45, 1), Version(0, 28, 0), operator.ge, True),
+        (Version(0, 45, 1), Version(0, 45, 1), operator.le, True),
+        (Version(0, 45, 1), Version(0, 45, 1), operator.ge, True),
+        (Version(0, 45, 1), Version(0, 28, 0), operator.lt, False),
+        (Version(0, 28, 0), Version(0, 45, 1), operator.gt, False),
+        (Version(0, 28, 0), Version.parse(JJ_MIN_VERSION), operator.eq, True),
+    ],
+)
+def test_version_ordering_operators(left, right, op, expected):
+    assert op(left, right) is expected
 
 
 def test_detect_platform_linux_and_windows():
