@@ -2,8 +2,11 @@ name: Release
 
 # Pre-publication gate (issue #99): validate immutable tag artifacts *before*
 # any public GitHub Release or PyPI upload exists. Owner-gated via workflow_dispatch
-# on an already-pushed tag — never triggers from `release: published` (which would
-# leave a public Release if candidate validation failed).
+# on an already-pushed tag — never triggers from `release: published`.
+#
+# Recoverability: stage a *draft* GitHub Release after candidate validation, publish
+# the same dist/ to PyPI, then undraft the Release only after PyPI succeeds. Reruns
+# may resume a matching draft; a published Release refuses republish.
 on:
   workflow_dispatch:
     inputs:
@@ -13,7 +16,7 @@ on:
         type: string
 
 permissions:
-  contents: write       # Create the GitHub Release + attach candidate SHA256SUMS
+  contents: write       # Draft/publish GitHub Release + attach candidate SHA256SUMS
   id-token: write       # Required for OIDC Trusted Publishing
   attestations: write   # Required for SLSA provenance attestations
 
@@ -22,10 +25,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout the immutable tag
+      # Resolve refs/tags/* only after shell-side validation — do not let checkout
+      # pick an ambiguous same-named branch/tag via `ref: ${{ inputs.tag }}`.
+      - name: Checkout repository (full history for tag peel)
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -37,36 +43,89 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Verify version matches tag
+      - name: Validate tag ref, peel commit, and check out candidate
+        env:
+          # Pass dispatch input only via env — never interpolate into shell source.
+          TAG_INPUT: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG_INPUT="${{ inputs.tag }}"
-          TAG="${TAG_INPUT#v}"
-          PKG=$(grep '^version' pyproject.toml | cut -d'"' -f2)
-          if [ "$TAG" != "$PKG" ]; then
-            echo "::error::Tag v$TAG does not match pyproject.toml version $PKG"
+
+          # 1) Strict tag grammar (vMAJOR.MINOR.PATCH only).
+          if ! [[ "$TAG_INPUT" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag must match ^v[0-9]+.[0-9]+.[0-9]+$ (got: $TAG_INPUT)"
             exit 1
           fi
-          # Refuse if a public GitHub Release already exists for this tag.
+
+          # 2) Ensure the exact tag ref exists on origin (not a branch of the same name).
+          git fetch --no-tags origin "refs/tags/${TAG_INPUT}:refs/tags/${TAG_INPUT}"
+          if ! git rev-parse -q --verify "refs/tags/${TAG_INPUT}" >/dev/null; then
+            echo "::error::refs/tags/${TAG_INPUT} does not exist after fetch"
+            exit 1
+          fi
+
+          # 3) Peel annotated/lightweight tag to commit and detach HEAD there.
+          TAG_COMMIT="$(git rev-parse "refs/tags/${TAG_INPUT}^{commit}")"
+          git checkout --detach "refs/tags/${TAG_INPUT}"
+          HEAD_COMMIT="$(git rev-parse HEAD)"
+          if [ "$HEAD_COMMIT" != "$TAG_COMMIT" ]; then
+            echo "::error::HEAD ${HEAD_COMMIT} does not equal peeled tag commit ${TAG_COMMIT}"
+            exit 1
+          fi
+
+          # 4) Package version must match the tag (strip leading v).
+          PKG="$(grep '^version' pyproject.toml | head -1 | cut -d'"' -f2)"
+          EXPECTED="${TAG_INPUT#v}"
+          if [ "$EXPECTED" != "$PKG" ]; then
+            echo "::error::Tag ${TAG_INPUT} does not match pyproject.toml version ${PKG}"
+            exit 1
+          fi
+
+          # 5) Release recoverability: resume matching draft; refuse published Release.
+          RESUME_DRAFT=false
           if gh release view "$TAG_INPUT" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            echo "::error::GitHub Release $TAG_INPUT already exists. Refusing split-state republish."
-            exit 1
+            IS_DRAFT="$(gh release view "$TAG_INPUT" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft)"
+            if [ "$IS_DRAFT" != "true" ]; then
+              echo "::error::GitHub Release ${TAG_INPUT} is already published. Refusing split-state republish."
+              exit 1
+            fi
+            echo "Resuming existing draft GitHub Release for ${TAG_INPUT}"
+            RESUME_DRAFT=true
           fi
-        env:
-          GH_TOKEN: ${{ github.token }}
+
+          # Provenance comes from the verified checkout HEAD — not workflow GITHUB_SHA
+          # (which names the ref that *started* workflow_dispatch and can differ).
+          {
+            echo "CANDIDATE_COMMIT=${HEAD_COMMIT}"
+            echo "CANDIDATE_TAG=${TAG_INPUT}"
+            echo "RESUME_DRAFT=${RESUME_DRAFT}"
+          } >> "${GITHUB_ENV}"
+
+          echo "Candidate tag=${TAG_INPUT} commit=${HEAD_COMMIT} resume_draft=${RESUME_DRAFT}"
 
       # Build once. Every later step must consume these exact files — never rebuild.
       - name: Build immutable candidate artifacts
+        env:
+          CANDIDATE_COMMIT: ${{ env.CANDIDATE_COMMIT }}
+          CANDIDATE_TAG: ${{ env.CANDIDATE_TAG }}
         run: |
           set -euo pipefail
+          test -n "${CANDIDATE_COMMIT}"
+          test -n "${CANDIDATE_TAG}"
+          test "$(git rev-parse HEAD)" = "${CANDIDATE_COMMIT}"
+
           uv build
           ls -la dist
           {
             sha256sum dist/*.whl dist/*.tar.gz
-            echo "CANDIDATE_COMMIT=${GITHUB_SHA}"
-            echo "CANDIDATE_TAG=${{ inputs.tag }}"
+            echo "CANDIDATE_COMMIT=${CANDIDATE_COMMIT}"
+            echo "CANDIDATE_TAG=${CANDIDATE_TAG}"
             echo "CANDIDATE_REF=$(git rev-parse HEAD)"
           } | tee "${RUNNER_TEMP}/candidate-SHA256SUMS"
+
+          # Sanity: provenance commit in the sums file must match verified HEAD.
+          grep -qx "CANDIDATE_COMMIT=${CANDIDATE_COMMIT}" "${RUNNER_TEMP}/candidate-SHA256SUMS"
+          grep -qx "CANDIDATE_REF=${CANDIDATE_COMMIT}" "${RUNNER_TEMP}/candidate-SHA256SUMS"
 
       - name: Install jj (packaged gate dependency)
         run: |
@@ -113,24 +172,86 @@ jobs:
           test "$(ls dist/*.whl)" = "$WHEEL"
           test "$(ls dist/*.tar.gz)" = "$SDIST"
 
-      # Public surfaces are created only after validation succeeds.
-      - name: Create GitHub Release with candidate provenance
+      # Public surfaces: draft Release first, PyPI second, undraft only after PyPI OK.
+      - name: Stage or resume draft GitHub Release with candidate provenance
         env:
           GH_TOKEN: ${{ github.token }}
+          CANDIDATE_TAG: ${{ env.CANDIDATE_TAG }}
+          CANDIDATE_COMMIT: ${{ env.CANDIDATE_COMMIT }}
+          RESUME_DRAFT: ${{ env.RESUME_DRAFT }}
         run: |
           set -euo pipefail
-          TAG="${{ inputs.tag }}"
-          gh release create "$TAG" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --title "$TAG" \
-            --generate-notes \
-            --verify-tag \
-            dist/*.whl \
-            dist/*.tar.gz \
-            "${RUNNER_TEMP}/candidate-SHA256SUMS"
+          TAG="${CANDIDATE_TAG}"
+          COMMIT="${CANDIDATE_COMMIT}"
+          test -n "$TAG"
+          test -n "$COMMIT"
+          test "$(git rev-parse HEAD)" = "$COMMIT"
+
+          if [ "${RESUME_DRAFT}" = "true" ]; then
+            IS_DRAFT="$(gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft)"
+            if [ "$IS_DRAFT" != "true" ]; then
+              echo "::error::Release ${TAG} is no longer a draft; refusing to mutate a public Release"
+              exit 1
+            fi
+            # Replace draft assets with the freshly validated candidate set.
+            gh release upload "$TAG" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --clobber \
+              dist/*.whl \
+              dist/*.tar.gz \
+              "${RUNNER_TEMP}/candidate-SHA256SUMS"
+            echo "Updated draft release assets for ${TAG} at ${COMMIT}"
+          else
+            NOTES_FILE="${RUNNER_TEMP}/release-notes.md"
+            printf '%s\n' \
+              "Candidate commit: \`${COMMIT}\`" \
+              "" \
+              "Pre-publication gate validated wheel + sdist (packaged MCP, sdist install, 0.6.0 upgrade). PyPI publish of these exact artifacts runs next; this Release stays draft until PyPI succeeds." \
+              "" \
+              "See attached \`candidate-SHA256SUMS\` for provenance." \
+              > "${NOTES_FILE}"
+            gh release create "$TAG" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --draft \
+              --title "$TAG" \
+              --notes-file "${NOTES_FILE}" \
+              --verify-tag \
+              --target "$COMMIT" \
+              dist/*.whl \
+              dist/*.tar.gz \
+              "${RUNNER_TEMP}/candidate-SHA256SUMS"
+            echo "Created draft release ${TAG} targeting ${COMMIT}"
+          fi
 
       - name: Publish the same candidate artifacts to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist
           attestations: true
+          # Resume-safe: a prior run may have published PyPI before undraft failed.
+          skip-existing: true
+
+      - name: Publish GitHub Release (undraft after PyPI success)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_TAG: ${{ env.CANDIDATE_TAG }}
+          CANDIDATE_COMMIT: ${{ env.CANDIDATE_COMMIT }}
+        run: |
+          set -euo pipefail
+          TAG="${CANDIDATE_TAG}"
+          test -n "$TAG"
+
+          IS_DRAFT="$(gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft)"
+          if [ "$IS_DRAFT" = "true" ]; then
+            gh release edit "$TAG" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --draft=false
+            echo "Published GitHub Release ${TAG} (undrafted after PyPI)"
+          else
+            echo "Release ${TAG} already public (idempotent undraft)"
+          fi
+
+          # Final state: public Release + candidate provenance asset present.
+          gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" \
+            --json isDraft,tagName,targetCommitish,assets \
+            --jq '{isDraft,tagName,targetCommitish,assets:[.assets[].name]}'

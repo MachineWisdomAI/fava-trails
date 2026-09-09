@@ -116,10 +116,11 @@ Once dog-fooding confirms the changes work:
    `git tag vX.Y.Z <sha> && git push origin vX.Y.Z`
    Do **not** create the GitHub Release yet — validation must run first.
 4. Owner runs the **Release** workflow (`workflow_dispatch`) with input
-   `tag=vX.Y.Z`. CI checks out the tag, builds once, runs packaged gates on the
-   exact wheel+sdist (including sdist install and 0.6.0 upgrade), then — only on
-   success — creates the GitHub Release (with `candidate-SHA256SUMS`) and
-   publishes those same artifacts to PyPI.
+   `tag=vX.Y.Z`. CI proves `refs/tags/vX.Y.Z` peels to the checked-out `HEAD`,
+   builds once, runs packaged gates on the exact wheel+sdist (including sdist
+   install and 0.6.0 upgrade), stages a **draft** GitHub Release (with
+   `candidate-SHA256SUMS`), publishes those same artifacts to PyPI, then undrafts
+   the Release only after PyPI succeeds (reruns may resume a matching draft).
 5. Update the vendor copy:
    ```bash
    cd ~/git/vendor/fava-trails

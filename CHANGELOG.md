@@ -20,9 +20,11 @@ All notable changes to FAVA Trails are documented here.
   processes for authoring isolation + spoof rejection on the installed wheel;
   packaged verifier binds to `FAVA_CANDIDATE_WHEEL`/`FAVA_CANDIDATE_SDIST` for
   fresh wheel install, sdist install, and 0.6.0→candidate upgrade; `release.yml`
-  is a pre-publication `workflow_dispatch` on an existing tag that validates
-  those exact artifacts **before** creating the GitHub Release or publishing to
-  PyPI (still owner-gated; no automatic publication from this PR).
+  is a pre-publication `workflow_dispatch` on an existing tag that proves
+  `refs/tags/*` peel equals verified `HEAD` (env-passed tag input; provenance from
+  that commit, not dispatch `GITHUB_SHA`), validates exact artifacts, stages a
+  **draft** GitHub Release, publishes the same `dist/` to PyPI, then undrafts only
+  after PyPI succeeds (still owner-gated; no automatic publication from this PR).
 
 ### Changed
 - Support MCP SDK 2.2 with explicit low-level handlers, preserving tool schemas, annotations, input/output validation, structured results, and Markdown usage guidance over stdio and Streamable HTTP. Adds installed-wheel protocol tests for legacy initialization and current SDK clients. Resolves #83.

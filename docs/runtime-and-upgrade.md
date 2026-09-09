@@ -110,17 +110,25 @@ Checklist after an upgrade:
 Publication is **owner-gated** via `.github/workflows/release.yml`
 (`workflow_dispatch` on an **already-pushed** immutable tag). The job:
 
-1. Checks out the tag and refuses to proceed if a public GitHub Release for that
-   tag already exists (avoids split state).
-2. **Builds once**, records SHA-256 hashes for the wheel and sdist.
-3. Sets `FAVA_CANDIDATE_WHEEL` / `FAVA_CANDIDATE_SDIST` to those exact files and
+1. Accepts `tag` only via job `env` (never raw shell interpolation). Validates
+   strict `vMAJOR.MINOR.PATCH` grammar, fetches `refs/tags/<tag>` only (not a
+   same-named branch), detaches `HEAD` at the peeled tag commit, and asserts
+   `git rev-parse HEAD` equals that commit before any build. Package version must
+   match the tag. Provenance uses that verified `HEAD` SHA — not workflow
+   `GITHUB_SHA` from the dispatch ref.
+2. Refuses a **published** GitHub Release for the tag; a **draft** Release may be
+   resumed safely on rerun.
+3. **Builds once**, records SHA-256 hashes plus `CANDIDATE_COMMIT` /
+   `CANDIDATE_TAG` for the wheel and sdist.
+4. Sets `FAVA_CANDIDATE_WHEEL` / `FAVA_CANDIDATE_SDIST` to those exact files and
    runs `tests/test_packaged_mcp.py` — fresh wheel install, fresh sdist install,
    real `0.6.0` → candidate upgrade, installed-entrypoint MCP (direct stdio **and**
    native Inspector registration), two-process identity isolation, and governed
    recall (#72).
-4. **Only after validation succeeds**, creates the GitHub Release (with wheel,
-   sdist, and `candidate-SHA256SUMS`) and publishes **the same** `dist/` artifacts
-   to PyPI (with attestations).
+5. **Only after validation succeeds**, stages a **draft** GitHub Release (wheel,
+   sdist, `candidate-SHA256SUMS`), publishes **the same** `dist/` artifacts to
+   PyPI (with attestations; `skip-existing` for resume), then undrafts the
+   Release so it becomes public only after PyPI succeeds.
 
 Validation therefore runs **before** any public GitHub Release or PyPI upload
 exists. The workflow no longer triggers on `release: published`.
