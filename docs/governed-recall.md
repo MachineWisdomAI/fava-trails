@@ -50,6 +50,11 @@ turning on authoring; this change does not migrate files or assume old `agent_id
 claims were authenticated. Existing draft ownership needs operator review before
 reusing an old identity for private authoring.
 
+After package upgrades, confirm the process your MCP client launches is the
+intended install with `fava-trails version` (module path and product vs MCP SDK
+versions). Local `uv run --directory` / vendor selectors can keep an older
+checkout active; see [runtime-and-upgrade.md](runtime-and-upgrade.md).
+
 ## Replacement lifecycle
 
 `supersede` and `change_scope` create a draft successor with `supersedes_id` and

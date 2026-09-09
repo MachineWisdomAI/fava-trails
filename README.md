@@ -54,6 +54,14 @@ This reuses any already-installed JJ at or above the supported minimum (**0.28.0
 pip install fava-trails
 ```
 
+**Publication note:** PyPI and GitHub Releases still list **0.6.0** as latest.
+Main identifies as **0.6.1** with governed-recall and MCP registration fixes
+**merged but unreleased**. Confirm what you actually loaded with
+`fava-trails version` (see [docs/runtime-and-upgrade.md](docs/runtime-and-upgrade.md)).
+Local `uv run --directory …` or vendor checkout selectors can keep an older tree
+active after a package upgrade — restart the MCP client registration after
+changing the install.
+
 ### From source (for development)
 
 ```bash
@@ -89,6 +97,16 @@ configuration and the private Streamable HTTP endpoint remain supported, includi
 legacy `initialize` clients. Tool input/output schemas, annotations, and structured
 responses are preserved. Restart a configured server after updating its package;
 installing the package alone does not update a running process.
+
+`initialize` advertises FAVA's **product** version in `serverInfo.version`. That
+value is not the MCP SDK distribution version. Use `fava-trails version` to print
+both, plus the loaded module path, without credentials.
+
+Set `FAVA_TRAILS_AGENT_ID` on each ordinary authoring process. A shared endpoint
+is one identity boundary; `FAVA_TRAILS_OPERATOR=1` belongs only on a separate
+operator endpoint. Details:
+[docs/governed-recall.md](docs/governed-recall.md) and
+[docs/runtime-and-upgrade.md](docs/runtime-and-upgrade.md).
 
 Add to your MCP client config:
 - **Claude Code CLI**: `~/.claude.json` (top-level `mcpServers` key)

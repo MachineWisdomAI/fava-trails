@@ -30,6 +30,7 @@ from .jj_install import (
     select_or_install,
 )
 from .models import HookEntry, ThoughtRecord
+from .runtime_info import format_runtime_report, product_version
 
 # Historical alias: installers resolve GitHub latest unless --version / JJ_VERSION is set.
 JJ_DEFAULT_VERSION = JJ_MIN_VERSION
@@ -519,9 +520,18 @@ def cmd_scope_list(args: argparse.Namespace) -> int:
 # ─── Doctor ───────────────────────────────────────────────────────────────────
 
 
+def cmd_version(_args: argparse.Namespace) -> int:
+    """Report the loaded FAVA product runtime and MCP SDK version without secrets."""
+    print(format_runtime_report(), end="")
+    return 0
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     """Health check: JJ, data repo, OpenRouter key, scope. Exits 0 if all pass, 1 if any fail."""
     any_failed = False
+
+    # Always show which binary/module is loaded so local checkout selectors are visible.
+    print(format_runtime_report(), end="")
 
     # Check 1: JJ installed?
     jj_bin = shutil.which("jj")
@@ -1575,12 +1585,7 @@ def _add_rich_view_trails_dir_arg(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    try:
-        from importlib.metadata import version
-
-        _version = version("fava-trails")
-    except Exception:
-        _version = "unknown"
+    _version = product_version()
 
     parser = argparse.ArgumentParser(
         prog="fava-trails",
@@ -1589,6 +1594,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"%(prog)s {_version}")
 
     subparsers = parser.add_subparsers(dest="command", metavar="<command>")
+
+    # version (loaded runtime provenance; distinct from --version short form)
+    p_version = subparsers.add_parser(
+        "version",
+        help="Report the loaded FAVA product runtime, module path, and MCP SDK version",
+    )
+    p_version.set_defaults(func=cmd_version)
 
     # init
     p_init = subparsers.add_parser("init", help="Initialize a project directory for FAVA Trails")

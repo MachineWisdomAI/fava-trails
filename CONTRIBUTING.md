@@ -84,14 +84,49 @@ After merging to `main`, point your MCP server at the dev copy to test with real
 
 Restart your MCP client (e.g., Claude Code) and use it for real work. Test the specific changes you made — save thoughts, recall, sync, etc. Use it for at least a working session before releasing.
 
+**Important:** a client config that uses `uv run --directory <checkout>` or a
+vendor path keeps that tree active even after `pip install -U fava-trails`.
+Run `fava-trails version` (or `fava-trails doctor`) in the same environment the
+client launches to see package/module version, module path, and MCP SDK version
+without printing credentials. See
+[docs/runtime-and-upgrade.md](docs/runtime-and-upgrade.md).
+
+Before tagging, build candidate artifacts from the immutable reviewed commit and
+run the packaging gates against **those exact files**:
+
+```bash
+uv build
+export FAVA_CANDIDATE_WHEEL=$(ls dist/*.whl)
+export FAVA_CANDIDATE_SDIST=$(ls dist/*.tar.gz)
+sha256sum dist/*.whl dist/*.tar.gz | tee candidate-SHA256SUMS
+uv run pytest tests/test_packaged_mcp.py tests/test_governance.py tests/test_mcp_protocol.py tests/test_runtime_info.py -v
+sha256sum -c candidate-SHA256SUMS
+```
+
+Until PyPI/GitHub release metadata match that candidate, label the work **merged
+but unreleased**.
+
 ### 3. Release to PyPI
 
 Once dog-fooding confirms the changes work:
 
 1. Bump version in `pyproject.toml`
 2. Push the version bump via PR, merge to `main`
-3. Create a GitHub Release: `gh release create vX.Y.Z --generate-notes`
-4. CI builds, verifies the tag matches `pyproject.toml`, and publishes to PyPI
+3. Create and push an immutable tag on the reviewed commit:
+   `git tag vX.Y.Z <sha> && git push origin vX.Y.Z`
+   Do **not** create the GitHub Release yet — validation must run first.
+4. Owner runs the **Release** workflow (`workflow_dispatch`, GitHub Environment
+   `fava-release`) with input `tag=vX.Y.Z`. CI resolves draft-resume state first,
+   then proves `refs/tags/vX.Y.Z` peels to checked-out `HEAD` and either equals
+   current protected `origin/main` (first publish) or is an ancestor of it
+   (draft resume after main may have advanced), builds once, runs packaged gates
+   on the exact wheel+sdist (including sdist install and 0.6.0 upgrade), stages
+   or normalizes a **draft** GitHub Release (with `candidate-SHA256SUMS` and
+   verified title/notes/target), publishes those same artifacts to PyPI,
+   verifies published PyPI SHA-256 against `candidate-SHA256SUMS` (fail closed),
+   then undrafts the Release only after that proof (reruns may resume a matching
+   draft after metadata normalize; provenance env is `$GITHUB_ENV`-inherited, not
+   expression-remapped).
 5. Update the vendor copy:
    ```bash
    cd ~/git/vendor/fava-trails
