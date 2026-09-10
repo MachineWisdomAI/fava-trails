@@ -11,6 +11,7 @@ from any_llm.exceptions import AnyLLMError, ProviderError
 
 from fava_trails.config import ConfigStore
 from fava_trails.llm import LLMClient
+from fava_trails.llm.sanitize import sanitize_provider_exception
 from fava_trails.models import GlobalConfig, SourceType
 from fava_trails.tools.navigation import handle_propose_truth
 from fava_trails.trust_gate import (
@@ -605,6 +606,9 @@ def _secret_fragments() -> tuple[str, ...]:
         "https://api.example/v1?api_key=alsosecret",
         "https://operator:supersecret@api.example/v1",
         "https://api.example/v1/path-token-xyz",
+        "401?api_key=sk-secret",
+        "sk-secret",
+        "api_key=sk-secret",
     )
 
 
@@ -730,3 +734,131 @@ async def test_propose_truth_error_does_not_persist_provider_exception_secrets(
     _assert_secret_free(json.dumps(extra))
     assert stored.frontmatter.validation_status.value in {"draft", "error", "rejected"}
     assert stored.frontmatter.validation_status.value != "approved"
+
+
+def test_sanitize_omits_secret_string_status_code():
+    """String status_code must not be interpolated into diagnostics."""
+    exc = AnyLLMError("request failed")
+    exc.status_code = "401?api_key=sk-secret"
+    text = sanitize_provider_exception(exc)
+    assert text == "AnyLLMError"
+    _assert_secret_free(text)
+    assert "HTTP" not in text
+
+
+def test_sanitize_omits_secret_string_status_code_on_original_exception():
+    """Wrapped original_exception string status must not leak either."""
+    orig = MagicMock()
+    orig.status_code = "401?api_key=sk-secret"
+    exc = ProviderError(
+        "auth failed",
+        original_exception=orig,
+        provider_name="openai",
+    )
+    text = sanitize_provider_exception(exc)
+    assert text == "ProviderError"
+    _assert_secret_free(text)
+    assert "HTTP" not in text
+
+
+def test_sanitize_omits_boolean_status_code():
+    """bool is an int subclass and must not be treated as an HTTP status."""
+    exc = AnyLLMError("request failed")
+    exc.status_code = True
+    text = sanitize_provider_exception(exc)
+    assert text == "AnyLLMError"
+    assert "HTTP" not in text
+
+
+def test_sanitize_keeps_bounded_integer_http_status():
+    exc = AnyLLMError("request failed")
+    exc.status_code = 401
+    assert sanitize_provider_exception(exc) == "AnyLLMError (HTTP 401)"
+
+
+def test_sanitize_omits_out_of_range_and_false_status_codes():
+    for code in (0, 99, 600, False):
+        exc = AnyLLMError("request failed")
+        exc.status_code = code
+        text = sanitize_provider_exception(exc)
+        assert text == "AnyLLMError"
+        assert "HTTP" not in text
+
+
+def test_sanitize_keeps_integer_status_on_original_exception():
+    orig = MagicMock()
+    orig.status_code = 503
+    exc = ProviderError(
+        "auth failed",
+        original_exception=orig,
+        provider_name="openai",
+    )
+    assert sanitize_provider_exception(exc) == "ProviderError (HTTP 503)"
+
+
+@pytest.mark.asyncio
+async def test_string_status_code_secret_not_in_reasoning():
+    """Direct secret-bearing status_code must not appear in TrustResult.reasoning."""
+    client = MagicMock(spec=LLMClient)
+    exc = AnyLLMError("request failed")
+    exc.status_code = "401?api_key=sk-secret"
+    client.chat = AsyncMock(side_effect=exc)
+    client.provider = "openai"
+    from fava_trails.models import ThoughtFrontmatter, ThoughtMetadata, ThoughtRecord
+
+    record = ThoughtRecord(
+        frontmatter=ThoughtFrontmatter(
+            thought_id="01TESTSECRET00000000000003",
+            agent_id="test-agent",
+            source_type=SourceType.OBSERVATION,
+            metadata=ThoughtMetadata(),
+        ),
+        content="String HTTP status must stay secret-free.",
+    )
+    result = await review_thought(
+        record=record,
+        prompt="You are a reviewer.",
+        model="fixture-local-model",
+        client=client,
+    )
+    assert result.verdict == "error"
+    assert "AnyLLMError" in result.reasoning
+    _assert_secret_free(result.reasoning)
+    assert "HTTP 401" not in result.reasoning
+
+
+@pytest.mark.asyncio
+async def test_wrapped_string_status_code_secret_not_in_reasoning():
+    """Secret-bearing status_code on original_exception must not appear in reasoning."""
+    client = MagicMock(spec=LLMClient)
+    orig = MagicMock()
+    orig.status_code = "401?api_key=sk-secret"
+    client.chat = AsyncMock(
+        side_effect=ProviderError(
+            "auth failed",
+            original_exception=orig,
+            provider_name="openai",
+        )
+    )
+    client.provider = "openai"
+    from fava_trails.models import ThoughtFrontmatter, ThoughtMetadata, ThoughtRecord
+
+    record = ThoughtRecord(
+        frontmatter=ThoughtFrontmatter(
+            thought_id="01TESTSECRET00000000000004",
+            agent_id="test-agent",
+            source_type=SourceType.OBSERVATION,
+            metadata=ThoughtMetadata(),
+        ),
+        content="Wrapped string HTTP status must stay secret-free.",
+    )
+    result = await review_thought(
+        record=record,
+        prompt="You are a reviewer.",
+        model="fixture-local-model",
+        client=client,
+    )
+    assert result.verdict == "error"
+    assert "ProviderError" in result.reasoning
+    _assert_secret_free(result.reasoning)
+    assert "HTTP 401" not in result.reasoning
