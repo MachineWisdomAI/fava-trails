@@ -34,13 +34,13 @@ logger = logging.getLogger(__name__)
 
 TRUST_GATE_PROMPT_FILENAME = "trust-gate-prompt.md"
 
-# Process-scoped: first LLM/operator promotion surfaces a full egress notice.
+# Process-scoped: first disclosure (MCP startup log or promotion) sets the flag.
 _egress_disclosure_lock = threading.Lock()
 _egress_disclosed_in_process = False
 
 
 def reset_trust_gate_egress_disclosure_state() -> None:
-    """Test helper: clear the process-scoped first-promotion disclosure flag."""
+    """Test helper: clear the process-scoped first-disclosure flag."""
     global _egress_disclosed_in_process
     with _egress_disclosure_lock:
         _egress_disclosed_in_process = False

@@ -880,7 +880,10 @@ def test_doctor_malformed_api_base_port_is_secret_free(tmp_path, monkeypatch, ca
     (data_repo / "config.yaml").write_text(f"trails_dir: trails\ntrust_gate_api_base: {dirty}\n")
     (tmp_path / ".env").write_text("FAVA_TRAILS_SCOPE=mw/eng/test\n")
     monkeypatch.setenv("FAVA_TRAILS_DATA_REPO", str(data_repo))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    # Isolate from the operator host config (~/.config/fava-trails/...).
+    empty_xdg = tmp_path / "xdg-config-empty"
+    empty_xdg.mkdir()
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(empty_xdg))
     ConfigStore.reset()
 
     with patch("shutil.which", return_value="/usr/bin/jj"):

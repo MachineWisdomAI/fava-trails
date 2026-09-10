@@ -15,6 +15,8 @@ from fava_trails.trust_gate import (
     TrustGatePromptCache,
     describe_trust_gate_egress,
     format_trust_gate_egress_notice,
+    log_trust_gate_egress_notice,
+    mark_trust_gate_egress_disclosed,
     redact_trust_gate_api_base_for_disclosure,
     reset_trust_gate_egress_disclosure_state,
 )
@@ -348,6 +350,55 @@ async def test_first_promotion_notice_only_once(trail_manager, tmp_fava_home):
 
     assert first["trust_gate_egress"]["first_in_process"] is True
     assert second["trust_gate_egress"]["first_in_process"] is False
+
+
+@pytest.mark.asyncio
+async def test_startup_disclosure_makes_first_promotion_not_first(trail_manager, tmp_fava_home, caplog):
+    """MCP startup logs egress and marks the process flag before any promotion."""
+    reset_trust_gate_egress_disclosure_state()
+    cache = MagicMock(spec=TrustGatePromptCache)
+    cache.resolve_prompt.return_value = "You are a reviewer."
+    cfg = ConfigStore.__new__(ConfigStore)
+    cfg.global_config = GlobalConfig(trust_gate_timeout_secs=30, tool_timeout_secs=60)
+    cfg.data_repo_root = tmp_fava_home
+    cfg.trails_dir = tmp_fava_home / "trails"
+    ConfigStore.override(cfg)
+
+    # Mirror server._init_server: mark then log before any propose_truth.
+    first_startup = mark_trust_gate_egress_disclosed()
+    assert first_startup is True
+    with caplog.at_level("INFO"):
+        log_trust_gate_egress_notice(
+            describe_trust_gate_egress(cfg.global_config, first_in_process=first_startup)
+        )
+    assert any("Trust Gate data egress" in rec.message for rec in caplog.records)
+
+    async def fake_review(**kwargs):
+        from fava_trails.trust_gate import TrustResult
+
+        return TrustResult(
+            verdict="approve",
+            reasoning="ok",
+            reviewer="llm-oneshot:google/gemini-2.5-flash",
+            provider="openrouter",
+            model="google/gemini-2.5-flash",
+        )
+
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "or-test-key"}, clear=False):
+        with patch("fava_trails.tools.navigation.review_thought", side_effect=fake_review):
+            record = await trail_manager.save_thought(
+                content="after startup",
+                agent_id="a",
+                source_type=SourceType.OBSERVATION,
+            )
+            result = await handle_propose_truth(
+                trail_manager,
+                {"thought_id": record.thought_id},
+                prompt_cache=cache,
+            )
+
+    assert result["status"] == "ok"
+    assert result["trust_gate_egress"]["first_in_process"] is False
 
 
 @pytest.mark.asyncio
