@@ -41,7 +41,7 @@ Academic protocols like SECOM (Segmentation and Compression; Tsinghua University
 
 FAVA Trails provides the versioned substrate and the **Event-Action Pipeline** (lifecycle hooks) to run these protocols safely. Hooks fire at key lifecycle points (`before_propose`, `before_save`, `on_recall`, etc.) and return typed actions (`Mutate`, `Advise`, `RecallSelect`) that the pipeline executes atomically.
 
-For example, the built-in [SECOM protocol](../src/fava_trails/protocols/secom/README.md) uses a Write-Once, Read-Many (WORM) optimization: the `before_propose` hook compresses content inline via LLMLingua-2 (extractive token-level compression — only original tokens survive) before the thought is committed to its permanent namespace. This avoids read-path latency entirely, amortizes compression cost from O(recalls × thoughts) to O(promotes), and preserves the original verbose draft in the Jujutsu commit history. If compression fails, `fail_mode: open` lets the thought through unchanged — the operation never blocks.
+For example, the built-in [SECOM protocol](../src/fava_trails/protocols/secom/README.md) uses a Write-Once, Read-Many (WORM) optimization: the `before_propose` hook compresses content inline via LLMLingua-2 (extractive token-level compression — only original tokens survive) before the thought is committed to its permanent namespace. This avoids read-path latency entirely, amortizes compression cost from O(recalls × thoughts) to O(promotes), and preserves the original verbose draft in the Jujutsu commit history. Hooks are **awaited** through completion or their configured timeout on the promote path. With SECOM's default `fail_mode: open`, hook errors or timeouts do **not** fail promotion (the thought proceeds uncompressed); they still consume wall-clock time up to the hook timeout. `fail_mode: closed` is different and will fail the operation.
 
 Install with `pip install fava-trails[secom]` and add a `hooks:` entry to your data repo's `config.yaml`. See the [Protocols section](../README.md#protocols) for quick start.
 
@@ -58,7 +58,7 @@ fava-trails rlm setup --write      # RLM MapReduce hooks
 
 ### Why does the first `propose_truth` take several minutes with SECOM enabled?
 
-SECOM uses LLMLingua-2 (a ~700MB BERT-based token classifier from HuggingFace Hub) for extractive compression. The first call triggers a model download that can take 2–5 minutes depending on connection speed — subsequent calls use the cached model and complete in milliseconds.
+SECOM uses LLMLingua-2 (a ~700MB BERT-based token classifier from HuggingFace Hub) for extractive compression. The first call can trigger a model download that takes several minutes depending on connection speed. Later calls reuse the local HuggingFace cache and avoid that download, but compression still runs on the promote path and has **no published millisecond latency guarantee** — wall time depends on hardware, model load, content length, and hook timeout settings.
 
 To pre-download the model before agents encounter it:
 
@@ -197,13 +197,13 @@ This is eventual consistency with governance — the same pattern that lets team
 
 ### How does FAVA Trails protect my proprietary data and corporate IP?
 
-FAVA Trails follows an **Engine vs. Fuel** architecture that makes this a non-issue by design.
+FAVA Trails follows an **Engine vs. Fuel** architecture that separates process runtime from durable corpus ownership.
 
-The MCP server (`fava-trails`) is a stateless, open-source engine. It contains zero knowledge about your organization. It processes requests, translates them to VCS operations, and returns structured results. It holds no state between calls.
+The MCP server (`fava-trails`) is an open-source **engine process**. It does not embed your organizational corpus in its source tree, but it is **not** request-stateless: for the life of the process it retains trail managers, a VCS backend handle, locks, loaded hooks/prompts, and configuration between calls.
 
-Your actual data — the memory graph, the versioned repository, every thought your agents have ever produced — lives in a separate, isolated, locally controlled directory. This is the Fuel. You host it wherever your security policy requires: a local directory on the developer's machine, a private NFS mount, an air-gapped server, or a privately hosted Git remote for backup.
+Your actual data — the memory graph, the versioned repository, every thought your agents have ever produced — lives in a separate, isolated, locally controlled directory. This is the **Fuel**. You host it wherever your security policy requires: a local directory on the developer's machine, a private NFS mount, an air-gapped server, or a privately hosted Git remote for backup.
 
-What holds today: the engine does not embed your corpus in its source, does not collect product telemetry, and does not require a FAVA-hosted cloud. The MCP server is effectively request-scoped for durable product state — your Fuel directory is separate and under your controls.
+What holds today: the engine does not embed your corpus in its source, does not collect product telemetry, and does not require a FAVA-hosted cloud. **Durable product state** lives only in Fuel under your controls; restarting the engine process does not move that corpus. Treat process-local caches (managers/hooks) as runtime convenience, not as a second source of truth.
 
 What does **not** hold by default: **Trust Gate can egress content.** With the shipped OpenRouter default under `trust_gate: llm-oneshot`, `propose_truth` sends the proposed record content and selected redacted metadata to that provider. To avoid that egress path today: point Trust Gate at a local OpenAI-compatible endpoint, **or** promote on an operator endpoint with `propose_truth(..., approval="human")` (requires `FAVA_TRAILS_OPERATOR=1` and a configured agent identity). There is no shipped config flag that disables LLM review globally; `trust_gate: human` is not implemented. Further local-only hardening is tracked in issue #101. Your corporate IP stays on your infrastructure only to the extent your Trust Gate provider, approval path, and hosting choices keep it there.
 

@@ -629,6 +629,7 @@
 
   .tag.current { background: rgba(129, 178, 154, 0.2); color: var(--green); }
   .tag.stale { background: rgba(224, 122, 95, 0.2); color: var(--red); }
+  .tag.superseded { background: rgba(138, 136, 144, 0.2); color: var(--text-dim); }
   .tag.tombstoned { background: rgba(138, 136, 144, 0.2); color: var(--text-dim); }
 
   .flattening-arrow {
@@ -773,13 +774,13 @@
       <div class="flattening-col solution">
         <h3>FAVA Trails recall</h3>
         <div class="flattening-node superseded">
-          "ResNet-50 is optimal" <span class="tag tombstoned">superseded</span>
+          "ResNet-50 is optimal" <span class="tag superseded">superseded</span>
         </div>
         <div class="flattening-arrow">↓ superseded by</div>
         <div class="flattening-node active">
           "ViT-Large outperforms ResNet-50" <span class="tag current">current</span>
         </div>
-        <div class="flattening-caption">Only the current belief is returned by default. The superseded claim is tombstoned — hidden from recall but preserved in lineage for audit.</div>
+        <div class="flattening-caption">Only the current belief is returned by default governed recall. After durable successor approval, the predecessor stays an <em>approved</em> record with backlinks and is hidden from default recall (operator history / include_superseded can still retrieve it). <code>tombstoned</code> is a separate validation status — not a synonym for supersession.</div>
       </div>
     </div>
   </section>
@@ -917,10 +918,10 @@
       <div class="audience-card">
         <h3>ML Engineering Agents</h3>
         <ul>
-          <li>12+ hour Kaggle competition sessions without context drift</li>
+          <li>Long-horizon work reconstructable from versioned records after context-window resets (session length is workload-dependent; no published FAVA duration benchmark)</li>
           <li>Record competing model hypotheses as versioned thoughts (not parallel MCP branches)</li>
           <li>Supersede dead-end claims so default governed recall hides replaced lines (history mode can still retrieve them)</li>
-          <li>Full audit trail for experiment reproducibility</li>
+          <li>JJ-backed lineage for experiment archaeology (who/when/why on each thought)</li>
         </ul>
       </div>
       <div class="audience-card">
@@ -944,10 +945,10 @@
       <div class="audience-card">
         <h3>Regulated Industries</h3>
         <ul>
-          <li>100% audit coverage — every state change traceable</li>
-          <li>Temporal reconstruction for compliance review</li>
+          <li>Versioned thought files + JJ operation history for state-change archaeology (coverage is “what the VCS recorded,” not a certified 100% control map)</li>
+          <li>Temporal reconstruction from retained revisions and supersession backlinks</li>
           <li>Scope paths + lifecycle/identity filtering over an operator-trusted filesystem (not multi-tenant sandboxing)</li>
-          <li>SOC 2 / ISO 27001 exportable audit trails</li>
+          <li>Export is ordinary Markdown/Git/JJ artifacts you control — not a shipped SOC 2 / ISO 27001 attestation or mapped control pack</li>
         </ul>
       </div>
     </div>
@@ -985,11 +986,11 @@
   <section class="reveal">
     <div class="section-label">Enterprise Objections, Answered</div>
     <h2>Your memory graph stays under your control</h2>
-    <p>FAVA Trails follows an <strong style="color: var(--accent);">Engine vs. Fuel</strong> architecture. The MCP server (<code style="font-family: var(--mono); font-size: 0.85em; color: var(--green);">fava-trails</code>) is a stateless, open-source engine. Your actual memory graph and versioned repository live entirely in a local-first or privately hosted directory that you control. The engine does not embed your corpus in its source, collect product telemetry, or require a FAVA cloud. <strong>Default Trust Gate is different:</strong> under shipped <code style="font-family: var(--mono); font-size: 0.85em;">trust_gate: llm-oneshot</code> with the OpenRouter default, <code style="font-family: var(--mono); font-size: 0.85em;">propose_truth</code> sends the proposed record content and selected redacted metadata to that LLM provider. Avoid that path today by pointing Trust Gate at a local OpenAI-compatible endpoint, or by promoting on an operator endpoint with <code style="font-family: var(--mono); font-size: 0.85em;">propose_truth(..., approval="human")</code>. There is no shipped global “disable LLM review” config flag (<code style="font-family: var(--mono); font-size: 0.85em;">trust_gate: human</code> is unimplemented) — see issue #101 for further local-only hardening.</p>
+    <p>FAVA Trails follows an <strong style="color: var(--accent);">Engine vs. Fuel</strong> architecture. The MCP server (<code style="font-family: var(--mono); font-size: 0.85em; color: var(--green);">fava-trails</code>) is an open-source engine process: it retains in-memory managers, backend handles, locks, loaded hooks/prompts, and config for the life of the process, but the <em>durable corpus</em> lives only in your separate Fuel directory (local-first or privately hosted). The engine does not embed your corpus in its source, collect product telemetry, or require a FAVA cloud. <strong>Default Trust Gate is different:</strong> under shipped <code style="font-family: var(--mono); font-size: 0.85em;">trust_gate: llm-oneshot</code> with the OpenRouter default, <code style="font-family: var(--mono); font-size: 0.85em;">propose_truth</code> sends the proposed record content and selected redacted metadata to that LLM provider. Avoid that path today by pointing Trust Gate at a local OpenAI-compatible endpoint, or by promoting on an operator endpoint with <code style="font-family: var(--mono); font-size: 0.85em;">propose_truth(..., approval="human")</code>. There is no shipped global “disable LLM review” config flag (<code style="font-family: var(--mono); font-size: 0.85em;">trust_gate: human</code> is unimplemented) — see issue #101 for further local-only hardening.</p>
 
     <div class="ip-bullet">
       <span class="icon">🔒</span>
-      <p><strong>Fuel stays where you put it</strong> — the engine (<code style="font-family: var(--mono); font-size: 0.8em;">fava-trails</code>) holds no durable state between calls. Your data repository is a separate directory governed by your access controls and retention policies. Treat Trust Gate provider choice as an explicit egress control, not an implicit air-gap.</p>
+      <p><strong>Fuel stays where you put it</strong> — durable product state is the Fuel repository under your access controls and retention policies. The engine process is <em>not</em> request-stateless (it caches managers and hooks), but restarting it does not move or embed your corpus. Treat Trust Gate provider choice as an explicit egress control, not an implicit air-gap.</p>
     </div>
 
     <h2 style="margin-top: 2.5rem;">No VCS overhead in your agent's context window</h2>
@@ -999,7 +1000,8 @@
   <!-- EVIDENCE -->
   <section class="reveal">
     <div class="section-label">Validation</div>
-    <h2>The pattern is already proven at scale</h2>
+    <h2>Related evidence from versioned-memory systems (not a FAVA scale claim)</h2>
+    <p style="color: var(--text-dim); font-size: 0.9rem; margin-bottom: 1rem;">The quotes below are external observations about adjacent versioned-memory patterns. They are <strong>not</strong> FAVA Trails product benchmarks, compliance mappings, or proof that this tree is “proven at scale.”</p>
 
     <blockquote>
       "The longest session we've observed is twelve hours, where useful work was produced at the end. Raw coding agent sessions max out at about an hour."

@@ -41,7 +41,7 @@ For a long-lived private ChatGPT connection, follow the deployment-neutral
 - **Lexical recall** — `recall` matches lowercased whitespace-separated query tokens as substrings across content and selected metadata (AND). It is not semantic similarity search. See [docs/retrieval-baseline.md](docs/retrieval-baseline.md).
 - **Full lineage** — every thought carries who wrote it, when, and why it changed.
 - **Crash-proof** — every write is an atomic commit. No unsaved work.
-- **Engine/Fuel split** — this repo is the engine (stateless MCP server). Your data lives in a separate repo you control.
+- **Engine/Fuel split** — this repo is the engine MCP process (retains managers/hooks in memory; durable corpus is not embedded). Your data lives in a separate Fuel repo you control.
 
 ## Install
 
@@ -334,8 +334,8 @@ fava-trails (this repo)        fava-trails-data (your repo)
 └── tests/
 ```
 
-- **Engine** (`fava-trails`) — stateless MCP server, Apache-2.0. Install via `pip install fava-trails`.
-- **Fuel** (`fava-trails-data`) — your organization's trail data, private.
+- **Engine** (`fava-trails`) — MCP server process, Apache-2.0. Install via `pip install fava-trails`. Runtime retains managers, backend handles, locks, and loaded hooks between calls; it does not store the durable corpus in-package.
+- **Fuel** (`fava-trails-data`) — your organization's trail data (the durable memory graph), private.
 
 ## Configuration
 
