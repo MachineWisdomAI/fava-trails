@@ -8,11 +8,15 @@ All notable changes to FAVA Trails are documented here.
 - **Trust Gate data-egress disclosure (issue #101):** `describe_trust_gate_egress`
   + `fava-trails doctor` **Data egress** section and MCP startup log show the
   effective review destination/model and which candidate fields are sent before
-  promotion. Every `propose_truth` response includes secret-free
-  `trust_gate_egress` (with `first_in_process` on the first call). Local-only
-  OpenAI-compatible setups remain fail-closed with no cloud fallback; missing
-  cloud credentials never auto-approve. Docs separate the operator
-  `approval="human"` path from automatic LLM review.
+  promotion. Successful LLM or operator `propose_truth` paths (and credential /
+  timeout failures after disclosure begins) include a secret-free
+  `trust_gate_egress` object (`first_in_process` on the first disclosure in
+  that process). Early validation failures — missing `thought_id`, missing
+  prompt cache, thought not found, or prompt-resolution errors — return before
+  disclosure and omit `trust_gate_egress`. Local-only OpenAI-compatible setups
+  remain fail-closed with no cloud fallback; missing cloud credentials never
+  auto-approve. Docs separate the operator `approval="human"` path from
+  automatic LLM review.
 - `fava-trails version` (and a matching preamble on `fava-trails doctor`) reports
   the loaded product package/module version, module path/source kind, and the
   MCP SDK distribution version separately, without credentials. MCP

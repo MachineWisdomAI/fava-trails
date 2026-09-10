@@ -9,8 +9,9 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 import yaml
+from pydantic import ValidationError
 
-from .models import GlobalConfig, TrailConfig
+from .models import GlobalConfig, TrailConfig, format_validation_error_for_diagnostics
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +125,12 @@ def apply_machine_config(data_config: dict[str, Any]) -> dict[str, Any]:
 def load_effective_global_config(data_repo_root: Path) -> GlobalConfig:
     """Load data-repo configuration with standard per-machine Trust Gate overrides."""
     data = _read_config_mapping(data_repo_root / "config.yaml", missing_ok=True)
-    return GlobalConfig(**apply_machine_config(data))
+    try:
+        return GlobalConfig(**apply_machine_config(data))
+    except ValidationError as exc:
+        # Convert to a secret-free ValueError so doctor/startup/tunnel paths never
+        # print Pydantic's default input_value (e.g. credential-bearing api_base).
+        raise ValueError(format_validation_error_for_diagnostics(exc)) from None
 
 
 class ConfigStore:
