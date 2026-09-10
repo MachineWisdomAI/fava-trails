@@ -220,6 +220,10 @@ async def _init_server() -> None:
 
     # Load lifecycle hooks from config.yaml (anti-tampering: never re-read from disk)
     store = ConfigStore.get()
+    # Disclose effective Trust Gate destination before any promotion can run.
+    from .trust_gate import describe_trust_gate_egress, log_trust_gate_egress_notice
+
+    log_trust_gate_egress_notice(describe_trust_gate_egress(store.global_config))
     if store.global_config.hooks:
         _hook_registry.load_from_entries(store.global_config.hooks, base_dir=store.data_repo_root)
 

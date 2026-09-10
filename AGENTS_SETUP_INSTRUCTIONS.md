@@ -34,18 +34,37 @@ publication note.
 
 ### LLM Configuration (for Trust Gate)
 
-The Trust Gate reviews thoughts before promotion using an LLM. By default, FAVA Trails uses [OpenRouter](https://openrouter.ai/) for unified access to 300–500+ models.
+The Trust Gate reviews thoughts before promotion using an LLM **or** an explicit
+operator approval path. Provider selection is a **data-egress choice**: under the
+shipped `llm-oneshot` policy, candidate thought content (plus selected redacted
+metadata) is transmitted to the configured destination **before** a verdict
+exists. A remote reject still means the content already left this process. There
+is no automatic pass-through/off mode and no silent fallback to another provider.
 
-**OpenRouter (default, recommended):**
+Before the first promotion on a machine, run:
+
+```bash
+fava-trails doctor
+```
+
+Doctor prints the effective policy, provider, model, destination, and a plain
+**Data egress** explanation of which candidate fields will be sent. API keys and
+credential file paths are never printed. The MCP server also logs the same notice
+at startup, and every `propose_truth` response includes a secret-free
+`trust_gate_egress` object (with `first_in_process: true` on the first promotion
+in that process).
+
+**OpenRouter (default, remote egress):**
 
 1. Create a free account at https://openrouter.ai/
 2. Generate an API key at https://openrouter.ai/keys
 3. Pass it to the MCP server via the `OPENROUTER_API_KEY` environment variable
    (in your MCP client config `env` block, or in your shell profile)
 
-The default model (`google/gemini-2.5-flash`) costs ~$0.001 per review.
+The default model (`google/gemini-2.5-flash`) costs ~$0.001 per review. Missing
+cloud credentials fail closed — candidates are **not** auto-approved.
 
-**Local OpenAI-compatible endpoint (e.g. Unsloth Studio):**
+**Local OpenAI-compatible endpoint (local-only egress, e.g. Unsloth Studio):**
 
 Unsloth Studio (and similar local servers) expose authenticated OpenAI-compatible
 `/v1/chat/completions` endpoints. Point Trust Gate at them on one machine via
@@ -64,14 +83,35 @@ trust_gate_extra_body:
   enable_thinking: false
 ```
 
+Verify with `fava-trails doctor` — destination kind should be `local_endpoint`
+and `api_base` should match your loopback URL. If that endpoint is unavailable
+or misconfigured, promotion fails closed. There is **no automatic fallback** to
+OpenRouter.
+
 The key file must be a regular, non-symlink file owned by the current user with
 no group or other permissions (mode `0600`). It is read for every promotion. If
 the provider returns 401 and the file value changed, FAVA retries exactly once
 with the new value. `trust_gate_api_key_env` remains available as a fallback when
 no key file is configured (see [Unsloth API docs](https://unsloth.ai/docs/basics/api)).
-Do not hardcode host, port, model, or credentials in the engine. There is **no
-automatic fallback** to OpenRouter if the local provider fails — Trust Gate stays
-fail-closed.
+Do not hardcode host, port, model, or credentials in the engine. Do not install a
+model, select a paid provider, or supply credentials on behalf of an evaluator —
+operators choose and provision their own review backend.
+
+**Operator review path (no LLM transmission) — separate from automatic review:**
+
+`trust_gate: human` is **not** implemented as a config policy (it raises). The
+supported non-LLM path is per-call explicit operator approval:
+
+1. Run a dedicated operator-controlled MCP process with `FAVA_TRAILS_OPERATOR=1`
+   and a configured `FAVA_TRAILS_AGENT_ID` (never enable operator mode on a shared
+   authoring endpoint).
+2. Call `propose_truth(..., approval="human")` for each candidate.
+3. Provenance records `metadata.extra.approval.kind="human"`. No candidate text is
+   sent to a remote or local LLM.
+
+This keeps the approval boundary: drafts stay drafts until LLM advisory approval
+or explicit operator approval. There is no automatic pass-through that skips the
+gate.
 
 Per-machine config may contain only Trust Gate runtime fields. Effective
 precedence is machine config, then the data repo's `config.yaml`, then defaults;

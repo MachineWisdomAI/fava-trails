@@ -13,10 +13,12 @@ from __future__ import annotations
 import html
 import json
 import logging
+import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Any, Literal
+from urllib.parse import urlparse
 
 import yaml
 from any_llm.exceptions import AnyLLMError, ProviderError
@@ -24,9 +26,165 @@ from any_llm.exceptions import AnyLLMError, ProviderError
 from .llm import LLMClient
 from .models import ThoughtRecord
 
+if TYPE_CHECKING:
+    from .models import GlobalConfig
+
 logger = logging.getLogger(__name__)
 
 TRUST_GATE_PROMPT_FILENAME = "trust-gate-prompt.md"
+
+# Process-scoped: first LLM/operator promotion surfaces a full egress notice.
+_egress_disclosure_lock = threading.Lock()
+_egress_disclosed_in_process = False
+
+
+def reset_trust_gate_egress_disclosure_state() -> None:
+    """Test helper: clear the process-scoped first-promotion disclosure flag."""
+    global _egress_disclosed_in_process
+    with _egress_disclosure_lock:
+        _egress_disclosed_in_process = False
+
+
+def _is_loopback_api_base(api_base: str | None) -> bool:
+    if not api_base:
+        return False
+    host = (urlparse(api_base).hostname or "").lower()
+    return host in {"127.0.0.1", "localhost", "::1"} or host.startswith("127.")
+
+
+def describe_trust_gate_egress(
+    config: GlobalConfig,
+    *,
+    approval: str | None = None,
+    first_in_process: bool | None = None,
+) -> dict[str, Any]:
+    """Describe where candidate data goes during Trust Gate review.
+
+    Never includes API keys, key file paths, or secret values — only destination
+    identity, model, and a plain summary of which candidate fields are sent.
+    """
+    from .credentials import trust_gate_credential_description
+
+    if approval == "human":
+        notice: dict[str, Any] = {
+            "policy": "operator_human",
+            "provider": None,
+            "model": None,
+            "destination": "operator endpoint (no LLM request)",
+            "destination_kind": "operator_human",
+            "credential_source": None,
+            "data_sent": [],
+            "data_sent_summary": (
+                "No candidate content is transmitted to an LLM provider. "
+                "Promotion uses explicit operator approval on this process only."
+            ),
+            "cloud_fallback": False,
+            "rejection_happens_after_transmission": False,
+            "explanation": (
+                "Operator review path: propose_truth(..., approval=\"human\") on an "
+                "operator-controlled endpoint (FAVA_TRAILS_OPERATOR=1 with a configured "
+                "FAVA_TRAILS_AGENT_ID). Candidate text is not sent to a remote or local "
+                "LLM. This is separate from automatic llm-oneshot review."
+            ),
+        }
+        if first_in_process is not None:
+            notice["first_in_process"] = first_in_process
+        return notice
+
+    provider = config.trust_gate_provider
+    model = config.trust_gate_model
+    api_base = config.trust_gate_api_base
+    if api_base and _is_loopback_api_base(api_base):
+        destination_kind: Literal["local_endpoint", "custom_endpoint", "remote_provider"] = "local_endpoint"
+        destination = api_base
+    elif api_base:
+        destination_kind = "custom_endpoint"
+        destination = api_base
+    elif provider == "openrouter":
+        destination_kind = "remote_provider"
+        destination = "OpenRouter (provider default API)"
+    else:
+        destination_kind = "remote_provider"
+        destination = f"{provider} (provider default API)"
+
+    data_sent = [
+        "full candidate thought content (markdown body)",
+        "redacted metadata: thought_id, source_type, confidence, validation_status",
+        "optional redacted metadata: trail_name, parent_id, project, branch, tags",
+    ]
+    notice = {
+        "policy": config.trust_gate,
+        "provider": provider,
+        "model": model,
+        "destination": destination,
+        "destination_kind": destination_kind,
+        "credential_source": trust_gate_credential_description(config),
+        "data_sent": data_sent,
+        "data_sent_summary": (
+            "Candidate thought content plus selected redacted metadata "
+            "(thought_id, source_type, confidence, validation_status; optional "
+            "trail_name/parent_id/project/branch/tags). agent_id and metadata.extra "
+            "are not sent."
+        ),
+        "cloud_fallback": False,
+        "rejection_happens_after_transmission": True,
+        "explanation": (
+            "Provider selection is a data-egress choice: the candidate is transmitted "
+            f"to {destination} using model {model!r} before a verdict exists. "
+            "A remote reject still means the content already left this process. "
+            "There is no automatic pass-through/off mode and no silent fallback to "
+            "another provider if this destination is unavailable or misconfigured."
+        ),
+    }
+    if first_in_process is not None:
+        notice["first_in_process"] = first_in_process
+    return notice
+
+
+def format_trust_gate_egress_notice(notice: dict[str, Any]) -> str:
+    """Plain multi-line operator explanation (no secrets)."""
+    kind = notice.get("destination_kind")
+    lines = [
+        "Trust Gate data egress",
+        f"  policy:       {notice.get('policy')}",
+    ]
+    if kind == "operator_human":
+        lines.extend(
+            [
+                "  destination:  operator endpoint (no LLM request)",
+                f"  detail:       {notice.get('data_sent_summary')}",
+                f"  note:         {notice.get('explanation')}",
+            ]
+        )
+        return "\n".join(lines)
+
+    lines.extend(
+        [
+            f"  provider:     {notice.get('provider')}",
+            f"  model:        {notice.get('model')}",
+            f"  destination:  {notice.get('destination')} ({kind})",
+            f"  credential:   {notice.get('credential_source')} (name/source only; secret not shown)",
+            f"  data sent:    {notice.get('data_sent_summary')}",
+            "  timing:       rejection by a remote gate happens after transmission",
+            "  fallback:     never silently fall back to a cloud provider; fail closed",
+            f"  note:         {notice.get('explanation')}",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def mark_trust_gate_egress_disclosed() -> bool:
+    """Mark first-in-process disclosure. Returns True if this was the first call."""
+    global _egress_disclosed_in_process
+    with _egress_disclosure_lock:
+        first = not _egress_disclosed_in_process
+        _egress_disclosed_in_process = True
+        return first
+
+
+def log_trust_gate_egress_notice(notice: dict[str, Any]) -> None:
+    """Emit a secret-free egress notice to the server log (before network I/O)."""
+    logger.info("%s", format_trust_gate_egress_notice(notice))
 
 
 class TrustGateConfigError(Exception):
