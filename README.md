@@ -47,7 +47,7 @@ For a long-lived private ChatGPT connection, follow the deployment-neutral
 
 ### Prerequisites
 
-FAVA Trails uses [Jujutsu (JJ)](https://jj-vcs.github.io/jj/) as its storage engine, running in colocate mode alongside Git. Your repo remains a standard Git repo (GitHub and CI/CD see normal commits). Publishing local commits uses `push_strategy: immediate` (auto-push after successful writes) or operator `jj git push`. The `sync` MCP tool only fetches/rebases shared truth — it does not push. One-time install:
+FAVA Trails uses [Jujutsu (JJ)](https://jj-vcs.github.io/jj/) as its storage engine, running in colocate mode alongside Git. Your repo remains a standard Git repo (GitHub and CI/CD see normal commits). Publishing local commits uses `push_strategy: immediate` (auto-push after successful writes) or the full manual protocol `jj bookmark set main -r @-` then `jj git push --bookmark main` (completed writes sit at `@-`). The `sync` MCP tool only fetches/rebases shared truth — it does not push. One-time install:
 
 ```bash
 fava-trails install-jj
@@ -258,7 +258,7 @@ fava-trails clone https://github.com/YOUR-ORG/fava-trails-data.git fava-trails-d
 # 4. Register MCP (same config as above, with local paths + FAVA_TRAILS_AGENT_ID)
 ```
 
-Both machines share the same git remote. The writing machine must publish (`immediate` or manual `jj git push`); the reading machine calls `sync` to fetch/rebase.
+Both machines share the same git remote. The writing machine must publish before peers can fetch (`immediate`, or manual `jj bookmark set main -r @-` then `jj git push --bookmark main`); the reading machine calls `sync` to fetch/rebase.
 
 ### ChatGPT tunnel freshness
 
@@ -377,7 +377,7 @@ push_strategy: manual       # manual | immediate
 
 The standard per-machine config overrides only Trust Gate runtime fields. Repository settings such as `trails_dir`, `remote_url`, `push_strategy`, hooks, and trail definitions remain owned by the data repo. Effective precedence is machine config, then data-repo config, then defaults.
 
-When `push_strategy: immediate`, the server auto-pushes after every successful write. Push failures are non-fatal. When `manual` (bootstrap default), writes commit locally only; use the manual `jj git push` protocol above. The `sync` tool never substitutes for push.
+When `push_strategy: immediate`, the server auto-pushes after every successful write (advances `main` to `@-` then pushes). Push failures are non-fatal. When `manual` (bootstrap default), writes commit locally only; use the full manual protocol above (`jj bookmark set main -r @-` then `jj git push --bookmark main`). The `sync` tool never substitutes for push.
 
 See [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) for full config reference including trust gate and per-trail overrides.
 

@@ -13,12 +13,24 @@ fava-trails install-jj
 Install FAVA Trails:
 
 ```bash
-# From PyPI (recommended)
+# From PyPI (recommended) — currently resolves published **0.6.0**
 pip install fava-trails
 
-# Or from source (for development)
+# Confirm the loaded runtime (package + module + MCP product version):
+fava-trails version
+
+# Or from source (for development / unreleased 0.6.1 RC on main)
 git clone https://github.com/MachineWisdomAI/fava-trails.git && cd fava-trails && uv sync
 ```
+
+**Version boundary:** PyPI and GitHub Releases still list **0.6.0** as latest.
+Governed identity, `mode="authoring"`, and related isolation behavior described in
+this guide and the usage guide are the **unreleased 0.6.1 release candidate** on
+`main` (this tree). Published **0.6.0** does **not** match that model. After any
+install or upgrade, run `fava-trails version` and restart the MCP client so the
+process loads the intended entrypoint. See
+[docs/runtime-and-upgrade.md](docs/runtime-and-upgrade.md) and the README
+publication note.
 
 ### LLM Configuration (for Trust Gate)
 
@@ -150,9 +162,12 @@ fava-trails clone https://github.com/YOUR-ORG/fava-trails-data.git fava-trails-d
 # 2. Register the MCP server (same config, with local paths)
 ```
 
-Both machines share the same git remote. The writing side must publish
-(`push_strategy: immediate` or operator `jj git push`). Use the `sync` MCP tool
-only to **pull** (fetch/rebase) latest shared truth — it does not publish local commits.
+Both machines share the same git remote. The writing side must publish before
+peers can fetch: set `push_strategy: immediate`, or under `manual` (bootstrap
+default) run `jj bookmark set main -r @-` then `jj git push --bookmark main`.
+Use the `sync` MCP tool only to **pull** (fetch/rebase) latest shared truth — it
+does not publish local commits. Completed writes sit at `@-`; a bare
+`jj git push` without advancing `main` can miss them.
 
 ## Global Config Reference (`config.yaml`)
 
@@ -203,7 +218,7 @@ trails:
 |-------|------|---------|-------------|
 | `trails_dir` | string | `trails` | Directory for trail data (relative to repo root) |
 | `remote_url` | string | `null` | Git remote URL for sync |
-| `push_strategy` | string | `manual` | `immediate` auto-pushes after successful writes; `manual` (bootstrap default) keeps commits local until operator `jj git push`. The `sync` tool only fetches/rebases and never publishes. |
+| `push_strategy` | string | `manual` | `immediate` auto-pushes after successful writes (advances `main` to `@-` then pushes); `manual` (bootstrap default) keeps commits local until the operator runs `jj bookmark set main -r @-` then `jj git push --bookmark main`. The `sync` tool only fetches/rebases and never publishes. |
 | `trust_gate` | string | `llm-oneshot` | Global trust gate policy. **Shipped working value: `llm-oneshot` only.** `human` is unimplemented (raises `NotImplementedError`). Non-LLM path is per-call `propose_truth(..., approval="human")` on an operator endpoint, not this config field. |
 | `trust_gate_provider` | string | `openrouter` | any-llm provider id (`openrouter`, `openai`, …) |
 | `trust_gate_model` | string | `google/gemini-2.5-flash` | Exact model id for LLM-based trust review |
@@ -288,7 +303,7 @@ hooks:
   - path: ./hooks/quality_gate.py
     points: [before_save, before_propose]
     order: 10                     # lower = runs first (default: 50)
-    fail_mode: open               # open (skip on error) | closed (halt on error)
+    fail_mode: open               # gating hooks: open=skip, closed=halt; after_* observers always skip
     config:
       min_confidence: 0.3
 
@@ -388,9 +403,17 @@ Hooks that need to query trail state receive a `TrailContext` via `event.context
 
 ### Error Handling
 
-- **`fail_mode: open`** (default): Hook errors/timeouts are logged and skipped — the operation proceeds
-- **`fail_mode: closed`**: Hook errors/timeouts halt the operation with an exception
+`fail_mode` is enforced on **gating** hook paths (`before_save`, `before_propose`,
+`on_recall`, `on_recall_mix`) via `run_pipeline`:
+
+- **`fail_mode: open`** (default): Gating-hook errors/timeouts are logged and skipped — the operation proceeds
+- **`fail_mode: closed`**: Gating-hook errors/timeouts halt the operation with an exception
 - Import errors with `fail_mode: closed` cause `sys.exit(1)` at startup
+
+**After-hook observers** (`after_save`, `after_propose`, `after_supersede`) are
+different: `dispatch_observer` always logs and skips timeouts/errors and does
+**not** consult `fail_mode`. Observer failures never halt the write that already
+committed; they still add sequential await latency up to each hook timeout.
 
 ### Built-in Protocols
 

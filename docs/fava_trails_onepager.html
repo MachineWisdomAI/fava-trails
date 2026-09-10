@@ -686,12 +686,12 @@
     <div class="hero-eyebrow">Federated Agentic Versioned Audit Trail</div>
     <h1>Your agents forget.<br>FAVA Trails makes them <em>remember.</em></h1>
     <p class="hero-sub">
-      Version-controlled memory for AI agents. Crash-safe persistence, gated promotion that reduces unreviewed draft blast radius, and multi-agent coordination through shared governed records.
+      Version-controlled memory for AI agents. Durable local persistence (successful returns finish the write path; interruptions can leave recoverable dirty or incomplete state), gated promotion that reduces unreviewed draft blast radius, and multi-agent coordination through shared governed records.
     </p>
     <div class="hero-stats">
       <div class="stat">
-        <div class="stat-value">Crash-safe</div>
-        <div class="stat-label">Atomic local draft writes</div>
+        <div class="stat-value">Durable</div>
+        <div class="stat-label">Versioned local writes + recovery</div>
       </div>
       <div class="stat">
         <div class="stat-value">Governed</div>
@@ -841,7 +841,7 @@
         </thead>
         <tbody>
           <tr>
-            <td>Crash-safe persistence</td>
+            <td>Durable versioned local writes</td>
             <td class="check fava-col">✓</td>
             <td class="cross">✗</td>
             <td class="check">✓</td>
@@ -967,7 +967,10 @@
 <span class="comment"># Multi-agent sync — pull only (does not push/publish local commits)</span>
 <span class="fn">sync</span>(trail_name=<span class="str">"org/proj"</span>)
 <span class="comment"># → Fetches/rebases shared truth. Conflicts surfaced as data.</span>
-<span class="comment"># → Publish via push_strategy: immediate or operator jj git push (bootstrap defaults to manual).</span>
+<span class="comment"># → Writers must publish before peers can fetch.</span>
+<span class="comment"># → Publish via push_strategy: immediate, or manual:</span>
+<span class="comment">#     jj bookmark set main -r @- &amp;&amp; jj git push --bookmark main</span>
+<span class="comment"># → (Completed writes sit at @-; bare jj git push can miss them. Bootstrap defaults to manual.)</span>
 <span class="comment"># → Planned Pull Daemon would automate pull (~30s); not shipped yet.</span>
 
 <span class="comment"># Discard current reasoning line (abandons current JJ change)</span>
@@ -1020,7 +1023,7 @@
   <!-- CTA -->
   <section class="cta-section reveal">
     <h2>Stop building memory from scratch.</h2>
-    <p>FAVA Trails gives your agents crash-safe, governed, auditable memory — so you can focus on what they do with it.</p>
+    <p>FAVA Trails gives your agents durable, governed, auditable memory — so you can focus on what they do with it.</p>
     <div class="cta-buttons">
       <a href="https://github.com/MachineWisdomAI/fava-trails" class="btn btn-primary">View on GitHub</a>
       <a href="https://github.com/MachineWisdomAI/fava-trails/blob/main/docs/fava_trails_faq.md" class="btn btn-secondary">Read the FAQ</a>

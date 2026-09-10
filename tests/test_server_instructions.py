@@ -121,9 +121,12 @@ class TestToolDescriptionEnhancements:
         assert "push_strategy" in desc
         assert "sync" in desc
         assert "does not publish" in desc.lower() or "does not publish local commits" in desc
+        assert "bookmark set main" in desc
+        assert "@-" in desc
         instructions = _build_server_instructions()
         assert "push_strategy: immediate" in instructions
         assert "does not push local commits" in instructions
+        assert "bookmark set main" in instructions
         assert "call `sync` to push to remote" not in instructions
 
     def test_sync_tool_does_not_claim_push(self):
@@ -131,6 +134,8 @@ class TestToolDescriptionEnhancements:
         desc = _get_tool_desc("sync")
         assert "fetch" in desc.lower() or "Fetch" in desc
         assert "does not" in desc.lower() and "push" in desc.lower()
+        assert "bookmark set main" in desc
+        assert "publish before peers" in desc.lower() or "Writers must publish" in desc
 
     def test_recall_contains_scope_discovery(self):
         """recall description must include scope discovery priority order."""

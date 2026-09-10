@@ -116,7 +116,7 @@ unique matching thought from another existing scope and returns `source_trail`.
 - Refine wording: `update_thought`. Replace wrong conclusions: `supersede`
 
 ### Task Completion — MANDATORY
-**`propose_truth` is mandatory for finalized work.** Unpromoted drafts are private authoring records and require explicit authoring mode. Promotion commits locally; publishing to a remote requires `push_strategy: immediate` (auto-push after successful writes) or operator `jj git push`. The `sync` tool only fetches/rebases shared truth and does not push local commits.
+**`propose_truth` is mandatory for finalized work.** Unpromoted drafts are private authoring records and require explicit authoring mode. Promotion commits locally; publishing to a remote requires `push_strategy: immediate` (auto-push after successful writes) or the full manual protocol `jj bookmark set main -r @-` then `jj git push --bookmark main` (completed writes sit at `@-`). The `sync` tool only fetches/rebases shared truth and does not push local commits.
 
 ### Governed Visibility
 Default recall/get returns approved current governed records only. `mode="authoring"`
@@ -499,7 +499,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "propose_truth",
-        "description": "Promote a draft thought to its permanent namespace based on source_type. Moves from drafts/ to decisions/, observations/, etc. This is mandatory for finalized work — unpromoted drafts stay out of default governed recall and are readable only under mode=\"authoring\" for the process-configured identity (shared endpoint = shared identity; filesystem access is operator-trusted). When Trust Gate LLM review is enabled, propose_truth awaits a synchronous single-record rubric review before promotion. Promotion commits locally; remote publication requires push_strategy: immediate (auto-push after successful writes) or operator jj git push. The sync tool only fetches/rebases and does not publish local commits.",
+        "description": "Promote a draft thought to its permanent namespace based on source_type. Moves from drafts/ to decisions/, observations/, etc. This is mandatory for finalized work — unpromoted drafts stay out of default governed recall and are readable only under mode=\"authoring\" for the process-configured identity (shared endpoint = shared identity; filesystem access is operator-trusted). When Trust Gate LLM review is enabled, propose_truth awaits a synchronous single-record rubric review before promotion. Promotion commits locally; remote publication requires push_strategy: immediate (auto-push after successful writes) or the full manual protocol jj bookmark set main -r @- then jj git push --bookmark main (completed writes sit at @-). The sync tool only fetches/rebases and does not publish local commits.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -553,7 +553,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "sync",
-        "description": "Fetch/rebase shared truth from the configured git remote. Does not commit dirty local files and does not publish/push local commits. Under push_strategy: manual (bootstrap default), operators must jj git push (or set push_strategy: immediate for auto-push after writes). Aborts automatically on conflict; blocks on dirty working copy or case-colliding paths.",
+        "description": "Fetch/rebase shared truth from the configured git remote. Does not commit dirty local files and does not publish/push local commits. Writers must publish before peers can fetch. Under push_strategy: manual (bootstrap default), operators must jj bookmark set main -r @- then jj git push --bookmark main (or set push_strategy: immediate for auto-push after writes). Aborts automatically on conflict; blocks on dirty working copy or case-colliding paths.",
         "inputSchema": {
             "type": "object",
             "properties": {

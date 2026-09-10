@@ -354,8 +354,8 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     )
     print(f"  fava-trails-tunnel start --data-repo {target} --profile fava-trails")
     if remote_url:
-        print("\nPush to remote:")
-        print(f"  cd {target} && jj git push -b main")
+        print("\nPush to remote (advance main to latest committed change first):")
+        print(f"  cd {target} && jj bookmark set main -r @- && jj git push --bookmark main")
     print("\nAvailable integrations:")
     print("  fava-trails integrate codev    Set up codev artifact storage with quality gate")
     return 0

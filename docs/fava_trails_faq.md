@@ -185,9 +185,10 @@ FAVA Trails's contribution:
 Each configured agent identity gets its own authoring view. Default governed `recall`/`get_thought` hide unapproved drafts by lifecycle status plus the process-configured author identity — not by cryptographic isolation between concurrent callers. Agents sharing one MCP endpoint share one identity boundary; direct filesystem access to the data repo remains operator-trusted. Coordination of *approved* work still happens through shared truth:
 
 1. Agent A discovers that Feature X improves accuracy by 3%. It promotes this finding through the Trust Gate.
-2. The `sync` tool (or the planned Pull Daemon) propagates the accepted finding to all other agents.
-3. Agent B, which was about to explore Feature X independently, sees the finding in its synced context and redirects its effort elsewhere.
-4. Agent C, which had already started a conflicting hypothesis, sees the conflict surfaced as structured data and can decide how to resolve it.
+2. Agent A's machine must **publish** those local commits before peers can fetch them (`push_strategy: immediate`, or under `manual` the full protocol `jj bookmark set main -r @-` then `jj git push --bookmark main`). The `sync` tool only pulls.
+3. The `sync` tool (or the planned Pull Daemon) fetches/rebases the published finding onto other agents' machines.
+4. Agent B, which was about to explore Feature X independently, sees the finding in its synced context and redirects its effort elsewhere.
+5. Agent C, which had already started a conflicting hypothesis, sees the conflict surfaced as structured data and can decide how to resolve it.
 
 This is eventual consistency with governance — the same pattern that lets teams of thousands of engineers coordinate through a shared monorepo.
 
@@ -225,7 +226,7 @@ The interface characteristics:
 - **Recall results** are pre-formatted as structured JSON with only the fields the agent requested — not a multi-kilobyte raw VCS log dump. Response size scales with hit count, content length, and requested fields; no typical token range is published.
 - **The agent's prompt** contains memory summaries, not version history. Full lineage is available on demand (`include_superseded=True`) but is not included by default.
 
-The design principle: the VCS is an implementation detail that provides crash-safety, auditable history, and change isolation at the substrate layer. The agent interacts with a semantic memory API over one process identity and one current change. The translation layer absorbs the complexity gap between these two interfaces.
+The design principle: the VCS is an implementation detail that provides durable versioned storage, recoverable history, and change isolation at the substrate layer. A successful tool return means the write path finished; interruption can still leave recoverable dirty or incomplete state — not an absolute crash-proof guarantee. The agent interacts with a semantic memory API over one process identity and one current change. The translation layer absorbs the complexity gap between these two interfaces.
 
 ---
 

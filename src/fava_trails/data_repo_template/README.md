@@ -37,8 +37,9 @@ jj status
 jj git fetch
 jj rebase -d main@origin
 
-# Push local commits to GitHub
-jj git push -b main
+# Push local commits to GitHub (completed writes sit at @-; advance main first)
+jj bookmark set main -r @-
+jj git push --bookmark main
 ```
 
 ## Direct commands policy
@@ -59,7 +60,8 @@ git add         # Never — JJ manages the working copy
 ### Allowed (safe operations)
 
 ```bash
-jj git push -b main                          # Push local commits to remote
+jj bookmark set main -r @-                   # advance main to latest committed change (@-)
+jj git push --bookmark main                  # Push local commits to remote
 jj git push --allow-empty-description -b main  # If blocked by empty-description commit
 jj git fetch && jj rebase -d main@origin     # Pull remote changes
 jj log / jj status / jj diff                 # Read-only inspection
@@ -73,7 +75,7 @@ The only file a human operator may edit directly is `trails/trust-gate-prompt.md
 jj describe -m "Update trust gate prompt: <reason>"
 jj new -m "(new change)"
 jj bookmark set main -r @-
-jj git push -b main
+jj git push --bookmark main
 ```
 
 > **Do not skip or reorder steps.** Skipping `jj describe` before `jj new` creates phantom empty commits. Always pass `-m` to `jj new`.
