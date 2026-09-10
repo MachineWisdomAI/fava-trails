@@ -83,3 +83,8 @@ jj git push --bookmark main
 ## How agents interact with this repo
 
 Agents never touch this repo directly. They use the FAVA Trails MCP tools (`save_thought`, `propose_truth`, `recall`, `sync`, etc.), which handle JJ operations internally.
+
+Bootstrap installs agent guides as `AGENTS.md` and `CLAUDE.md` from the packaged
+sources `agents-guide.md` and `claude-code-guide.md` (alternate basenames so
+Hermes agent workspaces can edit the templates; install destination names are
+unchanged).

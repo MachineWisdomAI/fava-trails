@@ -216,15 +216,15 @@ This is the most common objection from engineers who have worked with MemGPT, Go
 
 FAVA Trails addresses this through a **Semantic Translation Layer** that sits between the agent and the VCS substrate.
 
-What the agent sees: token-optimized, JSON-formatted semantic summaries returned through MCP tool calls. Structured recall results with relationship metadata, confidence scores, and supersession status. Clean, parseable, minimal.
+What the agent sees: token-optimized, JSON-formatted structured tool responses returned through MCP calls. Recall returns a fixed payload shape (content, confidence, lifecycle/supersession fields, relationships when requested, and similar). Some tools intentionally include path-like fields in that JSON — for example `diff.files_changed` and `conflicts[].file` — so agents can resolve concrete records. Clean, parseable, minimal relative to raw VCS dumps.
 
-What the agent never sees: raw `jj log` stdout, commit hashes, tree algebra, conflict markers, file paths, or any VCS-specific syntax. The Semantic Translation Layer intercepts every operation, handles the git-backend work inside the MCP server process, and returns only the semantic payload. There is **no published latency or token-size benchmark** for that path; treat speed and response size as workload-dependent, not as product guarantees.
+What the agent never sees: raw `jj log` / `jj op log` stdout, commit-graph algebra, or unparsed conflict-marker dumps. The Semantic Translation Layer intercepts VCS operations inside the MCP server process and returns fixed structured payloads rather than shell transcripts. There is **no published latency or token-size benchmark** for that path; treat speed and response size as workload-dependent, not as product guarantees.
 
 The interface characteristics:
 
 - **VCS operations** (snapshots, commits, and working-copy updates on the repo-wide current change) happen at the file-system level inside the MCP server process. They do not consume agent tokens. The MCP surface does **not** expose branch create/select/merge APIs to agents.
-- **Recall results** are pre-formatted as structured JSON with only the fields the agent requested — not a multi-kilobyte raw VCS log dump. Response size scales with hit count, content length, and requested fields; no typical token range is published.
-- **The agent's prompt** contains memory summaries, not version history. Full lineage is available on demand (`include_superseded=True`) but is not included by default.
+- **Recall results** are a fixed structured JSON payload — there is no field-selection parameter on `recall`. Response size scales with hit count and content length; no typical token range is published.
+- **The agent's prompt** contains memory summaries, not version history. Full lineage is available on demand (`include_superseded=True` under history mode) but is not included by default.
 
 The design principle: the VCS is an implementation detail that provides durable versioned storage, recoverable history, and change isolation at the substrate layer. A successful tool return means the write path finished; interruption can still leave recoverable dirty or incomplete state — not an absolute crash-proof guarantee. The agent interacts with a semantic memory API over one process identity and one current change. The translation layer absorbs the complexity gap between these two interfaces.
 

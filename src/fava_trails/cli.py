@@ -284,16 +284,32 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     (target / "trails").mkdir(exist_ok=True)
     print("[3/6] Created trails/")
 
-    # Copy template files (README.md, CLAUDE.md, trust-gate-prompt.md)
+    # Copy template files (README + agent guides + trust-gate prompt).
+    # Packaged sources use agents-guide.md / claude-code-guide.md so Hermes
+    # agent workspaces can edit them (AGENTS.md/CLAUDE.md basenames are
+    # protected instruction files). Installed data repos still get AGENTS.md
+    # and CLAUDE.md. Fall back to legacy basenames if present.
     template_pkg = importlib_resources.files("fava_trails") / "data_repo_template"
-    for name, dest in [
-        ("README.md", target / "README.md"),
-        ("CLAUDE.md", target / "CLAUDE.md"),
-        ("AGENTS.md", target / "AGENTS.md"),
-        ("trust-gate-prompt.md", target / "trails" / "trust-gate-prompt.md"),
-    ]:
-        src = template_pkg / name
-        dest.write_text(src.read_text())
+
+    def _template_text(*candidates: str) -> str:
+        for name in candidates:
+            src = template_pkg / name
+            if src.is_file():
+                return src.read_text()
+        raise FileNotFoundError(
+            f"data_repo_template missing one of: {', '.join(candidates)}"
+        )
+
+    (target / "README.md").write_text(_template_text("README.md"))
+    (target / "CLAUDE.md").write_text(
+        _template_text("claude-code-guide.md", "CLAUDE.md")
+    )
+    (target / "AGENTS.md").write_text(
+        _template_text("agents-guide.md", "AGENTS.md")
+    )
+    (target / "trails" / "trust-gate-prompt.md").write_text(
+        _template_text("trust-gate-prompt.md")
+    )
     print("[4/6] Created README.md, CLAUDE.md, AGENTS.md, trails/trust-gate-prompt.md")
 
     # Initialize JJ colocated repo

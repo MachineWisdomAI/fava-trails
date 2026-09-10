@@ -247,9 +247,26 @@ def test_bootstrap_creates_structure(tmp_path):
     # Template files copied
     assert (target / "README.md").exists()
     assert (target / "CLAUDE.md").exists()
+    assert (target / "AGENTS.md").exists()
     assert (target / "trails" / "trust-gate-prompt.md").exists()
     assert "FAVA Trails" in (target / "README.md").read_text()
     assert "quality gate" in (target / "trails" / "trust-gate-prompt.md").read_text().lower()
+
+    agents = (target / "AGENTS.md").read_text()
+    assert "semantic search" not in agents.lower()
+    assert "lexical" in agents.lower()
+    assert "substring" in agents.lower()
+    assert "does **not** push" in agents or "does not push" in agents.lower()
+    assert "bookmark set main" in agents
+    assert "@-" in agents
+    assert "invisible to other agents" not in agents
+
+    claude = (target / "CLAUDE.md").read_text()
+    assert "bookmark set main -r @-" in claude
+    assert "jj git push --bookmark main" in claude
+    # no bare short-form push command remaining as a runnable recipe
+    assert "jj git push -b main" not in claude
+    assert claude.index("bookmark set main -r @-") < claude.index("jj git push --bookmark main")
 
     import yaml as _yaml
 
