@@ -3,6 +3,7 @@
 This is not DLP. It refuses a small set of well-known token shapes before
 normal write and promotion paths persist or transmit candidate content,
 including nested caller-controlled metadata and relationships.
+The complete MCP argument object is scanned before logging or lookup.
 It never echoes matched material. It does not erase already-stored records.
 """
 
@@ -120,9 +121,7 @@ def refuse_obvious_secret_in_value(
     if pattern_id is None:
         return
     logger.warning(
-        "secret_preflight blocked pattern=%s persisted_already=%s",
-        pattern_id,
-        persisted_already,
+        "secret_preflight blocked a supported credential pattern before persist or transmit"
     )
     raise ObviousSecretError(pattern_id, persisted_already=persisted_already)
 
@@ -136,14 +135,8 @@ def refuse_obvious_secret(
     refuse_obvious_secret_in_value(text, persisted_already=persisted_already)
 
 
-def refuse_obvious_secret_in_trail_identifiers(arguments: dict[str, object] | None) -> None:
-    """Refuse supported patterns in caller-controlled trail identifiers."""
+def refuse_obvious_secret_in_arguments(arguments: dict[str, object] | None) -> None:
+    """Refuse supported patterns in the complete MCP argument object."""
     if not arguments:
         return
-    payload = {
-        key: arguments[key]
-        for key in ("trail_name", "target_trail_name", "trail_names")
-        if key in arguments
-    }
-    if payload:
-        refuse_obvious_secret_in_value(payload)
+    refuse_obvious_secret_in_value(arguments)

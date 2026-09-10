@@ -547,3 +547,79 @@ async def test_handle_call_tool_blocks_secret_in_target_trail_name(
     still = await trail_manager.get_thought(record.thought_id)
     assert still is not None
     assert still.content == "benign draft body"
+
+
+def test_refuse_warning_log_omits_pattern_id(caplog):
+    caplog.set_level("WARNING")
+    with pytest.raises(ObviousSecretError):
+        refuse_obvious_secret(f"leaked {GITHUB_CANARY}")
+    assert GITHUB_CANARY not in caplog.text
+    assert "github_pat" not in caplog.text
+    assert "pattern=" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_blocks_secret_in_list_scopes_prefix(tmp_fava_home, caplog):
+    from fava_trails import server as fava_server
+
+    caplog.set_level("DEBUG")
+    fava_server._trail_managers.clear()
+    list_scopes = AsyncMock()
+
+    with patch("fava_trails.tools.navigation.handle_list_scopes", list_scopes):
+        result = await fava_server.handle_call_tool("list_scopes", {"prefix": GITHUB_CANARY})
+
+    assert result["status"] == "error"
+    assert "github_pat" in result["message"]
+    assert GITHUB_CANARY not in result["message"]
+    assert GITHUB_CANARY not in caplog.text
+    list_scopes.assert_not_called()
+    _assert_canary_absent_from_tree(tmp_fava_home, GITHUB_CANARY)
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_blocks_secret_in_thought_id_lookup(
+    trail_manager, tmp_fava_home, caplog
+):
+    from fava_trails import server as fava_server
+
+    caplog.set_level("DEBUG")
+    fava_server._trail_managers.clear()
+    get_thought = AsyncMock()
+
+    with patch("fava_trails.tools.thought.handle_get_thought", get_thought):
+        result = await fava_server.handle_call_tool(
+            "get_thought",
+            {"trail_name": trail_manager.trail_name, "thought_id": GITHUB_CANARY},
+        )
+
+    assert result["status"] == "error"
+    assert "github_pat" in result["message"]
+    assert GITHUB_CANARY not in result["message"]
+    assert GITHUB_CANARY not in caplog.text
+    get_thought.assert_not_called()
+    _assert_canary_absent_from_tree(tmp_fava_home, GITHUB_CANARY)
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_blocks_secret_in_diff_revision(
+    trail_manager, tmp_fava_home, caplog
+):
+    from fava_trails import server as fava_server
+
+    caplog.set_level("DEBUG")
+    fava_server._trail_managers.clear()
+    handle_diff = AsyncMock()
+
+    with patch("fava_trails.tools.navigation.handle_diff", handle_diff):
+        result = await fava_server.handle_call_tool(
+            "diff",
+            {"trail_name": trail_manager.trail_name, "revision": GITHUB_CANARY},
+        )
+
+    assert result["status"] == "error"
+    assert "github_pat" in result["message"]
+    assert GITHUB_CANARY not in result["message"]
+    assert GITHUB_CANARY not in caplog.text
+    handle_diff.assert_not_called()
+    _assert_canary_absent_from_tree(tmp_fava_home, GITHUB_CANARY)

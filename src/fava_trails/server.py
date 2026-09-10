@@ -899,7 +899,7 @@ async def handle_list_tools() -> list[Tool]:
 @with_tool_timeout
 async def handle_call_tool(name: str, arguments: dict[str, Any]) -> Any:
     """Route tool calls to handlers. Responses are structured JSON (except get_usage_guide which returns markdown)."""
-    from .secret_preflight import ObviousSecretError, refuse_obvious_secret_in_trail_identifiers
+    from .secret_preflight import ObviousSecretError, refuse_obvious_secret_in_arguments
     from .tools.navigation import (
         handle_conflicts,
         handle_diff,
@@ -921,7 +921,7 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> Any:
     )
 
     try:
-        refuse_obvious_secret_in_trail_identifiers(arguments)
+        refuse_obvious_secret_in_arguments(arguments)
     except ObviousSecretError as exc:
         result = {"status": "error", "message": str(exc)}
         logger.info("Tool call completed: %s %s", name, _summarize_tool_result(result))

@@ -6,23 +6,22 @@ history) on `save_thought`. `propose_truth` then sends the thought body to the
 configured reviewer model and may rewrite rejection metadata onto the same draft.
 
 This preflight is a **bounded, local check** for a small set of high-confidence
-credential shapes. It runs after hook mutation and before normal write and
-promotion paths persist or transmit the candidate, including nested
-caller-controlled metadata and relationships. Caller-controlled trail identifiers
-(`trail_name`, `target_trail_name`, and `trail_names`) are scanned before
-logging, lookup, auto-initialization, persistence, or model requests. After Trust
-Gate review, the assembled record (including reviewer, reasoning, provider, and
-model fields) is scanned again before any governance write. Nested walks that
-exceed depth 32 fail closed; unscanned content is never treated as clean. It is
-not complete DLP, does not rewrite history, and does not delete already-stored
+credential shapes. The complete MCP argument object is scanned before the first
+logger call or any lookup/JJ operation. A second scan runs after hook mutation
+and before normal write and promotion paths persist or transmit the candidate,
+including nested caller-controlled metadata and relationships. After Trust Gate
+review, the assembled record (including reviewer, reasoning, provider, and model
+fields) is scanned again before any governance write. Nested walks that exceed
+depth 32 fail closed; unscanned content is never treated as clean. It is not
+complete DLP, does not rewrite history, and does not delete already-stored
 records.
 
 ## Where candidate content goes
 
 | Step | Stored? | Sent off-box? | Notes |
 | --- | --- | --- | --- |
-| Tool input (`content`, `reason`, metadata, relationships, trail identifiers) | Process memory only until a write succeeds | No | MCP argument logs record lengths for bodies; trail identifiers are scanned before they are logged or used as paths |
-| Preflight reject on save / update / supersede / trail identifier | No new thought file; no new JJ/Git snapshot of the candidate; no canary-bearing trail directory | No | Scans body plus nested caller-controlled strings after hooks, and trail identifiers before log/lookup; safe error names the pattern id only |
+| Tool input (`content`, `reason`, metadata, relationships, identifiers, query/prefix, JJ args) | Process memory only until a write succeeds | No | Complete MCP arguments are scanned before any log or lookup; body logs record lengths only |
+| Preflight reject on save / update / supersede / MCP arguments | No new thought file; no new JJ/Git snapshot of the candidate; no canary-bearing trail directory | No | Scans the full argument object before log/lookup, then body plus nested caller-controlled strings after hooks; safe error names the pattern id only; block logs use a fixed message |
 | `save_thought` success | Draft markdown under `thoughts/drafts/` plus a JJ commit | Only if `push_strategy=immediate` later publishes the repo | This is persistence, not review |
 | `update_thought` / `supersede` success | In-place rewrite or a new draft successor in history | Same as save | Supersede `reason` and copied metadata/relationships are also scanned |
 | `propose_truth` LLM review | Already on disk from the draft | **Yes** — thought body and redacted metadata (`project` / `branch` / `tags`) are in the reviewer user message | Assembled Trust Gate metadata is scanned before write-back; a supported pattern in reviewer/reasoning/provider/model blocks persist and leaves the draft unchanged |
@@ -56,8 +55,8 @@ does not match a supported pattern, or keep it out of thought bodies and metadat
 
 Failures raise `ObviousSecretError` with a pattern id and a fixed explanation.
 They never interpolate the matched text into logs, exceptions, Trust Gate
-reasoning, or MCP messages. For a legacy draft the message also states that the
-existing file was left unchanged.
+reasoning, or MCP messages. Block logs use a fixed warning and omit pattern ids.
+For a legacy draft the message also states that the existing file was left unchanged.
 
 ## Limits
 
