@@ -623,3 +623,69 @@ async def test_handle_call_tool_blocks_secret_in_diff_revision(
     assert GITHUB_CANARY not in caplog.text
     handle_diff.assert_not_called()
     _assert_canary_absent_from_tree(tmp_fava_home, GITHUB_CANARY)
+
+
+@pytest.mark.asyncio
+async def test_call_tool_blocks_secret_in_schema_invalid_limit(tmp_fava_home, caplog):
+    from mcp.types import CallToolRequestParams
+
+    from fava_trails import server as fava_server
+
+    caplog.set_level("DEBUG")
+    fava_server._trail_managers.clear()
+    recall = AsyncMock()
+
+    with patch("fava_trails.tools.recall.handle_recall", recall):
+        result = await fava_server._call_tool(
+            MagicMock(),
+            CallToolRequestParams(
+                name="recall",
+                arguments={"trail_name": "mw/eng/example", "limit": GITHUB_CANARY},
+            ),
+        )
+
+    text = result.content[0].text
+    blob = result.model_dump_json()
+    assert result.is_error is True
+    assert "github_pat" in text
+    assert "Input validation error" not in text
+    assert GITHUB_CANARY not in text
+    assert GITHUB_CANARY not in blob
+    assert GITHUB_CANARY not in caplog.text
+    recall.assert_not_called()
+    _assert_canary_absent_from_tree(tmp_fava_home, GITHUB_CANARY)
+
+
+@pytest.mark.asyncio
+async def test_call_tool_blocks_secret_in_unknown_tool_name(tmp_fava_home, caplog):
+    from mcp.types import CallToolRequestParams
+
+    from fava_trails import server as fava_server
+
+    caplog.set_level("DEBUG")
+    fava_server._trail_managers.clear()
+    inner = AsyncMock()
+
+    with patch.object(fava_server, "handle_call_tool", inner):
+        adapter = await fava_server._call_tool(
+            MagicMock(),
+            CallToolRequestParams(name=GITHUB_CANARY, arguments={"trail_name": "mw/eng/example"}),
+        )
+
+    adapter_text = adapter.content[0].text
+    adapter_blob = adapter.model_dump_json()
+    assert adapter.is_error is True
+    assert "github_pat" in adapter_text
+    assert GITHUB_CANARY not in adapter_text
+    assert GITHUB_CANARY not in adapter_blob
+    inner.assert_not_called()
+
+    direct = await fava_server.handle_call_tool(
+        GITHUB_CANARY, {"trail_name": "mw/eng/example"}
+    )
+    assert direct["status"] == "error"
+    assert "github_pat" in direct["message"]
+    assert GITHUB_CANARY not in direct["message"]
+    assert "Unknown tool" not in direct["message"]
+    assert GITHUB_CANARY not in caplog.text
+    _assert_canary_absent_from_tree(tmp_fava_home, GITHUB_CANARY)

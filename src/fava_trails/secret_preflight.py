@@ -3,7 +3,8 @@
 This is not DLP. It refuses a small set of well-known token shapes before
 normal write and promotion paths persist or transmit candidate content,
 including nested caller-controlled metadata and relationships.
-The complete MCP argument object is scanned before logging or lookup.
+The complete MCP request (tool name plus arguments) is scanned before
+schema validation, logging, or lookup.
 It never echoes matched material. It does not erase already-stored records.
 """
 
@@ -140,3 +141,11 @@ def refuse_obvious_secret_in_arguments(arguments: dict[str, object] | None) -> N
     if not arguments:
         return
     refuse_obvious_secret_in_value(arguments)
+
+
+def refuse_obvious_secret_in_tool_request(
+    name: str | None,
+    arguments: dict[str, object] | None = None,
+) -> None:
+    """Refuse supported patterns in the MCP tool name plus arguments."""
+    refuse_obvious_secret_in_value({"name": name, "arguments": arguments or {}})

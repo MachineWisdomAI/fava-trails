@@ -6,8 +6,9 @@ history) on `save_thought`. `propose_truth` then sends the thought body to the
 configured reviewer model and may rewrite rejection metadata onto the same draft.
 
 This preflight is a **bounded, local check** for a small set of high-confidence
-credential shapes. The complete MCP argument object is scanned before the first
-logger call or any lookup/JJ operation. A second scan runs after hook mutation
+credential shapes. The complete MCP request (tool name plus arguments) is
+scanned at `_call_tool` before JSON Schema validation and at `handle_call_tool`
+before the first logger call or any lookup/JJ operation. A second scan runs after hook mutation
 and before normal write and promotion paths persist or transmit the candidate,
 including nested caller-controlled metadata and relationships. After Trust Gate
 review, the assembled record (including reviewer, reasoning, provider, and model
@@ -20,8 +21,8 @@ records.
 
 | Step | Stored? | Sent off-box? | Notes |
 | --- | --- | --- | --- |
-| Tool input (`content`, `reason`, metadata, relationships, identifiers, query/prefix, JJ args) | Process memory only until a write succeeds | No | Complete MCP arguments are scanned before any log or lookup; body logs record lengths only |
-| Preflight reject on save / update / supersede / MCP arguments | No new thought file; no new JJ/Git snapshot of the candidate; no canary-bearing trail directory | No | Scans the full argument object before log/lookup, then body plus nested caller-controlled strings after hooks; safe error names the pattern id only; block logs use a fixed message |
+| Tool input (`content`, `reason`, metadata, relationships, identifiers, query/prefix, JJ args, tool name) | Process memory only until a write succeeds | No | Complete MCP name plus arguments are scanned before schema validation, log, or lookup; body logs record lengths only |
+| Preflight reject on save / update / supersede / MCP arguments | No new thought file; no new JJ/Git snapshot of the candidate; no canary-bearing trail directory | No | Scans the tool name plus argument object before schema validation or log/lookup, then body plus nested caller-controlled strings after hooks; safe error names the pattern id only; block logs use a fixed message |
 | `save_thought` success | Draft markdown under `thoughts/drafts/` plus a JJ commit | Only if `push_strategy=immediate` later publishes the repo | This is persistence, not review |
 | `update_thought` / `supersede` success | In-place rewrite or a new draft successor in history | Same as save | Supersede `reason` and copied metadata/relationships are also scanned |
 | `propose_truth` LLM review | Already on disk from the draft | **Yes** — thought body and redacted metadata (`project` / `branch` / `tags`) are in the reviewer user message | Assembled Trust Gate metadata is scanned before write-back; a supported pattern in reviewer/reasoning/provider/model blocks persist and leaves the draft unchanged |

@@ -899,7 +899,7 @@ async def handle_list_tools() -> list[Tool]:
 @with_tool_timeout
 async def handle_call_tool(name: str, arguments: dict[str, Any]) -> Any:
     """Route tool calls to handlers. Responses are structured JSON (except get_usage_guide which returns markdown)."""
-    from .secret_preflight import ObviousSecretError, refuse_obvious_secret_in_arguments
+    from .secret_preflight import ObviousSecretError, refuse_obvious_secret_in_tool_request
     from .tools.navigation import (
         handle_conflicts,
         handle_diff,
@@ -921,11 +921,9 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> Any:
     )
 
     try:
-        refuse_obvious_secret_in_arguments(arguments)
+        refuse_obvious_secret_in_tool_request(name, arguments)
     except ObviousSecretError as exc:
-        result = {"status": "error", "message": str(exc)}
-        logger.info("Tool call completed: %s %s", name, _summarize_tool_result(result))
-        return result
+        return {"status": "error", "message": str(exc)}
 
     logger.info("Tool call started: %s %s", name, _summarize_tool_arguments(arguments))
     result: Any
@@ -1127,8 +1125,15 @@ async def _call_tool(ctx: ServerRequestContext, params: CallToolRequestParams) -
     Domain error/blocked dictionaries remain structured results. Invalid schemas
     and unexpected adapter failures are MCP tool errors; cancellation propagates.
     """
-    definition = next((tool for tool in TOOL_DEFINITIONS if tool["name"] == params.name), None)
+    from .secret_preflight import ObviousSecretError, refuse_obvious_secret_in_tool_request
+
     arguments = params.arguments or {}
+    try:
+        refuse_obvious_secret_in_tool_request(params.name, arguments)
+    except ObviousSecretError as exc:
+        return _tool_error(str(exc))
+
+    definition = next((tool for tool in TOOL_DEFINITIONS if tool["name"] == params.name), None)
     if definition is not None:
         try:
             jsonschema.validate(arguments, definition["inputSchema"])
