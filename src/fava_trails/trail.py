@@ -36,6 +36,7 @@ from .models import (
     TrailConfig,
     ValidationStatus,
 )
+from .secret_preflight import refuse_obvious_secret
 from .transactions import persist_governance, recover_governance
 from .trust_gate import TrustResult
 from .vcs.base import RebaseResult, VcsBackend, VcsChange, VcsConflict, VcsDiff, VcsOpLogEntry
@@ -211,6 +212,7 @@ class TrailManager:
         metadata: dict | None = None,
     ) -> ThoughtRecord:
         """Save a new thought. Defaults to drafts/ namespace."""
+        refuse_obvious_secret(content)
         ns = namespace or DEFAULT_NAMESPACE
         sanitize_namespace(ns)  # Validate namespace — prevents path traversal
 
@@ -257,6 +259,7 @@ class TrailManager:
                 ns = pipeline_result.redirect_namespace
             if pipeline_result.event and pipeline_result.event.thought:
                 record = pipeline_result.event.thought
+                refuse_obvious_secret(record.content)
 
         async with self._lock:
             thought_dir = self._thoughts_dir(ns)
@@ -303,6 +306,7 @@ class TrailManager:
         - validation_status is APPROVED, REJECTED, or TOMBSTONED
         - superseded_by is set (thought has been replaced)
         """
+        refuse_obvious_secret(new_content)
         async with self._lock:
             path = self._find_thought_path(thought_id)
             if path is None:
@@ -346,6 +350,8 @@ class TrailManager:
         **kwargs,
     ) -> ThoughtRecord:
         """Propose a corrected successor; the original remains current until approval."""
+        refuse_obvious_secret(new_content)
+        refuse_obvious_secret(reason)
         async with self._lock:
             original_path = self._find_thought_path(original_id)
             if original_path is None:
@@ -520,6 +526,7 @@ class TrailManager:
             if source_path is None:
                 raise ValueError(f"Thought {thought_id} not found")
             record = ThoughtRecord.from_markdown(source_path.read_text())
+            refuse_obvious_secret(record.content, persisted_already=True)
             expected = {source_path: record.model_copy(deep=True)}
             if reviewed_record is not None and reviewed_record != record:
                 raise ValueError("Thought changed during review; re-review before approval")
@@ -547,6 +554,7 @@ class TrailManager:
                     target_ns = pipeline_result.redirect_namespace
                 if pipeline_result.event and pipeline_result.event.thought:
                     record = pipeline_result.event.thought
+                    refuse_obvious_secret(record.content, persisted_already=True)
 
             if trust_result is not None:
                 record.frontmatter.metadata.extra["trust_gate"] = {
@@ -651,6 +659,7 @@ class TrailManager:
 
     async def start_thought(self, description: str = "") -> VcsChange:
         """Begin new reasoning branch from current truth."""
+        refuse_obvious_secret(description)
         async with self._lock:
             return await self.vcs.new_change(description)
 
