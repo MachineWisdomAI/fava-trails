@@ -234,23 +234,24 @@ async def test_baseline_visibility_boundaries(baseline_corpus):
     old_id = baseline_corpus["old_id"]
 
     governed = Visibility(mode="governed")
+    # Complete actual sets (not mere non-membership): both hidden queries return ∅.
     hidden = await manager.recall(query="secret migration", visibility=governed)
-    assert draft_id not in {r.thought_id for r in hidden}
-    assert FIXTURE_DRAFT not in _fixture_labels(hidden)
+    assert _fixture_labels(hidden) == set()
+    assert {r.thought_id for r in hidden} == set()
 
     own = Visibility(mode="authoring", principal=Principal(agent_id="agent-a"))
     own_hits = await manager.recall(query="secret migration", visibility=own)
     assert _fixture_labels(own_hits) == {FIXTURE_DRAFT}
-    assert draft_id in {r.thought_id for r in own_hits}
+    assert {r.thought_id for r in own_hits} == {draft_id}
 
     other = Visibility(mode="authoring", principal=Principal(agent_id="agent-b"))
     other_hits = await manager.recall(query="secret migration", visibility=other)
-    assert draft_id not in {r.thought_id for r in other_hits}
     assert _fixture_labels(other_hits) == set()
+    assert {r.thought_id for r in other_hits} == set()
 
     governed_old = await manager.recall(query="ResNet-50 is optimal", visibility=governed)
-    assert old_id not in {r.thought_id for r in governed_old}
-    assert FIXTURE_SUPERSEDED not in _fixture_labels(governed_old)
+    assert _fixture_labels(governed_old) == set()
+    assert {r.thought_id for r in governed_old} == set()
 
     history = Visibility(
         mode="history",
@@ -258,8 +259,9 @@ async def test_baseline_visibility_boundaries(baseline_corpus):
         include_superseded=True,
     )
     hist = await manager.recall(query="ResNet-50 is optimal", visibility=history)
-    assert old_id in {r.thought_id for r in hist}
-    assert FIXTURE_SUPERSEDED in _fixture_labels(hist)
+    # Complete actual set under history + include_superseded: exactly the predecessor.
+    assert _fixture_labels(hist) == {FIXTURE_SUPERSEDED}
+    assert {r.thought_id for r in hist} == {old_id}
 
 
 @pytest.mark.asyncio

@@ -48,7 +48,7 @@ See [governed-recall.md](governed-recall.md).
 | Field | Value |
 | --- | --- |
 | Product version | `0.6.1` (`pyproject.toml`) — **unreleased** release candidate on this tree / `main`; PyPI and GitHub Releases latest remain **0.6.0** |
-| Git baseline (matrix authoring) | `32b5b8210e61017d5b80a5bc3ebd444c0341121f` (PR #110 repair for review `5161655189` on `automation/fava-trails-100`). Prior SHA rows (`36d6bbb`, `10b937d`) are historical only. |
+| Git baseline (matrix authoring) | Will be pinned to the commit that lands complete visibility sets + FAQ/one-pager honesty repairs for review `5161963110` on `automation/fava-trails-100`. Prior SHA rows (`36d6bbb`, `10b937d`, `32b5b82`, `187f523`) are historical only. |
 | Runner | `uv run pytest tests/test_retrieval_baseline.py -v` |
 | Issue | [#100](https://github.com/MachineWisdomAI/fava-trails/issues/100) |
 
@@ -95,11 +95,11 @@ Legend: **hit** = listed fixture ids present; **miss** = empty fixture-id set;
 | Synonym miss | `release` | governed | `∅` | `∅` | No synonym expansion |
 | Paraphrase miss | `model architecture decisions` | governed | `∅` | `∅` | Reported user-shaped failure mode |
 | Partial synonym | `deploy` | governed | `{synonym-deploy}` | `{synonym-deploy}` | Shared stem/substring in body only |
-| Draft hidden (governed) | `secret migration` | governed | `∅` (no `draft-private`) | `∅` | Unapproved drafts not in default view |
+| Draft hidden (governed) | `secret migration` | governed | `∅` | `∅` | Complete empty set; unapproved drafts not in default view |
 | Own draft (authoring) | `secret migration` | authoring, matching agent | `{draft-private}` | `{draft-private}` | Explicit authoring only |
-| Other draft blocked | `secret migration` | authoring, other agent | `∅` | `∅` | No cross-agent draft read |
-| Superseded hidden | `ResNet-50 is optimal` | governed | `∅` (no `superseded-old`) | `∅` | Default hides predecessor |
-| Superseded visible | `ResNet-50 is optimal` | history + include_superseded | includes `superseded-old` | includes `superseded-old` | Operator archaeology |
+| Other draft blocked | `secret migration` | authoring, other agent | `∅` | `∅` | Complete empty set; no cross-agent draft read |
+| Superseded hidden | `ResNet-50 is optimal` | governed | `∅` | `∅` | Complete empty set; default hides predecessor |
+| Superseded visible | `ResNet-50 is optimal` | history + include_superseded | `{superseded-old}` | `{superseded-old}` | Complete set only; operator archaeology |
 
 ## Measured misses to feed discovery (#59)
 

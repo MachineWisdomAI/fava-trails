@@ -854,7 +854,7 @@
             <td class="cross">✗</td>
           </tr>
           <tr>
-            <td>Trust Gate (gated merge)</td>
+            <td>Trust Gate (gated promotion)</td>
             <td class="check fava-col">✓ Built-in</td>
             <td class="cross">✗</td>
             <td class="partial">Custom workflow</td>
@@ -993,7 +993,7 @@
     </div>
 
     <h2 style="margin-top: 2.5rem;">No VCS overhead in your agent's context window</h2>
-    <p>Agents never see raw VCS stdout, commit hashes, or tree algebra. A <strong style="color: var(--accent);">Semantic Translation Layer</strong> intercepts every operation: the MCP server handles git-backend work locally at sub-second latency, then returns token-optimized, JSON-formatted semantic summaries to the agent. Your agent gets structured recall results — not a <code style="font-family: var(--mono); font-size: 0.85em; color: var(--text-dim);">jj log</code> dump.</p>
+    <p>Agents never see raw VCS stdout, commit hashes, or tree algebra. A <strong style="color: var(--accent);">Semantic Translation Layer</strong> intercepts every operation: the MCP server handles git-backend work inside the process and returns token-optimized, JSON-formatted semantic summaries to the agent. Latency and response size are workload-dependent with <strong>no published benchmark</strong>. Your agent gets structured recall results — not a <code style="font-family: var(--mono); font-size: 0.85em; color: var(--text-dim);">jj log</code> dump. Trust Gate is gated <em>promotion</em> of records, not a merge API.</p>
   </section>
 
   <!-- EVIDENCE -->

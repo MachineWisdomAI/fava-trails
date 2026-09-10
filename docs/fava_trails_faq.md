@@ -217,12 +217,12 @@ FAVA Trails addresses this through a **Semantic Translation Layer** that sits be
 
 What the agent sees: token-optimized, JSON-formatted semantic summaries returned through MCP tool calls. Structured recall results with relationship metadata, confidence scores, and supersession status. Clean, parseable, minimal.
 
-What the agent never sees: raw `jj log` stdout, commit hashes, tree algebra, conflict markers, file paths, or any VCS-specific syntax. The Semantic Translation Layer intercepts every operation, handles the git-backend overhead locally (sub-second latency on local disk), and returns only the semantic payload.
+What the agent never sees: raw `jj log` stdout, commit hashes, tree algebra, conflict markers, file paths, or any VCS-specific syntax. The Semantic Translation Layer intercepts every operation, handles the git-backend work inside the MCP server process, and returns only the semantic payload. There is **no published latency or token-size benchmark** for that path; treat speed and response size as workload-dependent, not as product guarantees.
 
-The performance characteristics:
+The interface characteristics:
 
 - **VCS operations** (snapshots, commits, and working-copy updates on the repo-wide current change) happen at the file-system level inside the MCP server process. They do not consume agent tokens. The MCP surface does **not** expose branch create/select/merge APIs to agents.
-- **Recall results** are pre-formatted as structured JSON with only the fields the agent requested. A typical recall response is 200-500 tokens, not a multi-kilobyte log dump.
+- **Recall results** are pre-formatted as structured JSON with only the fields the agent requested — not a multi-kilobyte raw VCS log dump. Response size scales with hit count, content length, and requested fields; no typical token range is published.
 - **The agent's prompt** contains memory summaries, not version history. Full lineage is available on demand (`include_superseded=True`) but is not included by default.
 
 The design principle: the VCS is an implementation detail that provides crash-safety, auditable history, and change isolation at the substrate layer. The agent interacts with a semantic memory API over one process identity and one current change. The translation layer absorbs the complexity gap between these two interfaces.
@@ -241,39 +241,37 @@ The MCP abstraction layer is thick enough that the VCS substrate can be swapped 
 
 ### What is the data model?
 
-Memories are called **Thoughts**. Each thought is an immutable Markdown file with structured YAML frontmatter:
+Memories are called **Thoughts**. Each thought is a Markdown file with structured YAML frontmatter. The example below is an **actual** `ThoughtRecord.to_markdown()` serialization (`model_dump(..., exclude_none=True)`): null optional fields are omitted, and nested `metadata.extra` defaults to `{}`.
 
 ```yaml
 ---
 schema_version: 1
-thought_id: "01JMKR3V8GQZX4N7P2WDCB5HYT"
-parent_id: null
-superseded_by: null
-agent_id: "agent-alpha"
-confidence: 0.85
-source_type: "decision"
-validation_status: "approved"
-intent_ref: "01JMKP5T3GNHW7L4J9YBZC2FRX"
-created_at: "2026-02-19T12:00:00Z"
+thought_id: 01JMKR3V8GQZX4N7P2WDCB5HYT
+agent_id: claude-code
+confidence: 0.9
+source_type: decision
+validation_status: approved
+created_at: '2026-02-19T12:00:00Z'
 relationships:
-  - type: "DEPENDS_ON"
-    target_id: "01JMKQ9F4RPBN2M6K8XDYA3GSW"
-  - type: "REVISED_BY"
-    target_id: "01JMKS7Y2HPQW5M8R3XECF6JZV"
+- type: DEPENDS_ON
+  target_id: 01JMKQ8W7FNRY3K6P1VDBA4GXS
 metadata:
-  project: "acme-ml"
-  tags: ["architecture", "model-selection"]
+  project: my-project
+  branch: main
+  tags:
+  - architecture
+  extra: {}
 ---
-
-# Decision: Use ViT-Large for image classification
-
-After testing ResNet-50 (see 01JMKQ9F4R...), we observed 3% accuracy improvement
-with ViT-Large at acceptable inference latency...
+After evaluating ResNet-50 and ViT-Large on the customer dataset, we selected ViT-Large for production inference.
 ```
 
 Field names match the runtime `ThoughtFrontmatter` / `ThoughtRecord.to_markdown()` schema (`thought_id`, `source_type`, `agent_id`, lifecycle fields, nested `metadata`). The on-disk path namespace (for example `thoughts/decisions/`) is **not** a top-level frontmatter key and is **not** multi-tenant isolation.
 
-Thoughts are append-only (immutable content, one exception: the `superseded_by` backlink). This prevents merge conflicts on content edits. When a thought needs correction, a new thought is created that supersedes the old one.
+Thoughts are **not** globally immutable. Lifecycle behavior:
+
+- **Draft / proposed (authoring):** `update_thought` may replace body content in place (same ULID). Frontmatter identity fields stay; status and path still change on promotion or rejection.
+- **Terminal content freeze:** once `validation_status` is `approved`, `rejected`, or `tombstoned`, or once `superseded_by` is set, **body content** cannot be rewritten via `update_thought`.
+- **Lifecycle metadata still mutates** on durable transitions: promotion/rejection update status and approval provenance and may move the file path; supersession approval installs the predecessor `superseded_by` backlink and related lineage fields. Corrections to a frozen claim create a **new** draft successor via `supersede`, not an in-place body edit.
 
 ### What's on the roadmap?
 
