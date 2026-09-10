@@ -134,3 +134,16 @@ def refuse_obvious_secret(
 ) -> None:
     """Raise ObviousSecretError when a supported pattern is present."""
     refuse_obvious_secret_in_value(text, persisted_already=persisted_already)
+
+
+def refuse_obvious_secret_in_trail_identifiers(arguments: dict[str, object] | None) -> None:
+    """Refuse supported patterns in caller-controlled trail identifiers."""
+    if not arguments:
+        return
+    payload = {
+        key: arguments[key]
+        for key in ("trail_name", "target_trail_name", "trail_names")
+        if key in arguments
+    }
+    if payload:
+        refuse_obvious_secret_in_value(payload)

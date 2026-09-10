@@ -38,6 +38,12 @@ def _assert_canary_absent(root: Path, canary: str) -> None:
     assert hits == [], f"canary leaked into {hits}"
 
 
+def _assert_canary_absent_from_tree(root: Path, canary: str) -> None:
+    path_hits = [str(path) for path in root.rglob("*") if canary in str(path)]
+    assert path_hits == [], f"canary leaked into paths {path_hits}"
+    _assert_canary_absent(root, canary)
+
+
 def test_finds_supported_high_confidence_patterns():
     cases = {
         "aws_access_key_id": f"token {AWS_CANARY} here",
@@ -437,3 +443,107 @@ async def test_propose_truth_blocks_secret_in_approve_trust_result(
     assert still.frontmatter.validation_status == ValidationStatus.DRAFT
     _assert_canary_absent(tmp_fava_home, OPENAI_CANARY)
     assert OPENAI_CANARY not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_blocks_secret_in_trail_name_before_log_or_init(
+    tmp_fava_home, caplog
+):
+    from fava_trails import server as fava_server
+
+    caplog.set_level("DEBUG")
+    fava_server._trail_managers.clear()
+    review = AsyncMock()
+
+    with patch("fava_trails.tools.navigation.review_thought", review):
+        result = await fava_server.handle_call_tool(
+            "start_thought",
+            {"trail_name": GITHUB_CANARY, "description": "benign start"},
+        )
+
+    assert result["status"] == "error"
+    assert "github_pat" in result["message"]
+    assert GITHUB_CANARY not in result["message"]
+    assert GITHUB_CANARY not in caplog.text
+    review.assert_not_called()
+    _assert_canary_absent_from_tree(tmp_fava_home, GITHUB_CANARY)
+    assert not (tmp_fava_home / "trails" / GITHUB_CANARY).exists()
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_blocks_secret_in_trail_name_on_read_tool(
+    tmp_fava_home, caplog
+):
+    from fava_trails import server as fava_server
+
+    caplog.set_level("DEBUG")
+    fava_server._trail_managers.clear()
+
+    result = await fava_server.handle_call_tool(
+        "recall",
+        {"trail_name": GITHUB_CANARY, "query": "status"},
+    )
+
+    assert result["status"] == "error"
+    assert "github_pat" in result["message"]
+    assert GITHUB_CANARY not in result["message"]
+    assert GITHUB_CANARY not in caplog.text
+    _assert_canary_absent_from_tree(tmp_fava_home, GITHUB_CANARY)
+    assert not (tmp_fava_home / "trails" / GITHUB_CANARY).exists()
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_blocks_secret_in_trail_names(
+    trail_manager, tmp_fava_home, caplog
+):
+    from fava_trails import server as fava_server
+
+    caplog.set_level("DEBUG")
+    fava_server._trail_managers.clear()
+
+    result = await fava_server.handle_call_tool(
+        "recall",
+        {
+            "trail_name": trail_manager.trail_name,
+            "query": "status",
+            "trail_names": [GITHUB_CANARY],
+        },
+    )
+
+    assert result["status"] == "error"
+    assert "github_pat" in result["message"]
+    assert GITHUB_CANARY not in result["message"]
+    assert GITHUB_CANARY not in caplog.text
+    _assert_canary_absent_from_tree(tmp_fava_home, GITHUB_CANARY)
+    assert not (tmp_fava_home / "trails" / GITHUB_CANARY).exists()
+
+
+@pytest.mark.asyncio
+async def test_handle_call_tool_blocks_secret_in_target_trail_name(
+    trail_manager, tmp_fava_home, caplog
+):
+    from fava_trails import server as fava_server
+
+    caplog.set_level("DEBUG")
+    fava_server._trail_managers.clear()
+    record = await trail_manager.save_thought(content="benign draft body", agent_id="test-agent")
+
+    result = await fava_server.handle_call_tool(
+        "change_scope",
+        {
+            "trail_name": trail_manager.trail_name,
+            "thought_id": record.thought_id,
+            "content": "rewritten for a broader audience",
+            "target_trail_name": GITHUB_CANARY,
+            "reason": "elevate without a credential",
+        },
+    )
+
+    assert result["status"] == "error"
+    assert "github_pat" in result["message"]
+    assert GITHUB_CANARY not in result["message"]
+    assert GITHUB_CANARY not in caplog.text
+    _assert_canary_absent_from_tree(tmp_fava_home, GITHUB_CANARY)
+    still = await trail_manager.get_thought(record.thought_id)
+    assert still is not None
+    assert still.content == "benign draft body"
