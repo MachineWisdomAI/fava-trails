@@ -1,7 +1,8 @@
 """Bounded preflight for high-confidence credential patterns.
 
 This is not DLP. It refuses a small set of well-known token shapes before
-normal write and promotion paths persist or transmit candidate content.
+normal write and promotion paths persist or transmit candidate content,
+including nested caller-controlled metadata and relationships.
 It never echoes matched material. It does not erase already-stored records.
 """
 
@@ -64,13 +65,44 @@ def find_obvious_secret(text: str | None) -> str | None:
     return None
 
 
-def refuse_obvious_secret(
-    text: str | None,
+def find_obvious_secret_in_value(value: object) -> str | None:
+    """Return the first matching pattern id in nested caller-controlled data."""
+
+    def walk(node: object, depth: int) -> str | None:
+        if depth > 32 or node is None or isinstance(node, (bool, int, float)):
+            return None
+        if isinstance(node, str):
+            return find_obvious_secret(node)
+        if isinstance(node, dict):
+            for key, item in node.items():
+                found = walk(key, depth + 1)
+                if found:
+                    return found
+                found = walk(item, depth + 1)
+                if found:
+                    return found
+            return None
+        if isinstance(node, (list, tuple, set)):
+            for item in node:
+                found = walk(item, depth + 1)
+                if found:
+                    return found
+            return None
+        dump = getattr(node, "model_dump", None)
+        if callable(dump):
+            return walk(dump(mode="json"), depth + 1)
+        return None
+
+    return walk(value, 0)
+
+
+def refuse_obvious_secret_in_value(
+    value: object,
     *,
     persisted_already: bool = False,
 ) -> None:
-    """Raise ObviousSecretError when a supported pattern is present."""
-    pattern_id = find_obvious_secret(text)
+    """Raise ObviousSecretError when a supported pattern is present in nested data."""
+    pattern_id = find_obvious_secret_in_value(value)
     if pattern_id is None:
         return
     logger.warning(
@@ -79,3 +111,12 @@ def refuse_obvious_secret(
         persisted_already,
     )
     raise ObviousSecretError(pattern_id, persisted_already=persisted_already)
+
+
+def refuse_obvious_secret(
+    text: str | None,
+    *,
+    persisted_already: bool = False,
+) -> None:
+    """Raise ObviousSecretError when a supported pattern is present."""
+    refuse_obvious_secret_in_value(text, persisted_already=persisted_already)

@@ -36,7 +36,7 @@ from .models import (
     TrailConfig,
     ValidationStatus,
 )
-from .secret_preflight import refuse_obvious_secret
+from .secret_preflight import refuse_obvious_secret, refuse_obvious_secret_in_value
 from .transactions import persist_governance, recover_governance
 from .trust_gate import TrustResult
 from .vcs.base import RebaseResult, VcsBackend, VcsChange, VcsConflict, VcsDiff, VcsOpLogEntry
@@ -213,6 +213,15 @@ class TrailManager:
     ) -> ThoughtRecord:
         """Save a new thought. Defaults to drafts/ namespace."""
         refuse_obvious_secret(content)
+        refuse_obvious_secret_in_value(
+            {
+                "agent_id": agent_id,
+                "parent_id": parent_id,
+                "intent_ref": intent_ref,
+                "relationships": relationships,
+                "metadata": metadata,
+            }
+        )
         ns = namespace or DEFAULT_NAMESPACE
         sanitize_namespace(ns)  # Validate namespace — prevents path traversal
 
@@ -259,7 +268,8 @@ class TrailManager:
                 ns = pipeline_result.redirect_namespace
             if pipeline_result.event and pipeline_result.event.thought:
                 record = pipeline_result.event.thought
-                refuse_obvious_secret(record.content)
+
+        refuse_obvious_secret_in_value(record.model_dump(mode="json"))
 
         async with self._lock:
             thought_dir = self._thoughts_dir(ns)
@@ -328,6 +338,7 @@ class TrailManager:
 
             # Replace content only — frontmatter loaded from disk and re-serialized verbatim
             record.content = new_content
+            refuse_obvious_secret_in_value(record.model_dump(mode="json"))
             path.write_text(record.to_markdown())
 
             namespace = self._get_namespace_from_path(path)
@@ -375,6 +386,7 @@ class TrailManager:
                 ),
                 content=new_content,
             )
+            refuse_obvious_secret_in_value(new_record.model_dump(mode="json"))
             new_path = dest._thought_path(new_record.thought_id, "drafts")
             await persist_governance(
                 self.vcs, {new_path: new_record.to_markdown()},
@@ -526,7 +538,9 @@ class TrailManager:
             if source_path is None:
                 raise ValueError(f"Thought {thought_id} not found")
             record = ThoughtRecord.from_markdown(source_path.read_text())
-            refuse_obvious_secret(record.content, persisted_already=True)
+            refuse_obvious_secret_in_value(
+                record.model_dump(mode="json"), persisted_already=True
+            )
             expected = {source_path: record.model_copy(deep=True)}
             if reviewed_record is not None and reviewed_record != record:
                 raise ValueError("Thought changed during review; re-review before approval")
@@ -554,7 +568,9 @@ class TrailManager:
                     target_ns = pipeline_result.redirect_namespace
                 if pipeline_result.event and pipeline_result.event.thought:
                     record = pipeline_result.event.thought
-                    refuse_obvious_secret(record.content, persisted_already=True)
+                refuse_obvious_secret_in_value(
+                    record.model_dump(mode="json"), persisted_already=True
+                )
 
             if trust_result is not None:
                 record.frontmatter.metadata.extra["trust_gate"] = {
