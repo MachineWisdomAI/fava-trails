@@ -76,7 +76,7 @@ This downloads the model, runs a test compression, and reports the HuggingFace c
 
 Three critical differences.
 
-**Crash-proof by design.** Git maintains a "dirty working copy" between explicit commits. If your agent crashes, that uncommitted work is lost. FAVA Trails's architecture requires automatic persistence — every state change is durably written before the operation returns. There is no concept of unsaved work.
+**Durable by design (not crash-atomic).** Git can leave a dirty working copy between explicit commits. FAVA Trails aims to persist each successful tool operation before return: the thought file is written and the JJ commit path is awaited. That is stronger than leaving work only in an editor buffer, but it is **not** a guarantee that every multi-step write is a single atomic transaction or that interruption never leaves recoverable dirty/incomplete state — file write still precedes several awaited JJ operations.
 
 **Conflict-tolerant storage.** Git blocks operations when conflicts occur. An agent cannot stop to resolve merge conflicts. FAVA Trails requires that contradictory beliefs be storable as structured data — the system records the conflict as a first-class artifact for later resolution rather than halting the agent's workflow.
 
@@ -233,9 +233,9 @@ The design principle: the VCS is an implementation detail that provides crash-sa
 
 ### What VCS does FAVA Trails use under the hood?
 
-The current implementation uses JJ (Jujutsu) with a colocated Git backend. The PRD is deliberately substrate-agnostic — it defines *capability requirements* (crash-proof persistence, conflict-tolerant storage, persistent identity, atomic operations) rather than prescribing a specific tool.
+The current implementation uses JJ (Jujutsu) with a colocated Git backend. The PRD is deliberately substrate-agnostic — it defines *capability requirements* (durable persistence before successful return, conflict-tolerant storage, persistent identity, commit-backed operations) rather than prescribing a specific tool.
 
-JJ was selected for the MVP because it provides automatic snapshotting (crash-proof), first-class algebraic conflicts (conflict-tolerant), stable Change-IDs (persistent identity), and Git-compatible storage (ecosystem portability). The tradeoffs are documented in the *Architectural Choices* comparison analysis.
+JJ was selected for the MVP because it provides automatic snapshotting (durable working-copy snapshots), first-class algebraic conflicts (conflict-tolerant), stable Change-IDs (persistent identity), and Git-compatible storage (ecosystem portability). The tradeoffs are documented in the *Architectural Choices* comparison analysis.
 
 The MCP abstraction layer is thick enough that the VCS substrate can be swapped without changing the agent-facing API. Agents call `save_thought` and `recall`, not `jj commit` or `git push`.
 
@@ -275,7 +275,7 @@ Thoughts are **not** globally immutable. Lifecycle behavior:
 
 ### What's on the roadmap?
 
-**Current unreleased tree (0.6.1 release candidate on `main` / this docs branch):** Versioned thought store with crash-proof persistence, governed/authoring/history visibility (process-configured identity; #72/#93), Trust Gate LLM review plus per-call operator `approval="human"` provenance, supersession lineage, MCP integration, lexical `recall`, 1-hop relationship expansion, local Rich Views reader. **Not on PyPI yet** — GitHub/PyPI latest remain **0.6.0**. Confirm the loaded runtime with `fava-trails version` (see [runtime-and-upgrade.md](runtime-and-upgrade.md)).
+**Current unreleased tree (0.6.1 release candidate on `main` / this docs branch):** Versioned thought store with durable persistence before successful return (interruptions can still leave recoverable dirty/incomplete state), governed/authoring/history visibility (process-configured identity; #72/#93), Trust Gate LLM review plus per-call operator `approval="human"` provenance, supersession lineage, MCP integration, lexical `recall`, 1-hop relationship expansion, local Rich Views reader. **Not on PyPI yet** — GitHub/PyPI latest remain **0.6.0**. Confirm the loaded runtime with `fava-trails version` (see [runtime-and-upgrade.md](runtime-and-upgrade.md)).
 
 **Published 0.6.0 (what `pip install fava-trails` still resolves):** Trust Gate provider-neutral LLM config and related runtime fields shipped; **does not** include the later governed-read isolation / MCP registration fixes that identify as 0.6.1 on `main`. Do not assume 0.6.0 draft/authoring behavior matches this FAQ’s governed visibility model.
 

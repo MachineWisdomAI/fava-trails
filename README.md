@@ -8,7 +8,7 @@
 
 **Federated Agents Versioned Audit Trail** — Git-native, curated memory for AI agents via MCP.
 
-Every thought, decision, and observation is stored as a markdown file with YAML frontmatter in a Git repo you control, with crash-proof persistence and a versioned audit trail. Agents interact through [MCP](https://modelcontextprotocol.io/) tools — they never see VCS commands.
+Every thought, decision, and observation is stored as a markdown file with YAML frontmatter in a Git repo you control, with durable persistence and a versioned audit trail. Agents interact through [MCP](https://modelcontextprotocol.io/) tools — they never see VCS commands.
 
 ## Governed recall
 
@@ -40,14 +40,14 @@ For a long-lived private ChatGPT connection, follow the deployment-neutral
 - **Trust Gate** — default policy is `llm-oneshot` (synchronous single-record rubric review). Non-LLM promotion is **not** a config toggle: on an operator endpoint use `propose_truth(..., approval="human")`. Rubric review is process control with limited context — **not** independent verification of project facts, and not a guarantee that hallucinations never enter shared truth.
 - **Lexical recall** — `recall` matches lowercased whitespace-separated query tokens as substrings across content and selected metadata (AND). It is not semantic similarity search. See [docs/retrieval-baseline.md](docs/retrieval-baseline.md).
 - **Full lineage** — every thought carries who wrote it, when, and why it changed.
-- **Crash-proof** — every write is an atomic commit. No unsaved work.
+- **Durable writes** — a successful tool return means the thought file and JJ commit path finished for that operation. File write still precedes several awaited JJ steps, so interruption can leave a recoverable dirty or incomplete working copy; it is not a guarantee of fully atomic multi-step commits or “no dirty working copy.”
 - **Engine/Fuel split** — this repo is the engine MCP process (retains managers/hooks in memory; durable corpus is not embedded). Your data lives in a separate Fuel repo you control.
 
 ## Install
 
 ### Prerequisites
 
-FAVA Trails uses [Jujutsu (JJ)](https://jj-vcs.github.io/jj/) as its storage engine, running in colocate mode alongside Git. Your repo remains a standard Git repo (GitHub and CI/CD see normal commits; pushes go through the `sync` MCP tool or `jj git push`). One-time install:
+FAVA Trails uses [Jujutsu (JJ)](https://jj-vcs.github.io/jj/) as its storage engine, running in colocate mode alongside Git. Your repo remains a standard Git repo (GitHub and CI/CD see normal commits). Publishing local commits uses `push_strategy: immediate` (auto-push after successful writes) or operator `jj git push`. The `sync` MCP tool only fetches/rebases shared truth — it does not push. One-time install:
 
 ```bash
 fava-trails install-jj
@@ -119,7 +119,11 @@ Add to your MCP client config:
 - **Claude Code CLI**: `~/.claude.json` (top-level `mcpServers` key)
 - **Claude Desktop**: `claude_desktop_config.json`
 
-**If installed from PyPI:**
+Authoring endpoints must set a stable process identity (`FAVA_TRAILS_AGENT_ID`).
+Without it the server rejects writes. Omit the identity only for deliberate
+read-only / governed-read setups.
+
+**If installed from PyPI (authoring):**
 
 ```json
 {
@@ -128,6 +132,7 @@ Add to your MCP client config:
       "command": "fava-trails-server",
       "env": {
         "FAVA_TRAILS_DATA_REPO": "/path/to/fava-trails-data",
+        "FAVA_TRAILS_AGENT_ID": "claude-code",
         "OPENROUTER_API_KEY": "sk-or-v1-..."
       }
     }
@@ -135,7 +140,7 @@ Add to your MCP client config:
 }
 ```
 
-**If installed from source:**
+**If installed from source (authoring):**
 
 ```json
 {
@@ -146,6 +151,7 @@ Add to your MCP client config:
       "args": ["run", "--directory", "/path/to/fava-trails", "fava-trails-server"],
       "env": {
         "FAVA_TRAILS_DATA_REPO": "/path/to/fava-trails-data",
+        "FAVA_TRAILS_AGENT_ID": "claude-code",
         "OPENROUTER_API_KEY": "sk-or-v1-..."
       }
     }
@@ -153,7 +159,7 @@ Add to your MCP client config:
 }
 ```
 
-For Claude Desktop on Windows (accessing WSL):
+For Claude Desktop on Windows (accessing WSL, authoring):
 
 ```json
 {
@@ -162,14 +168,14 @@ For Claude Desktop on Windows (accessing WSL):
       "command": "wsl.exe",
       "args": [
         "-e", "bash", "-lc",
-        "FAVA_TRAILS_DATA_REPO=/path/to/fava-trails-data OPENROUTER_API_KEY=sk-or-v1-... fava-trails-server"
+        "FAVA_TRAILS_DATA_REPO=/path/to/fava-trails-data FAVA_TRAILS_AGENT_ID=claude-code OPENROUTER_API_KEY=sk-or-v1-... fava-trails-server"
       ]
     }
   }
 }
 ```
 
-**OpenAI Codex CLI**: `~/.codex/config.toml`
+**OpenAI Codex CLI** (authoring): `~/.codex/config.toml`
 
 ```toml
 [mcp_servers.fava-trails]
@@ -177,10 +183,11 @@ command = "fava-trails-server"
 
 [mcp_servers.fava-trails.env]
 FAVA_TRAILS_DATA_REPO = "/path/to/fava-trails-data"
+FAVA_TRAILS_AGENT_ID = "codex-cli"
 OPENROUTER_API_KEY = "sk-or-v1-..."
 ```
 
-**Other MCP clients** (Crush, OpenCode, etc.): check your client's MCP config docs — most accept this JSON format:
+**Other MCP clients** (Crush, OpenCode, etc.): check your client's MCP config docs — most accept this JSON format (authoring):
 
 ```json
 {
@@ -190,6 +197,7 @@ OPENROUTER_API_KEY = "sk-or-v1-..."
       "command": "fava-trails-server",
       "env": {
         "FAVA_TRAILS_DATA_REPO": "/path/to/fava-trails-data",
+        "FAVA_TRAILS_AGENT_ID": "my-agent",
         "OPENROUTER_API_KEY": "sk-or-v1-..."
       }
     }
@@ -225,7 +233,15 @@ Generate a private, read-only dashboard from a FAVA scope and its descendants, t
 
 ## Cross-Machine Sync
 
-FAVA Trails uses git remotes for cross-machine sync. The `fava-trails bootstrap` command sets `push_strategy: immediate` which auto-pushes after every write.
+FAVA Trails uses git remotes for cross-machine sync. `fava-trails bootstrap` writes `push_strategy: manual` by default — local commits stay local until you publish them. Publishing is **not** what the `sync` MCP tool does:
+
+| Path | Behavior |
+|------|----------|
+| `push_strategy: immediate` | After each successful write, the server advances `main` and runs `jj git push` (push failures are non-fatal warnings). |
+| `push_strategy: manual` (bootstrap default) | No auto-push. Operator must `jj bookmark set main -r @-` then `jj git push --bookmark main` (or set `immediate`). |
+| `sync` MCP tool | Fetches/rebases from the remote only. Does **not** commit dirty local files and does **not** publish local commits. |
+
+For multi-machine authoring, set `push_strategy: immediate` in the data repo `config.yaml` (or publish manually after writes). Peers still call `sync` to pull.
 
 ### Setting up a second machine
 
@@ -239,10 +255,10 @@ fava-trails install-jj
 # 3. Clone the SAME data repo (handles colocated mode + bookmark tracking)
 fava-trails clone https://github.com/YOUR-ORG/fava-trails-data.git fava-trails-data
 
-# 4. Register MCP (same config as above, with local paths)
+# 4. Register MCP (same config as above, with local paths + FAVA_TRAILS_AGENT_ID)
 ```
 
-Both machines push/pull through the same git remote. Use the `sync` MCP tool to pull latest thoughts from other machines.
+Both machines share the same git remote. The writing machine must publish (`immediate` or manual `jj git push`); the reading machine calls `sync` to fetch/rebase.
 
 ### ChatGPT tunnel freshness
 
@@ -304,9 +320,9 @@ fava-trails cleanup-empty-scopes --scope mw/headspace --scope mw
 fava-trails cleanup-empty-scopes --scope mw/headspace --scope mw --apply
 ```
 
-### Manual push (if auto-push is off)
+### Manual push (required when `push_strategy: manual`)
 
-> **Note:** Most users never need these commands. The `sync` MCP tool and `push_strategy: immediate` handle everything automatically. These are for advanced manual intervention only.
+Bootstrap defaults to `manual`. Under that setting, approved local records stay on the writing machine until an operator publishes. The `sync` tool will not push them.
 
 ```bash
 cd /path/to/fava-trails-data
@@ -314,7 +330,7 @@ jj bookmark set main -r @-
 jj git push --bookmark main
 ```
 
-**NEVER use `git push origin main`** after JJ colocates — it misses thought commits. See [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md#pushing-to-remote) for the correct protocol.
+Prefer setting `push_strategy: immediate` for multi-machine authoring so successful writes auto-publish. **NEVER use `git push origin main`** after JJ colocates — it misses thought commits. See [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md#pushing-to-remote).
 
 ## Architecture
 
@@ -361,7 +377,7 @@ push_strategy: manual       # manual | immediate
 
 The standard per-machine config overrides only Trust Gate runtime fields. Repository settings such as `trails_dir`, `remote_url`, `push_strategy`, hooks, and trail definitions remain owned by the data repo. Effective precedence is machine config, then data-repo config, then defaults.
 
-When `push_strategy: immediate`, the server auto-pushes after every successful write. Push failures are non-fatal.
+When `push_strategy: immediate`, the server auto-pushes after every successful write. Push failures are non-fatal. When `manual` (bootstrap default), writes commit locally only; use the manual `jj git push` protocol above. The `sync` tool never substitutes for push.
 
 See [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) for full config reference including trust gate and per-trail overrides.
 

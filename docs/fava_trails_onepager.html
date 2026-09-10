@@ -796,7 +796,7 @@
         <div class="flow-dot">1</div>
         <div class="flow-content">
           <h3>Draft Isolation</h3>
-          <p>Each ordinary MCP process has one operator-configured identity (<code style="font-family: var(--mono); font-size: 0.85em;">FAVA_TRAILS_AGENT_ID</code>), not automatic per-agent branch allocation. Drafts are crash-proof and queryable under explicit <code style="font-family: var(--mono); font-size: 0.85em;">mode="authoring"</code> for that identity only. Default governed reads hide unapproved drafts by lifecycle and process identity — not cryptographic per-caller isolation. Callers on one MCP endpoint share one identity; direct filesystem access remains operator-trusted. No "dirty working copy" — every state change is persisted before the operation returns.</p>
+          <p>Each ordinary MCP process has one operator-configured identity (<code style="font-family: var(--mono); font-size: 0.85em;">FAVA_TRAILS_AGENT_ID</code>), not automatic per-agent branch allocation. Drafts are queryable under explicit <code style="font-family: var(--mono); font-size: 0.85em;">mode="authoring"</code> for that identity only. Default governed reads hide unapproved drafts by lifecycle and process identity — not cryptographic per-caller isolation. Callers on one MCP endpoint share one identity; direct filesystem access remains operator-trusted. A successful tool return means the write path finished for that operation; interruption can still leave recoverable dirty or incomplete state because file write precedes several awaited JJ steps.</p>
         </div>
       </div>
       <div class="flow-step">
@@ -957,17 +957,18 @@
   <!-- MCP -->
   <section class="reveal">
     <div class="section-label">Integration</div>
-    <h2>MCP-native. Seventeen tools. Five minutes.</h2>
-    <p>FAVA Trails exposes operations as Model Context Protocol tools (17 registered names, including the <code style="font-family: var(--mono); font-size: 0.85em;">list_trails</code> alias and <code style="font-family: var(--mono); font-size: 0.85em;">get_usage_guide</code>). If your framework speaks MCP, integration is a configuration change. The hero terminal above shows save→supersede→gate→recall. Sample of the surface:</p>
+    <h2>MCP-native. Seventeen tools.</h2>
+    <p>FAVA Trails exposes operations as Model Context Protocol tools (17 registered names, including the <code style="font-family: var(--mono); font-size: 0.85em;">list_trails</code> alias and <code style="font-family: var(--mono); font-size: 0.85em;">get_usage_guide</code>). If your framework speaks MCP, integration is a configuration change — setup time depends on your client, data-repo bootstrap, and Trust Gate credentials; there is no published five-minute benchmark. The hero terminal above shows save→supersede→gate→recall. Sample of the surface:</p>
 
     <div class="code-block">
 <pre><span class="comment"># Core loop (shown above): save_thought, supersede, propose_truth, recall</span>
 <span class="comment"># Also: start_thought, update_thought, get_thought, change_scope, list_scopes, …</span>
 
-<span class="comment"># Multi-agent sync — pull latest shared truth (manual today)</span>
+<span class="comment"># Multi-agent sync — pull only (does not push/publish local commits)</span>
 <span class="fn">sync</span>(trail_name=<span class="str">"org/proj"</span>)
-<span class="comment"># → Fetches/rebases against shared truth. Conflicts surfaced as data.</span>
-<span class="comment"># → Planned Pull Daemon would automate this (~30s); not shipped yet.</span>
+<span class="comment"># → Fetches/rebases shared truth. Conflicts surfaced as data.</span>
+<span class="comment"># → Publish via push_strategy: immediate or operator jj git push (bootstrap defaults to manual).</span>
+<span class="comment"># → Planned Pull Daemon would automate pull (~30s); not shipped yet.</span>
 
 <span class="comment"># Discard current reasoning line (abandons current JJ change)</span>
 <span class="fn">forget</span>(trail_name=<span class="str">"org/proj"</span>, revision=<span class="str">"@"</span>)  <span class="comment"># revision optional; default current</span>

@@ -106,7 +106,7 @@ save_thought(
 1. **Promote finalized thoughts** — call `propose_truth(trail_name="...", thought_id="<ULID>")` on any draft thoughts that represent completed work. Promotion is mandatory for shared institutional records: it moves finalized work into the permanent namespace so **default governed** `recall`/`get_thought` can surface it. Unpromoted drafts stay out of default governed reads, but callers that share this process identity can still retrieve their own draft/proposed records via explicit `mode="authoring"`. A shared MCP endpoint is one identity boundary.
 2. **Save decisions** as `source_type: "decision"` and promote them
 3. **Save gotchas** as `source_type: "observation"` with `tags: ["gotcha"]` and promote them
-4. **Sync** — call `sync(trail_name="...")` when the Fuel repository has a remote: promotion alone does not publish to other machines; remote peers need a fetch/rebase (or equivalent) before they see new approved records
+4. **Publish + sync** — promotion commits locally only. With `push_strategy: manual` (bootstrap default), an operator must `jj git push` (or set `push_strategy: immediate` so successful writes auto-publish). Call `sync(trail_name="...")` on peer machines to **fetch/rebase** shared truth; `sync` does not publish local commits.
 5. **Legacy fallback**: If FAVA Trails is unavailable, update `memory/branches/<branch>/status.md`
 
 ## Agent Identity

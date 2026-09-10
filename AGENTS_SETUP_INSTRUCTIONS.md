@@ -107,6 +107,8 @@ Create exactly **two files** — nothing else:
 ```yaml
 trails_dir: trails
 remote_url: "https://github.com/YOUR-ORG/fava-trails-data.git"
+# bootstrap / CLI default is manual. Use immediate for multi-machine authoring
+# so successful writes auto-publish. sync only fetches/rebases — it does not push.
 push_strategy: immediate
 ```
 
@@ -148,7 +150,9 @@ fava-trails clone https://github.com/YOUR-ORG/fava-trails-data.git fava-trails-d
 # 2. Register the MCP server (same config, with local paths)
 ```
 
-Both machines push/pull through the same git remote. Use the `sync` MCP tool to pull latest thoughts.
+Both machines share the same git remote. The writing side must publish
+(`push_strategy: immediate` or operator `jj git push`). Use the `sync` MCP tool
+only to **pull** (fetch/rebase) latest shared truth — it does not publish local commits.
 
 ## Global Config Reference (`config.yaml`)
 
@@ -156,7 +160,9 @@ Both machines push/pull through the same git remote. Use the `sync` MCP tool to 
 # Required
 trails_dir: trails                        # relative to FAVA_TRAILS_DATA_REPO
 remote_url: "https://github.com/..."      # git remote URL (null if local-only)
-push_strategy: immediate                  # manual | immediate
+push_strategy: manual                     # bootstrap default: local commits only
+# push_strategy: immediate                # recommended multi-machine: auto-push after writes
+                                          # sync MCP tool never pushes — fetch/rebase only
 
 # Trust Gate (shipped policy is llm-oneshot only)
 trust_gate: llm-oneshot                   # only working config policy today
@@ -197,7 +203,7 @@ trails:
 |-------|------|---------|-------------|
 | `trails_dir` | string | `trails` | Directory for trail data (relative to repo root) |
 | `remote_url` | string | `null` | Git remote URL for sync |
-| `push_strategy` | string | `manual` | `immediate` auto-pushes after writes; `manual` requires explicit sync |
+| `push_strategy` | string | `manual` | `immediate` auto-pushes after successful writes; `manual` (bootstrap default) keeps commits local until operator `jj git push`. The `sync` tool only fetches/rebases and never publishes. |
 | `trust_gate` | string | `llm-oneshot` | Global trust gate policy. **Shipped working value: `llm-oneshot` only.** `human` is unimplemented (raises `NotImplementedError`). Non-LLM path is per-call `propose_truth(..., approval="human")` on an operator endpoint, not this config field. |
 | `trust_gate_provider` | string | `openrouter` | any-llm provider id (`openrouter`, `openai`, …) |
 | `trust_gate_model` | string | `google/gemini-2.5-flash` | Exact model id for LLM-based trust review |
@@ -372,10 +378,10 @@ Hooks that need to query trail state receive a `TrailContext` via `event.context
 | Point | When | Pipeline type |
 |-------|------|---------------|
 | `before_save` | Before thought is written to disk | Gating (can reject/mutate/redirect) |
-| `after_save` | After thought is committed | Observer (fire-and-forget) |
+| `after_save` | After thought is committed | Observer (awaited sequentially through completion or timeout on the caller's task; adds latency before the tool returns; at-most-once, no retry) |
 | `before_propose` | Before promotion from drafts | Gating (can reject/mutate/redirect) |
-| `after_propose` | After promotion is committed | Observer |
-| `after_supersede` | After supersession is committed | Observer |
+| `after_propose` | After promotion is committed | Observer (awaited sequentially like `after_save`) |
+| `after_supersede` | After supersession is committed | Observer (awaited sequentially like `after_save`) |
 | `on_recall` | During single-trail recall search | Gating (can filter/reorder via RecallSelect) |
 | `on_recall_mix` | After cross-trail `recall_multi` merge | Gating (can filter/reorder via RecallSelect) |
 | `on_startup` | Server startup | Startup (separate contract) |
@@ -466,14 +472,16 @@ hooks:
 - Thought commits live on the detached HEAD chain, not on the `main` git branch
 - `git push origin main` only pushes the git `main` bookmark — it misses all thought commits
 
-**If `push_strategy: immediate` is set** (recommended), the server auto-pushes the main bookmark after every write. No manual action needed.
+**If `push_strategy: immediate` is set** (recommended for multi-machine), the server auto-pushes the main bookmark after every successful write. No separate push step needed; push failures surface as non-fatal warnings.
 
-**If you need to push manually:**
+**If `push_strategy: manual` (bootstrap default) or you need to push manually:**
 ```bash
 # From within fava-trails-data:
 jj bookmark set main -r @-     # advance main bookmark to latest committed change
 jj git push --bookmark main    # push to remote
 ```
+
+Do **not** treat `sync` as publish: it only fetches/rebases remote shared truth.
 
 ## Data Repo Layout
 

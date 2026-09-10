@@ -115,10 +115,22 @@ class TestToolDescriptionEnhancements:
         assert "propose_truth" in desc
         assert "finalized" in desc
 
-    def test_propose_truth_contains_sync_guidance(self):
-        """propose_truth description must advise calling sync after promoting."""
+    def test_propose_truth_contains_publication_guidance(self):
+        """propose_truth must separate local promotion from remote publish/sync."""
         desc = _get_tool_desc("propose_truth")
+        assert "push_strategy" in desc
         assert "sync" in desc
+        assert "does not publish" in desc.lower() or "does not publish local commits" in desc
+        instructions = _build_server_instructions()
+        assert "push_strategy: immediate" in instructions
+        assert "does not push local commits" in instructions
+        assert "call `sync` to push to remote" not in instructions
+
+    def test_sync_tool_does_not_claim_push(self):
+        """sync description must state fetch/rebase only, not publish."""
+        desc = _get_tool_desc("sync")
+        assert "fetch" in desc.lower() or "Fetch" in desc
+        assert "does not" in desc.lower() and "push" in desc.lower()
 
     def test_recall_contains_scope_discovery(self):
         """recall description must include scope discovery priority order."""
