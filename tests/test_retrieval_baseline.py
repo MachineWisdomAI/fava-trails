@@ -65,7 +65,11 @@ async def baseline_corpus(tmp_fava_home):
 
     exact = await save("JJ colocated mode keeps a standard Git remote.", "exact-jj")
     punct = await save("Use the /v1/chat/completions endpoint for local models.", "punct-api")
-    short = await save("Short token probe.", "short-ulid-tag", tags=["ab"])
+    short = await save(
+        "Short token probe.",
+        "short-ulid-tag",
+        tags=["tok_x7k2m"],
+    )
     synonym = await save("Production rollout uses blue-green deploys.", "synonym-deploy")
     paraphrase = await save(
         "ViT-Large outperforms ResNet-50 by 3% on this dataset.",
@@ -147,8 +151,9 @@ async def test_baseline_irrelevant_and_short_tag(baseline_corpus):
     ids = {r.thought_id for r in budget}
     assert ids == {baseline_corpus["ids"]["noise-budget"]}
 
-    short = await manager.recall(query="ab", visibility=governed)
-    assert baseline_corpus["ids"]["short-ulid-tag"] in {r.thought_id for r in short}
+    short = await manager.recall(query="tok_x7k2m", visibility=governed)
+    assert _labels(short) == {"short-ulid-tag"}
+    assert {r.thought_id for r in short} == {baseline_corpus["ids"]["short-ulid-tag"]}
 
 
 @pytest.mark.asyncio

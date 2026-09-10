@@ -158,8 +158,8 @@ trails_dir: trails                        # relative to FAVA_TRAILS_DATA_REPO
 remote_url: "https://github.com/..."      # git remote URL (null if local-only)
 push_strategy: immediate                  # manual | immediate
 
-# Trust Gate
-trust_gate: llm-oneshot                   # llm-oneshot | human (future)
+# Trust Gate (shipped policy is llm-oneshot only)
+trust_gate: llm-oneshot                   # only working config policy today
 trust_gate_provider: openrouter           # any-llm provider id (openrouter | openai | ...)
 trust_gate_model: google/gemini-2.5-flash # exact model id for LLM-based review
 trust_gate_api_base: null                 # optional; set for OpenAI-compatible local endpoints
@@ -169,6 +169,11 @@ trust_gate_api_key_env: OPENROUTER_API_KEY # env var name holding the API key
 # trust_gate_extra_body: {}               # provider-specific request body
 trust_gate_timeout_secs: 120              # LLM wait; raise for slow local models (< tool_timeout_secs)
 tool_timeout_secs: 300
+# trust_gate: human  # NOT IMPLEMENTED — raises NotImplementedError at runtime
+
+# Non-LLM promotion (not a config policy): on an operator endpoint
+# (FAVA_TRAILS_OPERATOR=1 + FAVA_TRAILS_AGENT_ID), call
+# propose_truth(..., approval="human") per record.
 
 # Lifecycle hooks (optional, loaded at startup)
 hooks:
@@ -181,7 +186,10 @@ hooks:
 # Per-trail overrides (optional)
 trails:
   mw/eng/sensitive-project:
-    trust_gate_policy: human              # override for this trail
+    # trust_gate_policy inherits global llm-oneshot. Do NOT set
+    # trust_gate_policy: human — that policy is unimplemented and raises.
+    # For human-only promotion of sensitive records, use an operator
+    # endpoint and propose_truth(..., approval="human") per call.
     stale_draft_days: 30                  # tombstone drafts older than 30 days
 ```
 
@@ -190,7 +198,7 @@ trails:
 | `trails_dir` | string | `trails` | Directory for trail data (relative to repo root) |
 | `remote_url` | string | `null` | Git remote URL for sync |
 | `push_strategy` | string | `manual` | `immediate` auto-pushes after writes; `manual` requires explicit sync |
-| `trust_gate` | string | `llm-oneshot` | Global trust gate policy |
+| `trust_gate` | string | `llm-oneshot` | Global trust gate policy. **Shipped working value: `llm-oneshot` only.** `human` is unimplemented (raises `NotImplementedError`). Non-LLM path is per-call `propose_truth(..., approval="human")` on an operator endpoint, not this config field. |
 | `trust_gate_provider` | string | `openrouter` | any-llm provider id (`openrouter`, `openai`, …) |
 | `trust_gate_model` | string | `google/gemini-2.5-flash` | Exact model id for LLM-based trust review |
 | `trust_gate_api_base` | string | `null` | Optional OpenAI-compatible API base (e.g. Unsloth Studio `http://127.0.0.1:<port>/v1`) |
@@ -208,7 +216,7 @@ Override global settings for specific trails via the `trails` map:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `trust_gate_policy` | string | *(inherits global)* | Override trust gate for this trail |
+| `trust_gate_policy` | string | *(inherits global)* | Override trust gate for this trail. Same constraint as global `trust_gate`: only `llm-oneshot` works today; `human` is unimplemented. Use operator `propose_truth(..., approval="human")` for non-LLM promotion. |
 | `gc_interval_snapshots` | int | `500` | Snapshots between GC runs |
 | `gc_interval_seconds` | int | `3600` | Seconds between GC runs |
 | `stale_draft_days` | int | `0` | Tombstone drafts older than N days (0 = disabled) |

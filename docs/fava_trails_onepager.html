@@ -714,13 +714,12 @@
 <span class="dim">  ✓ Draft saved (12ms) · process identity: ml-researcher · id: 01JMK…</span><br>
 <br>
 <span class="prompt">▸</span> <span class="cmd">propose_truth</span> <span class="output">trail_name="org/proj" thought_id="01JMK…"</span><br>
-<span class="rejected">  ✗ Trust Gate rejected (synchronous rubric review of this record only): "Schema/confidence issues in proposed claim"</span><br>
-<span class="dim">  → Draft preserved for revision. Shared records unchanged. Gate did not load the corpus.</span><br>
+<span class="success">  ✓ Rubric approved. Promoted — now current in governed recall.</span><br>
 <br>
 <span class="prompt">▸</span> <span class="cmd">supersede</span> <span class="output">trail_name="org/proj" thought_id="01JMK…" content="ViT-Large outperforms ResNet-50 by 3%" reason="accuracy"</span><br>
-<span class="dim">  ✓ Draft successor saved (9ms) · id: 01JML… · original remains current until approval</span><br>
+<span class="dim">  ✓ Draft successor saved (9ms) · id: 01JML… · approved original stays current until successor approval</span><br>
 <span class="prompt">▸</span> <span class="cmd">propose_truth</span> <span class="output">trail_name="org/proj" thought_id="01JML…"</span><br>
-<span class="success">  ✓ Rubric approved. Promoted. Predecessor hidden after durable supersession.</span><br>
+<span class="success">  ✓ Rubric approved. Successor current; predecessor hidden after durable supersession.</span><br>
 <br>
 <span class="prompt">▸</span> <span class="cmd">recall</span> <span class="output">trail_name="org/proj" query="ViT-Large"</span><br>
 <span class="success">  → ViT-Large decision (01JML…)</span> <span class="dim">· lexical token match · ResNet-50 claim hidden after approved supersession</span>
@@ -810,7 +809,7 @@
         <div class="flow-dot">3</div>
         <div class="flow-content">
           <h3>Multi-Agent Sync</h3>
-          <p>Agents call the <code>sync</code> tool to pull latest shared truth. A planned Pull Daemon will automate this as a continuous sidecar process. Conflicts are surfaced as structured data, not swallowed silently.</p>
+          <p>Agents call the <code style="font-family: var(--mono); font-size: 0.85em;">sync</code> tool to pull latest shared truth against the repo-wide current change. A planned Pull Daemon would automate that loop as a sidecar — it is <strong>not</strong> shipped and must not assume per-agent draft branches or multi-branch merge orchestration. Conflicts are surfaced as structured data, not swallowed silently.</p>
         </div>
       </div>
       <div class="flow-step">
@@ -919,8 +918,8 @@
         <h3>ML Engineering Agents</h3>
         <ul>
           <li>12+ hour Kaggle competition sessions without context drift</li>
-          <li>Branch three model hypotheses in parallel</li>
-          <li>Mark dead-end hyperparameter searches so they're never re-explored</li>
+          <li>Record competing model hypotheses as versioned thoughts (not parallel MCP branches)</li>
+          <li>Supersede dead-end claims so default governed recall hides replaced lines (history mode can still retrieve them)</li>
           <li>Full audit trail for experiment reproducibility</li>
         </ul>
       </div>
@@ -1026,7 +1025,7 @@
   </section>
 
   <footer>
-    <p>Machine Wisdom Solutions Inc. · FAVA Trails v0.4 · Open Source (Apache-2.0) · <a href="https://pypi.org/project/fava-trails/" style="color: var(--accent); text-decoration: none;">pip install fava-trails</a></p>
+    <p>Machine Wisdom Solutions Inc. · FAVA Trails 0.6.1 unreleased RC (published PyPI: 0.6.0) · Open Source (Apache-2.0) · <a href="https://pypi.org/project/fava-trails/" style="color: var(--accent); text-decoration: none;">pip install fava-trails</a></p>
   </footer>
 
 </div>

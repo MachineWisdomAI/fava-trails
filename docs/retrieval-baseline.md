@@ -61,7 +61,7 @@ Stable fixture labels (not ULIDs) used in expected/actual columns:
 | --- | --- | --- |
 | `exact-jj` | `JJ colocated mode keeps a standard Git remote.` | Approved observation |
 | `punct-api` | `Use the /v1/chat/completions endpoint for local models.` | Slash and dots in body |
-| `short-ulid-tag` | `Short token probe.` tags=`["ab"]` | Very short tag |
+| `short-ulid-tag` | `Short token probe.` tags=`["tok_x7k2m"]` | Unique short tag (not a substring of other fixtures' `label:` tags) |
 | `synonym-deploy` | `Production rollout uses blue-green deploys.` | "rollout" present; "release" absent |
 | `paraphrase-model` | `ViT-Large outperforms ResNet-50 by 3% on this dataset.` | No phrase "model architecture decisions" |
 | `noise-budget` | `Quarterly budget planning is deferred.` | Irrelevant distractor |
@@ -80,7 +80,7 @@ a wishlist.
 | Exact token | `colocated` | governed | hit `exact-jj` | hit `exact-jj` | Baseline true positive |
 | Multi-token AND | `JJ Git` | governed | hit `exact-jj` | hit `exact-jj` | Non-contiguous tokens OK |
 | Irrelevant | `budget` | governed | hit only `noise-budget` | hit only `noise-budget` | No false friends from other rows |
-| Short term in tags | `ab` | governed | hit `short-ulid-tag` | hit `short-ulid-tag` | Substring over tags; also risks broad matches |
+| Short unique tag token | `tok_x7k2m` | governed | hit only `short-ulid-tag` | hit only `short-ulid-tag` | Tag is unique to that fixture; full actual label set is `{short-ulid-tag}` (not a subset check). Length-2 tokens like `ab` would match every `label:` string and are a measured miss mode |
 | Punctuation in body | `/v1/chat/completions` | governed | hit `punct-api` | hit `punct-api` | Whole token must appear including `/` |
 | Punctuation variant | `v1 chat completions` | governed | hit `punct-api` | hit `punct-api` | Whitespace-split tokens still substrings of body |
 | Synonym miss | `release` | governed | miss `synonym-deploy` | miss `synonym-deploy` | No synonym expansion |
@@ -101,8 +101,7 @@ database, or a retrieval architecture:
 1. **Paraphrase recall** — operators remember the topic ("model architecture
    decisions") rather than tokens stored in the body.
 2. **Synonym / vocabulary drift** — "release" vs "rollout" / "deploy".
-3. **Short-token ambiguity** — length-2 substrings match broadly and are hard to
-   aim.
+3. **Short-token ambiguity** — length-2 substrings such as `ab` match every fixture that carries a `label:` tag (because `ab` is a substring of `label:`), so they cannot isolate one metadata field. Prefer longer unique tokens; treat broad short-token hits as a discovery input, not a precision guarantee.
 4. **Punctuation-sensitive tokens** — callers may omit path slashes or dots and
    still expect a hit (sometimes works when pieces remain substrings; not a
    contract).

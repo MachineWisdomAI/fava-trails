@@ -96,11 +96,14 @@ The key design properties today:
 
 ### What is the Pull Daemon?
 
-The Pull Daemon is a planned sidecar process (design goal, not yet deployed) that will continuously synchronize each agent's working context with shared truth. It will run a periodic sync loop (default: every 30 seconds) that rebases the agent's draft branch on top of the latest accepted shared truth.
+The Pull Daemon is a **planned** sidecar process (design goal, not shipped). Today agents call the `sync` MCP tool manually to fetch/rebase against shared truth. A future daemon would automate that loop (design target ~30 seconds).
 
-In the current release, agents call the `sync` MCP tool manually to pull latest shared truth. The Pull Daemon will automate this — when Agent A updates the project budget from "Low" to "High" and that update passes the Trust Gate, Agent B's Pull Daemon will pick up the change and rebase B's draft on top of the new truth. Agent B's reasoning then operates against the updated budget.
+Important bounds for both today and any planned automation:
 
-If the rebase creates a conflict (B was working with assumptions about the old budget), the conflict is surfaced to B as structured data rather than silently swallowed.
+- The MCP server has **one process-configured identity** and a **repo-wide current JJ change**. It does **not** allocate per-agent draft branches, expose branch selection, or orchestrate multi-hypothesis merge/discard.
+- Planned automation must not assume per-agent draft branches. Sync is about updating the working copy against shared truth and surfacing structured conflicts — the same lifecycle/process-identity boundary already documented for drafts and governed reads.
+
+When Agent A promotes a budget change through the Trust Gate, Agent B sees it after `sync` (or a future automated sync). If B's working assumptions conflict, the conflict is returned as structured data rather than silently swallowed.
 
 ### Why version control instead of a database?
 
@@ -144,9 +147,9 @@ For ML engineering agents running long-horizon tasks (12+ hour Kaggle competitio
 
 1. **Session persistence across context window resets.** When the context window fills and the agent needs to continue, FAVA Trails provides the full history of what was tried, what worked, what didn't, and why — reconstructable from versioned memory rather than lost when the window rolls over.
 
-2. **Experiment branch isolation.** The agent can branch three parallel hypotheses (different model architectures, different feature engineering approaches) without cross-contamination. Each branch carries its own reasoning chain. The winning branch merges to main; the losing branches are atomically discarded.
+2. **Versioned experiment lines, not multi-branch orchestration.** The agent can record multiple hypotheses as versioned thoughts (and start a new JJ change with `start_thought` for a fresh reasoning line). The MCP surface does **not** provide parallel isolated hypothesis branches, winner-merge, or atomic multi-branch loser discard. Discard is `forget` on the current change/revision; competition between claims is lifecycle + supersession after durable approval, not a branch-merge API.
 
-3. **Preventing re-exploration of dead ends.** Supersession tracking means that when a hyperparameter search proves fruitless and is explicitly abandoned, future recall queries will not resurface that abandoned line of reasoning. The agent doesn't waste tokens re-discovering that "learning rate 0.1 diverges" if that was already established and marked as superseded.
+3. **Bounding re-exploration of dead ends.** When a fruitless line is **superseded** and the successor is **durably approved**, default governed `recall` hides the predecessor. Abandoned work that was never approved never entered governed recall. Dead ends can still resurface via operator `mode="history"` / explicit revision archaeology, or if a later approved record still shares tokens — supersession is lineage + default visibility, not a guarantee that “never re-explored.”
 
 ### Can I use FAVA Trails as a drop-in replacement for my current memory backend?
 
@@ -173,8 +176,8 @@ ML engineering agents face a specific version of the memory problem: experiments
 FAVA Trails's contribution:
 
 - **Every experiment checkpoint is a versioned thought.** Hyperparameter configurations, training metrics, error traces — all persisted with full lineage. When the agent resumes after a crash or context reset, it can reconstruct exactly where it was.
-- **Branching enables parallel hypothesis testing.** Three model architectures explored simultaneously, each on its own branch, with zero cross-contamination. Results merge back to main only when validated.
-- **Dead-end marking prevents re-exploration.** When the agent discovers that a particular approach diverges, that finding is persisted with supersession semantics. The next agent session (or a different agent) won't waste compute re-discovering the same dead end.
+- **Hypothesis lines are thoughts + lifecycle, not parallel VCS branches.** Record competing architectures as separate thoughts (or sequential changes). There is no MCP API for isolated parallel branches, zero cross-contamination between concurrent local lines, or automatic winner-merge / loser-discard of branches. Shared truth advances only through durable approval and sync.
+- **Supersession bounds default re-surface of replaced claims.** An approved successor hides its predecessor from default governed recall. Operator history mode and explicit revision tools can still retrieve older lines; shared tokens on later records can still match.
 - **Audit trail for reproducibility.** Every decision in the ML pipeline — why this learning rate, why that feature set, why we switched from ResNet to ViT — is traceable through the version history.
 
 ### My agents run in multi-agent swarms. How does FAVA Trails handle coordination?
@@ -244,7 +247,7 @@ Memories are called **Thoughts**. Each thought is an immutable Markdown file wit
 ---
 id: "01JMKR3V8GQZX4N7P2WDCB5HYT"    # ULID, stable across all operations
 type: "decision"                         # decision | observation | preference | constraint
-namespace: "client/acme"                 # isolation boundary
+namespace: "client/acme"                 # classification path (not multi-tenant isolation)
 author: "agent-alpha"                    # which agent or human created this
 superseded_by: null                      # links to successor if invalidated
 relationships:
