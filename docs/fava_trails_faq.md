@@ -109,15 +109,15 @@ When Agent A promotes a budget change through the Trust Gate, Agent B sees it af
 
 Databases optimize for current state. Version control optimizes for state evolution. In agentic workflows, state evolution *is* the product.
 
-The critical capabilities that VCS provides natively but databases require custom engineering for:
+The critical capabilities that a VCS **substrate** provides natively (and that databases usually have to reinvent) — with the MCP surface bounds stated explicitly:
 
-- **Branching** — isolated workspaces that don't pollute shared state until explicitly merged.
-- **Merge gating** — workflow enforcement as a first-class primitive, not an application concern.
-- **History traversal** — "What did we believe about X three days ago?" is a native query, not a schema design exercise.
-- **Atomic bulk discard** — "This entire 50-step investigation was wrong, delete all of it" is a single operation with zero residue.
-- **Diff** — "What changed between Tuesday and today?" without scanning every record.
+- **Change isolation (substrate)** — JJ can isolate work in changes/revisions at the file layer. The MCP server still exposes **one repo-wide current change**; it does **not** allocate per-agent branches or multi-branch workspaces.
+- **Promotion gating (product)** — Trust Gate / per-call operator `approval="human"` on `propose_truth`, not git-style branch-protection rules as the agent API.
+- **History traversal** — "What did we believe about X three days ago?" is recoverable from versioned thought files and operator `mode="history"`, not a custom schema design exercise.
+- **Discard current change** — `forget(trail_name, revision?)` wraps `jj abandon` for the current working change or a specified revision. It is **not** a product API for "delete this entire 50-step investigation graph with zero residue," and it does not merge or discard parallel agent branches.
+- **Diff** — "What changed between Tuesday and today?" without scanning every record by hand (`diff` tool / underlying JJ).
 
-Database-backed systems can be engineered to provide some of these capabilities, but they're fighting the substrate rather than working with it. VCS was *designed* for exactly this class of problem.
+Database-backed systems can be engineered toward some of these substrate properties, but they're fighting the storage model rather than working with it. VCS was *designed* for auditable state evolution; the MCP tools are a deliberate, narrower façade over that substrate.
 
 ---
 
@@ -136,7 +136,7 @@ Core MCP tools:
 | `get_thought` | Retrieve one record by ULID |
 | `propose_truth` | Submit draft memories for Trust Gate or explicit human approval |
 | `sync` | Pull latest shared truth into the agent's working context |
-| `forget` | Atomic discard of a reasoning branch |
+| `forget` | Abandon the current (or specified) JJ revision via `jj abandon`; requires `trail_name`, optional `revision` |
 | `learn_preference` | Capture human feedback as a versioned preference |
 
 Agents interact with memories as Markdown objects with structured frontmatter. They never see VCS commands or raw tree algebra. `recall` is not semantic similarity search; measured behavior is in [retrieval-baseline.md](retrieval-baseline.md).
@@ -221,11 +221,11 @@ What the agent never sees: raw `jj log` stdout, commit hashes, tree algebra, con
 
 The performance characteristics:
 
-- **VCS operations** (commit, branch, rebase) happen at the file-system level, entirely within the MCP server process. They do not consume agent tokens.
+- **VCS operations** (snapshots, commits, and working-copy updates on the repo-wide current change) happen at the file-system level inside the MCP server process. They do not consume agent tokens. The MCP surface does **not** expose branch create/select/merge APIs to agents.
 - **Recall results** are pre-formatted as structured JSON with only the fields the agent requested. A typical recall response is 200-500 tokens, not a multi-kilobyte log dump.
 - **The agent's prompt** contains memory summaries, not version history. Full lineage is available on demand (`include_superseded=True`) but is not included by default.
 
-The design principle: the VCS is an implementation detail that provides crash-safety, branching, and audit guarantees. The agent interacts with a semantic memory API. The translation layer absorbs the complexity gap between these two interfaces.
+The design principle: the VCS is an implementation detail that provides crash-safety, auditable history, and change isolation at the substrate layer. The agent interacts with a semantic memory API over one process identity and one current change. The translation layer absorbs the complexity gap between these two interfaces.
 
 ---
 
@@ -245,19 +245,24 @@ Memories are called **Thoughts**. Each thought is an immutable Markdown file wit
 
 ```yaml
 ---
-id: "01JMKR3V8GQZX4N7P2WDCB5HYT"    # ULID, stable across all operations
-type: "decision"                         # decision | observation | preference | constraint
-namespace: "client/acme"                 # classification path (not multi-tenant isolation)
-author: "agent-alpha"                    # which agent or human created this
-superseded_by: null                      # links to successor if invalidated
+schema_version: 1
+thought_id: "01JMKR3V8GQZX4N7P2WDCB5HYT"
+parent_id: null
+superseded_by: null
+agent_id: "agent-alpha"
+confidence: 0.85
+source_type: "decision"
+validation_status: "approved"
+intent_ref: "01JMKP5T3GNHW7L4J9YBZC2FRX"
+created_at: "2026-02-19T12:00:00Z"
 relationships:
   - type: "DEPENDS_ON"
     target_id: "01JMKQ9F4RPBN2M6K8XDYA3GSW"
   - type: "REVISED_BY"
     target_id: "01JMKS7Y2HPQW5M8R3XECF6JZV"
-tags: ["architecture", "model-selection"]
-confidence: 0.85
-intent_ref: "01JMKP5T3GNHW7L4J9YBZC2FRX"  # links to the original intent/spec
+metadata:
+  project: "acme-ml"
+  tags: ["architecture", "model-selection"]
 ---
 
 # Decision: Use ViT-Large for image classification
@@ -265,6 +270,8 @@ intent_ref: "01JMKP5T3GNHW7L4J9YBZC2FRX"  # links to the original intent/spec
 After testing ResNet-50 (see 01JMKQ9F4R...), we observed 3% accuracy improvement
 with ViT-Large at acceptable inference latency...
 ```
+
+Field names match the runtime `ThoughtFrontmatter` / `ThoughtRecord.to_markdown()` schema (`thought_id`, `source_type`, `agent_id`, lifecycle fields, nested `metadata`). The on-disk path namespace (for example `thoughts/decisions/`) is **not** a top-level frontmatter key and is **not** multi-tenant isolation.
 
 Thoughts are append-only (immutable content, one exception: the `superseded_by` backlink). This prevents merge conflicts on content edits. When a thought needs correction, a new thought is created that supersedes the old one.
 

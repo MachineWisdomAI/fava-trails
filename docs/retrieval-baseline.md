@@ -11,7 +11,8 @@ Source of truth: `src/fava_trails/trail.py` (`TrailManager.recall`).
 1. Lowercase the query string.
 2. Split on whitespace into tokens (`str.split()`).
 3. Build a searchable string from content + thought_id + source_type + agent_id
-   + metadata project/branch/tags (all lowercased).
+   + metadata project/branch/tags (all lowercased). **`metadata.extra` is not
+   searched.**
 4. Keep a record only when **every** query token is a **substring** of that
    searchable string (`all(word in searchable for word in query_words)`).
 5. Empty query matches all visibility-allowed records (subject to `limit`).
@@ -47,50 +48,58 @@ See [governed-recall.md](governed-recall.md).
 | Field | Value |
 | --- | --- |
 | Product version | `0.6.1` (`pyproject.toml`) — **unreleased** release candidate on this tree / `main`; PyPI and GitHub Releases latest remain **0.6.0** |
-| Git baseline (matrix authoring) | `36d6bbbee669891e4b6f5310a0eb991fe043e3df` (PR #110 / issue #100 branch head when the Expected/Actual columns were written) |
+| Git baseline (matrix authoring) | Reconciled on PR #110 repair for review `5161655189` (commit that lands this matrix edit on `automation/fava-trails-100`). Prior SHA `36d6bbb` / `10b937d` rows are historical only. |
 | Runner | `uv run pytest tests/test_retrieval_baseline.py -v` |
 | Issue | [#100](https://github.com/MachineWisdomAI/fava-trails/issues/100) |
 
-`tests/test_retrieval_baseline.py` **validates** the static Expected/Actual matrix against the live matcher; it does **not** rewrite this Markdown file, does **not** stamp a Git SHA into the doc, and does **not** refresh the Actual column at run time. If matcher behavior changes, update both the table and the tests in the same change.
+**How tests relate to this file:** `tests/test_retrieval_baseline.py` encodes the
+same Expected/Actual sets **independently**. It does **not** parse this Markdown,
+does **not** rewrite the table, and does **not** stamp a Git SHA. Documentation
+drift is possible if only one side is updated — change the matrix and the tests
+together. Fixture identifiers used in Expected/Actual columns live in
+`metadata.extra.fixture` and are **outside** the lexical searchable string.
 
 ## Synthetic corpus
 
-Stable fixture labels (not ULIDs) used in expected/actual columns:
+Stable fixture ids (matrix labels) are stored only in `metadata.extra.fixture`.
+They are **not** written into searchable `tags`, `branch`, or body text.
 
-| Label | Content (abbreviated) | Notes |
-| --- | --- | --- |
-| `exact-jj` | `JJ colocated mode keeps a standard Git remote.` | Approved observation |
-| `punct-api` | `Use the /v1/chat/completions endpoint for local models.` | Slash and dots in body |
-| `short-ulid-tag` | `Short token probe.` tags=`["tok_x7k2m"]` | Unique short tag (not a substring of other fixtures' `label:` tags) |
-| `synonym-deploy` | `Production rollout uses blue-green deploys.` | "rollout" present; "release" absent |
-| `paraphrase-model` | `ViT-Large outperforms ResNet-50 by 3% on this dataset.` | No phrase "model architecture decisions" |
-| `noise-budget` | `Quarterly budget planning is deferred.` | Irrelevant distractor |
-| `draft-private` | `Unapproved draft about secret migration plan.` | Draft; same author vs other author cases |
-| `superseded-old` | `ResNet-50 is optimal for this dataset.` | Approved, then superseded |
-| *(successor)* | `ViT-Large is the current model choice for this dataset.` | Fixture dict key `superseder-new` is **not** a persisted `label:` tag; `supersede` inherits predecessor tags, so the successor still carries `label:superseded-old` |
+| Fixture id | Content (abbreviated) | Searchable tags | Notes |
+| --- | --- | --- | --- |
+| `exact-jj` | `JJ colocated mode keeps a standard Git remote.` | (none) | Approved observation |
+| `punct-api` | `Use the /v1/chat/completions endpoint for local models.` | (none) | Slash and dots in body |
+| `short-ulid-tag` | `Short token probe.` | `ab`, `tok_x7k2m` | Short-token + unique-tag probes |
+| `synonym-deploy` | `Production rollout uses blue-green deploys.` | (none) | "rollout" present; "release" absent |
+| `paraphrase-model` | `ViT-Large outperforms ResNet-50 by 3% on this dataset.` | (none) | No phrase "model architecture decisions" |
+| `noise-budget` | `Quarterly budget planning is deferred.` | (none) | Irrelevant distractor |
+| `draft-private` | `Unapproved draft concerning secret migration plan.` | (none) | Draft; body avoids accidental `ab` via "about" |
+| `superseded-old` | `ResNet-50 is optimal for this dataset.` | (none) | Approved, then superseded |
+| *(successor)* | `ViT-Large is the current model choice for this dataset.` | (none) | Test dict key `superseder-new` is **not** a fixture id; `supersede` inherits predecessor `extra.fixture=superseded-old` |
 
 ## Results matrix
 
-Legend: **hit** = labeled record present in results; **miss** = absent;
-**empty** = zero results. "Expected" is the behavior of the current matcher, not
-a wishlist.
+Legend: **hit** = listed fixture ids present; **miss** = empty fixture-id set;
+**complete actual** = full fixture-id set returned (not a subset check).
+"Expected" is the behavior of the current matcher, not a wishlist. Cells list
+**complete** fixture-id sets under the stated mode.
 
-| Case | Query | Mode / filters | Expected | Actual (0.6.1 matcher) | Notes |
+| Case | Query | Mode / filters | Expected (complete fixture ids) | Actual (0.6.1 matcher) | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Exact token | `colocated` | governed | hit `exact-jj` | hit `exact-jj` | Baseline true positive |
-| Multi-token AND | `JJ Git` | governed | hit `exact-jj` | hit `exact-jj` | Non-contiguous tokens OK |
-| Irrelevant | `budget` | governed | hit only `noise-budget` | hit only `noise-budget` | No false friends from other rows |
-| Short unique tag token | `tok_x7k2m` | governed | hit only `short-ulid-tag` | hit only `short-ulid-tag` | Tag is unique to that fixture; full actual label set is `{short-ulid-tag}` (not a subset check). Length-2 tokens like `ab` would match every `label:` string and are a measured miss mode |
-| Punctuation in body | `/v1/chat/completions` | governed | hit `punct-api` | hit `punct-api` | Whole token must appear including `/` |
-| Punctuation variant | `v1 chat completions` | governed | hit `punct-api` | hit `punct-api` | Whitespace-split tokens still substrings of body |
-| Synonym miss | `release` | governed | miss `synonym-deploy` | miss `synonym-deploy` | No synonym expansion |
-| Paraphrase miss | `model architecture decisions` | governed | miss `paraphrase-model` | miss `paraphrase-model` | Reported user-shaped failure mode |
-| Partial synonym | `deploy` | governed | hit `synonym-deploy` | hit `synonym-deploy` | Shared stem/substring only |
-| Draft hidden (governed) | `secret migration` | governed | miss `draft-private` | miss `draft-private` | Unapproved drafts not in default view |
-| Own draft (authoring) | `secret migration` | authoring, matching agent | hit `draft-private` | hit `draft-private` | Explicit authoring only |
-| Other draft blocked | `secret migration` | authoring, other agent | miss `draft-private` | miss `draft-private` | No cross-agent draft read |
-| Superseded hidden | `ResNet-50 is optimal` | governed | miss old / may hit new if tokens remain | miss `superseded-old` | Default hides predecessor |
-| Superseded visible | `ResNet-50 is optimal` | history + include_superseded | hit `superseded-old` | hit `superseded-old` | Operator archaeology |
+| Exact token | `colocated` | governed | `{exact-jj}` | `{exact-jj}` | Baseline true positive |
+| Multi-token AND | `JJ Git` | governed | `{exact-jj}` | `{exact-jj}` | Non-contiguous tokens OK |
+| Irrelevant | `budget` | governed | `{noise-budget}` | `{noise-budget}` | Body hit only; fixture id not searchable |
+| Short token | `ab` | governed | `{short-ulid-tag}` | `{short-ulid-tag}` | Real length-2 tag probe; complete set recorded |
+| Unique tag token | `tok_x7k2m` | governed | `{short-ulid-tag}` | `{short-ulid-tag}` | Longer unique tag; precision case |
+| Punctuation in body | `/v1/chat/completions` | governed | `{punct-api}` | `{punct-api}` | Whole token must appear including `/` |
+| Punctuation variant | `v1 chat completions` | governed | `{punct-api}` | `{punct-api}` | Whitespace-split tokens still substrings of body |
+| Synonym miss | `release` | governed | `∅` | `∅` | No synonym expansion |
+| Paraphrase miss | `model architecture decisions` | governed | `∅` | `∅` | Reported user-shaped failure mode |
+| Partial synonym | `deploy` | governed | `{synonym-deploy}` | `{synonym-deploy}` | Shared stem/substring in body only |
+| Draft hidden (governed) | `secret migration` | governed | `∅` (no `draft-private`) | `∅` | Unapproved drafts not in default view |
+| Own draft (authoring) | `secret migration` | authoring, matching agent | `{draft-private}` | `{draft-private}` | Explicit authoring only |
+| Other draft blocked | `secret migration` | authoring, other agent | `∅` | `∅` | No cross-agent draft read |
+| Superseded hidden | `ResNet-50 is optimal` | governed | `∅` (no `superseded-old`) | `∅` | Default hides predecessor |
+| Superseded visible | `ResNet-50 is optimal` | history + include_superseded | includes `superseded-old` | includes `superseded-old` | Operator archaeology |
 
 ## Measured misses to feed discovery (#59)
 
@@ -101,7 +110,11 @@ database, or a retrieval architecture:
 1. **Paraphrase recall** — operators remember the topic ("model architecture
    decisions") rather than tokens stored in the body.
 2. **Synonym / vocabulary drift** — "release" vs "rollout" / "deploy".
-3. **Short-token ambiguity** — length-2 substrings such as `ab` match every fixture that carries a `label:` tag (because `ab` is a substring of `label:`), so they cannot isolate one metadata field. Prefer longer unique tokens; treat broad short-token hits as a discovery input, not a precision guarantee.
+3. **Short-token breadth** — length-2 substrings such as `ab` are easy to over-match
+   when identifiers or common words land in searchable fields. This baseline keeps
+   fixture ids out of searchable fields and records the intentional `{short-ulid-tag}`
+   hit for tag `ab`; treat other short-token collisions as a discovery input, not a
+   precision guarantee.
 4. **Punctuation-sensitive tokens** — callers may omit path slashes or dots and
    still expect a hit (sometimes works when pieces remain substrings; not a
    contract).

@@ -711,13 +711,13 @@
       </div>
       <div class="terminal-body">
 <span class="prompt">▸</span> <span class="cmd">save_thought</span> <span class="output">trail_name="org/proj" content="ResNet-50 is optimal for this dataset"</span><br>
-<span class="dim">  ✓ Draft saved (12ms) · process identity: ml-researcher · id: 01JMK…</span><br>
+<span class="dim">  ✓ Draft saved · process identity: ml-researcher · id: 01JMK…</span><br>
 <br>
 <span class="prompt">▸</span> <span class="cmd">propose_truth</span> <span class="output">trail_name="org/proj" thought_id="01JMK…"</span><br>
 <span class="success">  ✓ Rubric approved. Promoted — now current in governed recall.</span><br>
 <br>
 <span class="prompt">▸</span> <span class="cmd">supersede</span> <span class="output">trail_name="org/proj" thought_id="01JMK…" content="ViT-Large outperforms ResNet-50 by 3%" reason="accuracy"</span><br>
-<span class="dim">  ✓ Draft successor saved (9ms) · id: 01JML… · approved original stays current until successor approval</span><br>
+<span class="dim">  ✓ Draft successor saved · id: 01JML… · approved original stays current until successor approval</span><br>
 <span class="prompt">▸</span> <span class="cmd">propose_truth</span> <span class="output">trail_name="org/proj" thought_id="01JML…"</span><br>
 <span class="success">  ✓ Rubric approved. Successor current; predecessor hidden after durable supersession.</span><br>
 <br>
@@ -927,8 +927,8 @@
         <h3>Agent Framework Authors</h3>
         <ul>
           <li>MCP-native integration — config change, not code change</li>
-          <li>Drop-in memory backend for any MCP-compatible framework</li>
-          <li>50ms draft writes won't bottleneck your agent loop</li>
+          <li>MCP tool surface for frameworks that already speak MCP (not a semantic-RAG drop-in)</li>
+          <li>Draft-write latency is an unbenchmarked design target — see FAQ, not a shipped guarantee</li>
           <li>Substrate-agnostic API — agents call recall, not git log</li>
         </ul>
       </div>

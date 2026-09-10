@@ -1,12 +1,13 @@
 """Synthetic lexical-recall baseline for docs/retrieval-baseline.md (issue #100).
 
-Validates the static Expected/Actual matrix in the Markdown doc against the
-shipped substring-AND matcher. Does not rewrite the doc, stamp a Git SHA, or
-select a future retrieval architecture (see issue #59).
+Holds independent Expected/Actual expectations that must stay aligned with the
+static matrix in the Markdown doc. Does not parse or rewrite that doc, does not
+stamp a Git SHA, and does not select a future retrieval architecture (see #59).
 """
 
 from __future__ import annotations
 
+import itertools
 from importlib.metadata import PackageNotFoundError, version
 
 import pytest
@@ -17,18 +18,31 @@ from fava_trails.trust_gate import TrustResult
 
 PRODUCT_VERSION = "0.6.1"
 
+# Stable fixture ids for matrix rows. Stored only in metadata.extra (not searchable).
+FIXTURE_EXACT = "exact-jj"
+FIXTURE_PUNCT = "punct-api"
+FIXTURE_SHORT = "short-ulid-tag"
+FIXTURE_SYNONYM = "synonym-deploy"
+FIXTURE_PARAPHRASE = "paraphrase-model"
+FIXTURE_NOISE = "noise-budget"
+FIXTURE_DRAFT = "draft-private"
+FIXTURE_SUPERSEDED = "superseded-old"
+# Dict-only key for the successor thought_id; not a persisted fixture id.
+KEY_SUCCESSOR = "superseder-new"
+
 
 def _approval() -> TrustResult:
     return TrustResult(verdict="approve", reasoning="baseline fixture", reviewer="fixture")
 
 
-def _labels(results) -> set[str]:
+def _fixture_labels(results) -> set[str]:
+    """Return fixture ids from metadata.extra only (never from searchable tags)."""
     out: set[str] = set()
     for record in results:
-        tags = record.frontmatter.metadata.tags or []
-        for tag in tags:
-            if tag.startswith("label:"):
-                out.add(tag.removeprefix("label:"))
+        extra = record.frontmatter.metadata.extra or {}
+        fid = extra.get("fixture")
+        if isinstance(fid, str) and fid:
+            out.add(fid)
     return out
 
 
@@ -37,8 +51,18 @@ async def _promote(manager, record):
 
 
 @pytest.fixture
-async def baseline_corpus(tmp_fava_home):
+async def baseline_corpus(tmp_fava_home, monkeypatch):
     """Build the shareable synthetic corpus described in docs/retrieval-baseline.md."""
+    # Pin thought_ids so short-token queries cannot flaky-match random ULID substrings.
+    seq = itertools.count(1)
+
+    class _StableULID:
+        def __str__(self) -> str:
+            # Crockford-ish digits only; deliberately avoids the substring "ab".
+            return f"01FIX{next(seq):022d}"
+
+    monkeypatch.setattr("fava_trails.models.ULID", _StableULID)
+
     from fava_trails.trail import TrailManager
     from fava_trails.vcs.jj_backend import JjBackend
 
@@ -49,46 +73,49 @@ async def baseline_corpus(tmp_fava_home):
 
     async def save(
         content: str,
-        label: str,
+        fixture: str,
         *,
         agent_id: str = "agent-a",
         tags=None,
         source_type=SourceType.OBSERVATION,
     ):
-        meta_tags = [f"label:{label}", *(tags or [])]
+        # Fixture ids live only in metadata.extra (excluded from lexical searchable text).
+        # Searchable tags are intentional probe tokens only — never "label:<fixture>".
         return await manager.save_thought(
             content=content,
             agent_id=agent_id,
             source_type=source_type,
-            metadata={"project": "retrieval-baseline", "tags": meta_tags},
+            metadata={
+                "project": "retrieval-baseline",
+                "tags": list(tags or []),
+                "extra": {"fixture": fixture},
+            },
         )
 
-    exact = await save("JJ colocated mode keeps a standard Git remote.", "exact-jj")
-    punct = await save("Use the /v1/chat/completions endpoint for local models.", "punct-api")
-    short = await save(
-        "Short token probe.",
-        "short-ulid-tag",
-        tags=["tok_x7k2m"],
-    )
-    synonym = await save("Production rollout uses blue-green deploys.", "synonym-deploy")
+    exact = await save("JJ colocated mode keeps a standard Git remote.", FIXTURE_EXACT)
+    punct = await save("Use the /v1/chat/completions endpoint for local models.", FIXTURE_PUNCT)
+    # Real short-token probe: tag "ab" is searchable; fixture id is not.
+    short = await save("Short token probe.", FIXTURE_SHORT, tags=["ab", "tok_x7k2m"])
+    synonym = await save("Production rollout uses blue-green deploys.", FIXTURE_SYNONYM)
     paraphrase = await save(
         "ViT-Large outperforms ResNet-50 by 3% on this dataset.",
-        "paraphrase-model",
+        FIXTURE_PARAPHRASE,
     )
-    noise = await save("Quarterly budget planning is deferred.", "noise-budget")
+    noise = await save("Quarterly budget planning is deferred.", FIXTURE_NOISE)
+    # Avoid the substring "ab" in draft body ("about") so short-token results stay intentional.
     draft = await save(
-        "Unapproved draft about secret migration plan.",
-        "draft-private",
+        "Unapproved draft concerning secret migration plan.",
+        FIXTURE_DRAFT,
         agent_id="agent-a",
     )
 
     for record in (exact, punct, short, synonym, paraphrase, noise):
         await _promote(manager, record)
 
-    old = await save("ResNet-50 is optimal for this dataset.", "superseded-old")
+    old = await save("ResNet-50 is optimal for this dataset.", FIXTURE_SUPERSEDED)
     await _promote(manager, old)
-    # supersede keeps predecessor metadata tags; successor still has label:superseded-old.
-    # "superseder-new" is only the fixture dict key for the successor thought_id.
+    # supersede copies predecessor metadata (including extra.fixture=superseded-old).
+    # KEY_SUCCESSOR is only the fixture dict key for the successor thought_id.
     new = await manager.supersede(
         old.thought_id,
         "ViT-Large is the current model choice for this dataset.",
@@ -104,15 +131,15 @@ async def baseline_corpus(tmp_fava_home):
         "old_id": old.thought_id,
         "new_id": new.thought_id,
         "ids": {
-            "exact-jj": exact.thought_id,
-            "punct-api": punct.thought_id,
-            "short-ulid-tag": short.thought_id,
-            "synonym-deploy": synonym.thought_id,
-            "paraphrase-model": paraphrase.thought_id,
-            "noise-budget": noise.thought_id,
-            "draft-private": draft.thought_id,
-            "superseded-old": old.thought_id,
-            "superseder-new": new.thought_id,  # dict key only; not a label: tag
+            FIXTURE_EXACT: exact.thought_id,
+            FIXTURE_PUNCT: punct.thought_id,
+            FIXTURE_SHORT: short.thought_id,
+            FIXTURE_SYNONYM: synonym.thought_id,
+            FIXTURE_PARAPHRASE: paraphrase.thought_id,
+            FIXTURE_NOISE: noise.thought_id,
+            FIXTURE_DRAFT: draft.thought_id,
+            FIXTURE_SUPERSEDED: old.thought_id,
+            KEY_SUCCESSOR: new.thought_id,  # dict key only; not a fixture id
         },
     }
 
@@ -136,37 +163,50 @@ async def test_baseline_exact_and_multi_token(baseline_corpus):
     governed = Visibility(mode="governed")
 
     exact = await manager.recall(query="colocated", visibility=governed)
-    assert baseline_corpus["ids"]["exact-jj"] in {r.thought_id for r in exact}
+    assert _fixture_labels(exact) == {FIXTURE_EXACT}
 
     multi = await manager.recall(query="JJ Git", visibility=governed)
-    assert baseline_corpus["ids"]["exact-jj"] in {r.thought_id for r in multi}
+    assert _fixture_labels(multi) == {FIXTURE_EXACT}
 
 
 @pytest.mark.asyncio
-async def test_baseline_irrelevant_and_short_tag(baseline_corpus):
+async def test_baseline_irrelevant_budget(baseline_corpus):
+    """Query 'budget' must hit body text only — fixture ids are not searchable."""
     manager = baseline_corpus["manager"]
     governed = Visibility(mode="governed")
 
     budget = await manager.recall(query="budget", visibility=governed)
-    ids = {r.thought_id for r in budget}
-    assert ids == {baseline_corpus["ids"]["noise-budget"]}
+    assert _fixture_labels(budget) == {FIXTURE_NOISE}
+    assert {r.thought_id for r in budget} == {baseline_corpus["ids"][FIXTURE_NOISE]}
 
-    short = await manager.recall(query="tok_x7k2m", visibility=governed)
-    assert _labels(short) == {"short-ulid-tag"}
-    assert {r.thought_id for r in short} == {baseline_corpus["ids"]["short-ulid-tag"]}
+
+@pytest.mark.asyncio
+async def test_baseline_short_token_ab_and_unique_tag(baseline_corpus):
+    """Short token 'ab' is a real substring probe; unique tag remains a precision case."""
+    manager = baseline_corpus["manager"]
+    governed = Visibility(mode="governed")
+
+    short = await manager.recall(query="ab", visibility=governed)
+    # Under governed visibility the only intentional hit is the fixture tagged "ab".
+    # Complete actual set (fixture ids): {short-ulid-tag}
+    assert _fixture_labels(short) == {FIXTURE_SHORT}
+    assert {r.thought_id for r in short} == {baseline_corpus["ids"][FIXTURE_SHORT]}
+
+    unique = await manager.recall(query="tok_x7k2m", visibility=governed)
+    assert _fixture_labels(unique) == {FIXTURE_SHORT}
+    assert {r.thought_id for r in unique} == {baseline_corpus["ids"][FIXTURE_SHORT]}
 
 
 @pytest.mark.asyncio
 async def test_baseline_punctuation_variants(baseline_corpus):
     manager = baseline_corpus["manager"]
     governed = Visibility(mode="governed")
-    target = baseline_corpus["ids"]["punct-api"]
 
     with_slash = await manager.recall(query="/v1/chat/completions", visibility=governed)
-    assert target in {r.thought_id for r in with_slash}
+    assert _fixture_labels(with_slash) == {FIXTURE_PUNCT}
 
     split = await manager.recall(query="v1 chat completions", visibility=governed)
-    assert target in {r.thought_id for r in split}
+    assert _fixture_labels(split) == {FIXTURE_PUNCT}
 
 
 @pytest.mark.asyncio
@@ -176,13 +216,15 @@ async def test_baseline_synonym_and_paraphrase_misses(baseline_corpus):
     governed = Visibility(mode="governed")
 
     synonym = await manager.recall(query="release", visibility=governed)
-    assert baseline_corpus["ids"]["synonym-deploy"] not in {r.thought_id for r in synonym}
+    assert _fixture_labels(synonym) == set()
 
     paraphrase = await manager.recall(query="model architecture decisions", visibility=governed)
-    assert baseline_corpus["ids"]["paraphrase-model"] not in {r.thought_id for r in paraphrase}
+    assert _fixture_labels(paraphrase) == set()
 
     partial = await manager.recall(query="deploy", visibility=governed)
-    assert baseline_corpus["ids"]["synonym-deploy"] in {r.thought_id for r in partial}
+    # Body substring in "deploys" only — not via a searchable fixture label.
+    assert _fixture_labels(partial) == {FIXTURE_SYNONYM}
+    assert {r.thought_id for r in partial} == {baseline_corpus["ids"][FIXTURE_SYNONYM]}
 
 
 @pytest.mark.asyncio
@@ -194,17 +236,21 @@ async def test_baseline_visibility_boundaries(baseline_corpus):
     governed = Visibility(mode="governed")
     hidden = await manager.recall(query="secret migration", visibility=governed)
     assert draft_id not in {r.thought_id for r in hidden}
+    assert FIXTURE_DRAFT not in _fixture_labels(hidden)
 
     own = Visibility(mode="authoring", principal=Principal(agent_id="agent-a"))
     own_hits = await manager.recall(query="secret migration", visibility=own)
+    assert _fixture_labels(own_hits) == {FIXTURE_DRAFT}
     assert draft_id in {r.thought_id for r in own_hits}
 
     other = Visibility(mode="authoring", principal=Principal(agent_id="agent-b"))
     other_hits = await manager.recall(query="secret migration", visibility=other)
     assert draft_id not in {r.thought_id for r in other_hits}
+    assert _fixture_labels(other_hits) == set()
 
     governed_old = await manager.recall(query="ResNet-50 is optimal", visibility=governed)
     assert old_id not in {r.thought_id for r in governed_old}
+    assert FIXTURE_SUPERSEDED not in _fixture_labels(governed_old)
 
     history = Visibility(
         mode="history",
@@ -213,11 +259,12 @@ async def test_baseline_visibility_boundaries(baseline_corpus):
     )
     hist = await manager.recall(query="ResNet-50 is optimal", visibility=history)
     assert old_id in {r.thought_id for r in hist}
+    assert FIXTURE_SUPERSEDED in _fixture_labels(hist)
 
 
 @pytest.mark.asyncio
-async def test_baseline_labels_cover_shareable_matrix(baseline_corpus):
-    """Sanity: promoted corpus labels are recoverable via tag tokens for the doc matrix."""
+async def test_baseline_fixture_ids_cover_shareable_matrix(baseline_corpus):
+    """Sanity: every matrix fixture id is present on corpus records via extra only."""
     manager = baseline_corpus["manager"]
     history = Visibility(
         mode="history",
@@ -225,16 +272,19 @@ async def test_baseline_labels_cover_shareable_matrix(baseline_corpus):
         include_superseded=True,
     )
     results = await manager.recall(query="", visibility=history, limit=50)
-    labels = _labels(results)
+    labels = _fixture_labels(results)
     for required in {
-        "exact-jj",
-        "punct-api",
-        "short-ulid-tag",
-        "synonym-deploy",
-        "paraphrase-model",
-        "noise-budget",
-        "draft-private",
-        "superseded-old",
+        FIXTURE_EXACT,
+        FIXTURE_PUNCT,
+        FIXTURE_SHORT,
+        FIXTURE_SYNONYM,
+        FIXTURE_PARAPHRASE,
+        FIXTURE_NOISE,
+        FIXTURE_DRAFT,
+        FIXTURE_SUPERSEDED,
     }:
-        assert required in labels, f"missing corpus label {required}"
-    assert baseline_corpus["ids"]["superseder-new"] in {r.thought_id for r in results}
+        assert required in labels, f"missing corpus fixture id {required}"
+    assert baseline_corpus["ids"][KEY_SUCCESSOR] in {r.thought_id for r in results}
+    # Successor inherits predecessor extra.fixture; no distinct superseder-new fixture id.
+    successor = next(r for r in results if r.thought_id == baseline_corpus["ids"][KEY_SUCCESSOR])
+    assert (successor.frontmatter.metadata.extra or {}).get("fixture") == FIXTURE_SUPERSEDED
