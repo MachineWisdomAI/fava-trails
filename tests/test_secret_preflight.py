@@ -7,7 +7,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from fava_trails.models import SourceType, ThoughtFrontmatter, ThoughtMetadata, ThoughtRecord
+from fava_trails.models import (
+    SourceType,
+    ThoughtFrontmatter,
+    ThoughtMetadata,
+    ThoughtRecord,
+    ValidationStatus,
+)
 from fava_trails.secret_preflight import (
     ObviousSecretError,
     find_obvious_secret,
@@ -335,3 +341,99 @@ async def test_supersede_blocks_copying_secret_metadata(trail_manager, tmp_fava_
     assert still is not None
     assert still.content == "benign original"
     assert still.frontmatter.metadata.project == STRIPE_CANARY
+
+
+def _nested_dict(depth: int, leaf: str) -> object:
+    node: object = leaf
+    for _ in range(depth):
+        node = {"layer": node}
+    return node
+
+
+def test_traversal_limit_fails_closed_instead_of_treating_unscanned_content_as_clean():
+    nested = _nested_dict(40, AWS_CANARY)
+    assert find_obvious_secret_in_value(nested) == "nested_structure_too_deep"
+    assert find_obvious_secret_in_value(_nested_dict(1, AWS_CANARY)) == "aws_access_key_id"
+    assert find_obvious_secret_in_value(_nested_dict(32, AWS_CANARY)) == "aws_access_key_id"
+    assert find_obvious_secret_in_value(_nested_dict(33, AWS_CANARY)) == "nested_structure_too_deep"
+    assert find_obvious_secret_in_value(_nested_dict(40, "benign")) == "nested_structure_too_deep"
+
+
+@pytest.mark.asyncio
+async def test_save_thought_blocks_secret_nested_beyond_traversal_limit(
+    trail_manager, tmp_fava_home, caplog
+):
+    caplog.set_level("DEBUG")
+    with pytest.raises(ObviousSecretError) as exc_info:
+        await trail_manager.save_thought(
+            content="benign draft body",
+            agent_id="test-agent",
+            metadata={"extra": _nested_dict(40, AWS_CANARY)},
+        )
+    message = str(exc_info.value)
+    assert AWS_CANARY not in message
+    assert "nested_structure_too_deep" in message or "traversal" in message.lower()
+    _assert_canary_absent(tmp_fava_home, AWS_CANARY)
+    assert AWS_CANARY not in caplog.text
+    assert list((trail_manager.trail_path / "thoughts").rglob("*.md")) == []
+
+
+@pytest.mark.asyncio
+async def test_propose_truth_blocks_secret_in_reject_trust_result(
+    trail_manager, tmp_fava_home, caplog
+):
+    caplog.set_level("DEBUG")
+    record = await trail_manager.save_thought(content="benign draft body", agent_id="test-agent")
+    draft_path = trail_manager.trail_path / "thoughts" / "drafts" / f"{record.thought_id}.md"
+    before = draft_path.read_text()
+    trust_result = TrustResult(
+        verdict="reject",
+        reasoning=f"blocked candidate {GITHUB_CANARY}",
+        reviewer="llm-oneshot:test-model",
+        provider="openrouter",
+        model="test-model",
+    )
+
+    with pytest.raises(ObviousSecretError) as exc_info:
+        await trail_manager.propose_truth(record.thought_id, trust_result=trust_result)
+
+    assert GITHUB_CANARY not in str(exc_info.value)
+    assert draft_path.read_text() == before
+    still = await trail_manager.get_thought(record.thought_id)
+    assert still is not None
+    assert still.content == "benign draft body"
+    assert still.frontmatter.validation_status == ValidationStatus.DRAFT
+    assert "trust_gate" not in still.frontmatter.metadata.extra
+    _assert_canary_absent(tmp_fava_home, GITHUB_CANARY)
+    assert GITHUB_CANARY not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_propose_truth_blocks_secret_in_approve_trust_result(
+    trail_manager, tmp_fava_home, caplog
+):
+    caplog.set_level("DEBUG")
+    record = await trail_manager.save_thought(content="benign draft body", agent_id="test-agent")
+    draft_path = trail_manager.trail_path / "thoughts" / "drafts" / f"{record.thought_id}.md"
+    before = draft_path.read_text()
+    trust_result = TrustResult(
+        verdict="approve",
+        reasoning="Looks good",
+        reviewer="llm-oneshot:test-model",
+        provider=f"provider-{OPENAI_CANARY}",
+        model="test-model",
+    )
+
+    with pytest.raises(ObviousSecretError) as exc_info:
+        await trail_manager.propose_truth(record.thought_id, trust_result=trust_result)
+
+    assert OPENAI_CANARY not in str(exc_info.value)
+    assert draft_path.read_text() == before
+    observations = trail_manager.trail_path / "thoughts" / "observations"
+    if observations.exists():
+        assert list(observations.rglob("*.md")) == []
+    still = await trail_manager.get_thought(record.thought_id)
+    assert still is not None
+    assert still.frontmatter.validation_status == ValidationStatus.DRAFT
+    _assert_canary_absent(tmp_fava_home, OPENAI_CANARY)
+    assert OPENAI_CANARY not in caplog.text

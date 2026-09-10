@@ -5,7 +5,7 @@ All notable changes to FAVA Trails are documented here.
 ## Unreleased
 
 ### Added
-- Bounded obvious-secret preflight before save, update, supersede, and promotion persist or transmit. Supported high-confidence patterns are refused with a safe explanation, including nested caller-controlled metadata and relationships after hook mutation. Legacy matching drafts are left unchanged and are not sent for review. Documents data flow and detection limits; does not claim complete DLP. Fixes #102.
+- Bounded obvious-secret preflight before save, update, supersede, and promotion persist or transmit. Supported high-confidence patterns are refused with a safe explanation, including nested caller-controlled metadata and relationships after hook mutation. Assembled Trust Gate result metadata is scanned before governance persist. Nested walks deeper than 32 fail closed. Legacy matching drafts are left unchanged and are not sent for review. Documents data flow and detection limits; does not claim complete DLP. Fixes #102.
 - **Trust Gate data-egress disclosure (issue #101):** `describe_trust_gate_egress`
   + `fava-trails doctor` **Data egress** section and MCP startup log show the
   effective review destination/model and which candidate fields are sent before

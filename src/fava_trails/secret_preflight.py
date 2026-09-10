@@ -32,6 +32,10 @@ _SAFE_LIMITS = (
     "headers, not complete DLP. It does not erase records that were already stored."
 )
 
+# Nested walk is bounded. Exceeding the limit is a finding, not a clean miss.
+_MAX_WALK_DEPTH = 32
+TRAVERSAL_LIMIT_PATTERN_ID = "nested_structure_too_deep"
+
 
 class ObviousSecretError(ValueError):
     """Raised when a supported high-confidence credential pattern is found."""
@@ -44,10 +48,18 @@ class ObviousSecretError(ValueError):
 
 def safe_message(pattern_id: str, *, persisted_already: bool = False) -> str:
     """Return an explanation that never includes candidate secret material."""
-    lead = (
-        f"Obvious credential pattern blocked ({pattern_id}) before persist or transmit. "
-        f"{_SAFE_LIMITS} Remove the credential and retry."
-    )
+    if pattern_id == TRAVERSAL_LIMIT_PATTERN_ID:
+        lead = (
+            f"Obvious credential pattern blocked ({pattern_id}) before persist or transmit. "
+            f"Nested data exceeded the preflight traversal limit ({_MAX_WALK_DEPTH}); "
+            "unscanned content is not treated as clean. "
+            f"{_SAFE_LIMITS} Flatten the structure and retry."
+        )
+    else:
+        lead = (
+            f"Obvious credential pattern blocked ({pattern_id}) before persist or transmit. "
+            f"{_SAFE_LIMITS} Remove the credential and retry."
+        )
     if persisted_already:
         return (
             f"{lead} The existing draft was left unchanged; prior persistence is not erased."
@@ -69,7 +81,9 @@ def find_obvious_secret_in_value(value: object) -> str | None:
     """Return the first matching pattern id in nested caller-controlled data."""
 
     def walk(node: object, depth: int) -> str | None:
-        if depth > 32 or node is None or isinstance(node, (bool, int, float)):
+        if depth > _MAX_WALK_DEPTH:
+            return TRAVERSAL_LIMIT_PATTERN_ID
+        if node is None or isinstance(node, (bool, int, float)):
             return None
         if isinstance(node, str):
             return find_obvious_secret(node)

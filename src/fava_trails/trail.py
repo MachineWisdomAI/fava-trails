@@ -598,6 +598,10 @@ class TrailManager:
             else:
                 record.frontmatter.validation_status = ValidationStatus.PROPOSED
 
+            refuse_obvious_secret_in_value(
+                record.model_dump(mode="json"), persisted_already=True
+            )
+
             status = record.frontmatter.validation_status
             target_path = self._thought_path(thought_id, target_ns) if status in {
                 ValidationStatus.APPROVED, ValidationStatus.PROPOSED,
