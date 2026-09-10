@@ -5,6 +5,7 @@ All notable changes to FAVA Trails are documented here.
 ## Unreleased
 
 ### Added
+- Bounded obvious-secret preflight before save, update, supersede, and promotion persist or transmit. Supported high-confidence patterns are refused with a safe explanation, including nested caller-controlled metadata and relationships after hook mutation, and the complete MCP request (tool name plus arguments) before schema validation, logging, lookup, auto-initialization, or JJ operations. Assembled Trust Gate result metadata is scanned before governance persist. Nested walks deeper than 32 fail closed. Block logs use a fixed message without pattern ids. Legacy matching drafts are left unchanged and are not sent for review. Documents data flow and detection limits; does not claim complete DLP. Fixes #102.
 - **Trust Gate data-egress disclosure (issue #101):** `describe_trust_gate_egress`
   + `fava-trails doctor` **Data egress** section and MCP startup log show the
   effective review destination/model and which candidate fields are sent before
@@ -44,6 +45,7 @@ All notable changes to FAVA Trails are documented here.
   publication from this PR).
 
 ### Changed
+- Public Trust Gate wording no longer implies that a review verdict prevents secret persistence or egress.
 - Support MCP SDK 2.2 with explicit low-level handlers, preserving tool schemas, annotations, input/output validation, structured results, and Markdown usage guidance over stdio and Streamable HTTP. Adds installed-wheel protocol tests for legacy initialization and current SDK clients. Resolves #83.
 - **JJ installer policy (issue #98):** `fava-trails install-jj` (canonical `jj_install.py`; `scripts/install-jj.sh` is a thin Bash 3.2-safe delegate) reuses any installed JJ `>= 0.28.0` before platform checks, never silently downgrades or overwrites a user-managed binary, resolves current GitHub stable when install is needed (explicit `--version` / `JJ_VERSION` override retained), verifies GitHub asset SHA-256 digests when published, requires exactly one safe regular `jj` archive member, installs atomically with restore of the prior managed binary after any post-replacement failure, and PATH-hints the selected install directory. CI matrix covers JJ **0.28.0** and **0.45.1**. See `docs/jj-compatibility.md`.
 

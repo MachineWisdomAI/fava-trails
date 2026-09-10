@@ -268,6 +268,9 @@ async def _get_trail(trail_name: str | None = None, *, create: bool = True) -> T
             "trail_name is required. Pass your scope path (e.g. 'mw/eng/fava-trails')."
         )
 
+    from .secret_preflight import refuse_obvious_secret
+
+    refuse_obvious_secret(trail_name)
     safe_name = sanitize_scope_path(trail_name)
     trail_path = get_trails_dir() / safe_name
     if not create and not (trail_path / "thoughts").exists():
@@ -896,6 +899,7 @@ async def handle_list_tools() -> list[Tool]:
 @with_tool_timeout
 async def handle_call_tool(name: str, arguments: dict[str, Any]) -> Any:
     """Route tool calls to handlers. Responses are structured JSON (except get_usage_guide which returns markdown)."""
+    from .secret_preflight import ObviousSecretError, refuse_obvious_secret_in_tool_request
     from .tools.navigation import (
         handle_conflicts,
         handle_diff,
@@ -915,6 +919,11 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> Any:
         handle_supersede,
         handle_update_thought,
     )
+
+    try:
+        refuse_obvious_secret_in_tool_request(name, arguments)
+    except ObviousSecretError as exc:
+        return {"status": "error", "message": str(exc)}
 
     logger.info("Tool call started: %s %s", name, _summarize_tool_arguments(arguments))
     result: Any
@@ -1027,8 +1036,10 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> Any:
                     if tn != trail.trail_name:  # avoid duplicating primary trail
                         try:
                             additional_trails.append(await _get_trail(tn, create=False))
+                        except ObviousSecretError:
+                            logger.debug("Skipping extra scope blocked by secret preflight")
                         except (ValueError, RuntimeError) as e:
-                            logger.debug(f"Skipping scope {tn}: {e}")
+                            logger.debug("Skipping extra scope: %s", type(e).__name__)
             result = await handle_recall(trail, arguments, additional_trails=additional_trails)
         elif name == "change_scope":
             # Resolve target trail
@@ -1083,6 +1094,8 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> Any:
                         if safe_sync else push_result["message"]
                     )
 
+    except ObviousSecretError as e:
+        result = {"status": "error", "message": str(e)}
     except Exception as e:
         logger.exception(f"Tool {name} failed")
         result = {
@@ -1112,8 +1125,15 @@ async def _call_tool(ctx: ServerRequestContext, params: CallToolRequestParams) -
     Domain error/blocked dictionaries remain structured results. Invalid schemas
     and unexpected adapter failures are MCP tool errors; cancellation propagates.
     """
-    definition = next((tool for tool in TOOL_DEFINITIONS if tool["name"] == params.name), None)
+    from .secret_preflight import ObviousSecretError, refuse_obvious_secret_in_tool_request
+
     arguments = params.arguments or {}
+    try:
+        refuse_obvious_secret_in_tool_request(params.name, arguments)
+    except ObviousSecretError as exc:
+        return _tool_error(str(exc))
+
+    definition = next((tool for tool in TOOL_DEFINITIONS if tool["name"] == params.name), None)
     if definition is not None:
         try:
             jsonschema.validate(arguments, definition["inputSchema"])

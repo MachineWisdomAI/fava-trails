@@ -7,6 +7,7 @@ import logging
 from typing import Any
 
 from ..config import ConfigStore, get_trails_dir, get_trust_gate_policy
+from ..secret_preflight import refuse_obvious_secret_in_value
 from ..trail import AmbiguousThoughtID
 from ..trust_gate import TrustGateConfigError, TrustGatePromptCache, review_thought
 
@@ -160,6 +161,9 @@ async def handle_propose_truth(
             record = await trail.get_thought(thought_id)
             if record is None:
                 return {"status": "error", "message": f"Thought {thought_id} not found"}
+            refuse_obvious_secret_in_value(
+                record.model_dump(mode="json"), persisted_already=True
+            )
 
             reviewed_record = record.model_copy(deep=True)
             try:

@@ -33,6 +33,10 @@ FAVA Trails **reduces blast radius** with a gated promotion workflow (the **Trus
 
 When promotion is requested, an LLM critic and/or explicit human approval can reject or accept under a configured rubric. **Rubric-based review is not independent verification of project facts.** It does not know your agent's system prompt, safety policy, or private environment. A misconfigured gate or a convincing false claim can still be approved. Supersession after the fact records lineage; it does not establish that the replacement is true.
 
+A Trust Gate reject does **not** mean the content was never stored or transmitted: `save_thought` already wrote a draft (and JJ/Git history), and under `llm-oneshot` `propose_truth` sends the thought body to the reviewer before a verdict exists. Rejection metadata may be written back onto that draft. A fake-password reject is a gate verdict, not proof of non-persistence or non-egress.
+
+A separate [bounded obvious-secret preflight](secret-preflight.md) refuses a small set of high-confidence credential shapes *before* normal write and promotion paths persist or transmit them, without echoing the match. It does not erase legacy drafts, rewrite history, or provide complete DLP. Generic passwords and novel token formats are out of scope.
+
 Rejected proposals remain drafts with feedback. Defense-in-depth (human approval on high-stakes namespaces, separate operator endpoints, caller-side verification of recalled claims) remains required.
 
 ### How does FAVA Trails relate to Context Engineering protocols like SECOM or ACE?
@@ -91,8 +95,9 @@ The key design properties today:
 - **Synchronous on `propose_truth`.** With the shipped `llm-oneshot` policy, `handle_propose_truth` awaits the single-record review (subject to `trust_gate_timeout_secs`) before promotion and return. The caller blocks on that tool call; there is no background async queue in the current tree.
 - **Limited context.** The LLM request is the configured Trust Gate prompt plus the thought under review — not a retrieval over existing shared knowledge.
 - **Operator-configured LLM settings.** Provider, model, timeouts, prompts, and local OpenAI-compatible endpoints are operator-configured under the shipped `llm-oneshot` policy. Config does **not** yet expose a working “disable LLM / human-only policy” switch (`trust_gate: human` remains unimplemented). The real non-LLM path is per-call explicit human approval: on an operator endpoint (`FAVA_TRAILS_OPERATOR=1` with a configured `FAVA_TRAILS_AGENT_ID`), call `propose_truth(..., approval="human")`. Provider selection is a data-egress choice; `fava-trails doctor` and `propose_truth` responses disclose destination/model and which candidate fields are sent (no secrets). Local-only setups fail closed with no cloud fallback (issue #101).
-- **Rejection is non-destructive.** A rejected proposal stays in draft with reviewer feedback attached. The agent can revise and resubmit.
-- **Auditable.** Trust Gate verdicts and reasoning are returned on the tool response and can be logged by operators.
+- **Rejection is non-destructive.** A rejected proposal stays in draft with reviewer feedback attached. The agent can revise and resubmit. That draft was already persisted before review.
+- **Auditable.** Trust Gate verdicts and reasoning are returned on the tool response and can be logged by operators. Reviewer payloads include the thought body; do not treat the gate as a secret-egress control.
+- **Obvious-secret preflight is separate.** High-confidence credential shapes are refused locally before persist or transmit. See [secret-preflight.md](secret-preflight.md).
 
 ### What is the Pull Daemon?
 
