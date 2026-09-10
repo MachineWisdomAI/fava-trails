@@ -29,7 +29,7 @@ from .jj_install import (
     path_hint,
     select_or_install,
 )
-from .models import HookEntry, ThoughtRecord
+from .models import GlobalConfig, HookEntry, ThoughtRecord
 from .runtime_info import format_runtime_report, product_version
 
 # Historical alias: installers resolve GitHub latest unless --version / JJ_VERSION is set.
@@ -616,6 +616,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     api_base = None
     trust_gate_policy = "llm-oneshot"
     trust_gate_config_ok = True
+    global_config = GlobalConfig()
     try:
         global_config = load_global_config()
         env_var_name = global_config.validate_trust_gate_runtime()
@@ -632,10 +633,30 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         any_failed = True
 
     if trust_gate_config_ok:
+        from .trust_gate import (
+            describe_trust_gate_egress,
+            format_trust_gate_egress_notice,
+            redact_trust_gate_api_base_for_disclosure,
+        )
+
         provider_line = f"Trust Gate:   policy={trust_gate_policy} provider={provider} model={model}"
-        if api_base:
-            provider_line += f" api_base={api_base}"
+        disclosed_api_base = redact_trust_gate_api_base_for_disclosure(api_base)
+        if disclosed_api_base:
+            provider_line += f" api_base={disclosed_api_base}"
         print(provider_line)
+
+        egress = describe_trust_gate_egress(global_config)
+        # Operator-facing disclosure before any promotion: destination, model, data categories.
+        print("Data egress:")
+        for line in format_trust_gate_egress_notice(egress).splitlines():
+            if line.startswith("Trust Gate data egress"):
+                continue
+            print(f"  {line.strip()}" if line.startswith("  ") else f"  {line}")
+        # Keep a stable machine-oriented summary line for scripts/tests.
+        print(
+            f"  summary: provider={egress.get('provider')} model={egress.get('model')} "
+            f"destination={egress.get('destination')} kind={egress.get('destination_kind')}"
+        )
 
         if trust_gate_policy == "llm-oneshot":
             try:

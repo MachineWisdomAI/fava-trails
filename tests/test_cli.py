@@ -870,6 +870,35 @@ def test_doctor_reports_invalid_trust_gate_runtime(tmp_path, monkeypatch, capsys
     assert "API key:" not in out
 
 
+def test_doctor_malformed_api_base_port_is_secret_free(tmp_path, monkeypatch, capsys):
+    """Malformed trust_gate_api_base must not leak path tokens via doctor output."""
+    from fava_trails.config import ConfigStore
+
+    monkeypatch.chdir(tmp_path)
+    data_repo = _make_valid_data_repo(tmp_path)
+    dirty = "http://localhost:bogus/v1/private-token"
+    (data_repo / "config.yaml").write_text(f"trails_dir: trails\ntrust_gate_api_base: {dirty}\n")
+    (tmp_path / ".env").write_text("FAVA_TRAILS_SCOPE=mw/eng/test\n")
+    monkeypatch.setenv("FAVA_TRAILS_DATA_REPO", str(data_repo))
+    # Isolate from the operator host config (~/.config/fava-trails/...).
+    empty_xdg = tmp_path / "xdg-config-empty"
+    empty_xdg.mkdir()
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(empty_xdg))
+    ConfigStore.reset()
+
+    with patch("shutil.which", return_value="/usr/bin/jj"):
+        with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
+            mock_run.return_value.stdout = "jj 0.25.0\n"
+            rc = cmd_doctor(_make_args())
+
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "private-token" not in out
+    assert dirty not in out
+    assert "input_value" not in out
+    assert "port" in out
+
+
 def test_doctor_hosted_openai_without_api_base_ok(tmp_path, monkeypatch, capsys):
     """Hosted openai + key without api_base is healthy (matches tunnel contract)."""
     monkeypatch.chdir(tmp_path)

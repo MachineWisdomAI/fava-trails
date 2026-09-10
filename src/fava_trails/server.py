@@ -220,6 +220,18 @@ async def _init_server() -> None:
 
     # Load lifecycle hooks from config.yaml (anti-tampering: never re-read from disk)
     store = ConfigStore.get()
+    # Disclose effective Trust Gate destination before any promotion can run.
+    # Mark the process flag so the first propose_truth does not claim first_in_process.
+    from .trust_gate import (
+        describe_trust_gate_egress,
+        log_trust_gate_egress_notice,
+        mark_trust_gate_egress_disclosed,
+    )
+
+    first = mark_trust_gate_egress_disclosed()
+    log_trust_gate_egress_notice(
+        describe_trust_gate_egress(store.global_config, first_in_process=first)
+    )
     if store.global_config.hooks:
         _hook_registry.load_from_entries(store.global_config.hooks, base_dir=store.data_repo_root)
 
