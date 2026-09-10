@@ -7,8 +7,10 @@ import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from any_llm.exceptions import AnyLLMError, ProviderError
 
 from fava_trails.config import ConfigStore
+from fava_trails.llm import LLMClient
 from fava_trails.models import GlobalConfig, SourceType
 from fava_trails.tools.navigation import handle_propose_truth
 from fava_trails.trust_gate import (
@@ -19,6 +21,7 @@ from fava_trails.trust_gate import (
     mark_trust_gate_egress_disclosed,
     redact_trust_gate_api_base_for_disclosure,
     reset_trust_gate_egress_disclosure_state,
+    review_thought,
 )
 from tests.test_trust_gate_local_provider import _OpenAICompatibleHandler
 
@@ -590,3 +593,140 @@ async def test_operator_human_approval_skips_llm_egress(trail_manager, tmp_fava_
     assert "not sent" in explanation
     assert "llm" in explanation
     assert "operator" in explanation
+
+
+def _secret_fragments() -> tuple[str, ...]:
+    return (
+        "supersecret",
+        "path-token-xyz",
+        "api_key=alsosecret",
+        "alsosecret",
+        "operator:supersecret",
+        "https://api.example/v1?api_key=alsosecret",
+        "https://operator:supersecret@api.example/v1",
+        "https://api.example/v1/path-token-xyz",
+    )
+
+
+def _assert_secret_free(text: str) -> None:
+    lowered = text.lower()
+    for fragment in _secret_fragments():
+        assert fragment.lower() not in lowered, f"secret leaked in {text!r}"
+    assert "api.example" not in lowered
+    assert "input_value" not in lowered
+
+
+@pytest.mark.asyncio
+async def test_connection_error_query_secret_not_in_reasoning():
+    """AnyLLMError URL query tokens must not appear in TrustResult.reasoning."""
+    client = MagicMock(spec=LLMClient)
+    client.chat = AsyncMock(
+        side_effect=AnyLLMError("request failed at https://api.example/v1?api_key=alsosecret")
+    )
+    client.provider = "openai"
+    from fava_trails.models import ThoughtFrontmatter, ThoughtMetadata, ThoughtRecord
+
+    record = ThoughtRecord(
+        frontmatter=ThoughtFrontmatter(
+            thought_id="01TESTSECRET00000000000001",
+            agent_id="test-agent",
+            source_type=SourceType.OBSERVATION,
+            metadata=ThoughtMetadata(),
+        ),
+        content="Candidate must not leak provider secrets on error.",
+    )
+    result = await review_thought(
+        record=record,
+        prompt="You are a reviewer.",
+        model="fixture-local-model",
+        client=client,
+    )
+    assert result.verdict == "error"
+    assert "connection error" in result.reasoning.lower()
+    assert "AnyLLMError" in result.reasoning
+    _assert_secret_free(result.reasoning)
+    assert "request failed at" not in result.reasoning
+
+
+@pytest.mark.asyncio
+async def test_provider_error_userinfo_and_path_secrets_not_in_reasoning():
+    """ProviderError userinfo/path secrets must not appear in TrustResult.reasoning."""
+    client = MagicMock(spec=LLMClient)
+    orig = MagicMock()
+    orig.status_code = 401
+    client.chat = AsyncMock(
+        side_effect=ProviderError(
+            "auth failed at https://operator:supersecret@api.example/v1/path-token-xyz",
+            original_exception=orig,
+            provider_name="openai",
+        )
+    )
+    client.provider = "openai"
+    from fava_trails.models import ThoughtFrontmatter, ThoughtMetadata, ThoughtRecord
+
+    record = ThoughtRecord(
+        frontmatter=ThoughtFrontmatter(
+            thought_id="01TESTSECRET00000000000002",
+            agent_id="test-agent",
+            source_type=SourceType.OBSERVATION,
+            metadata=ThoughtMetadata(),
+        ),
+        content="HTTP errors must stay secret-free.",
+    )
+    result = await review_thought(
+        record=record,
+        prompt="You are a reviewer.",
+        model="fixture-local-model",
+        client=client,
+    )
+    assert result.verdict == "error"
+    assert "401" in result.reasoning
+    _assert_secret_free(result.reasoning)
+    assert "auth failed at" not in result.reasoning
+
+
+@pytest.mark.asyncio
+async def test_propose_truth_error_does_not_persist_provider_exception_secrets(
+    trail_manager, tmp_fava_home
+):
+    """Tool JSON and durable trust_gate metadata must not store provider exception text."""
+    reset_trust_gate_egress_disclosure_state()
+    record = await trail_manager.save_thought(
+        content="Persist path must not store API keys from exceptions.",
+        agent_id="test-agent",
+        source_type=SourceType.OBSERVATION,
+    )
+    cache = MagicMock(spec=TrustGatePromptCache)
+    cache.resolve_prompt.return_value = "You are a reviewer."
+    cfg = ConfigStore.__new__(ConfigStore)
+    cfg.global_config = GlobalConfig(
+        trust_gate_provider="openai",
+        trust_gate_model="fixture-local-model",
+        trust_gate_api_base="http://127.0.0.1:9/v1",
+        trust_gate_api_key_env="LOCAL_ONLY_KEY",
+        trust_gate_timeout_secs=30,
+        tool_timeout_secs=60,
+    )
+    cfg.data_repo_root = tmp_fava_home
+    cfg.trails_dir = tmp_fava_home / "trails"
+    ConfigStore.override(cfg)
+
+    async def exploding_chat(*_args, **_kwargs):
+        raise AnyLLMError("request failed at https://api.example/v1?api_key=alsosecret")
+
+    with patch.dict(os.environ, {"LOCAL_ONLY_KEY": "test-local-key"}, clear=False):
+        with patch("fava_trails.llm.client.any_llm.acompletion", side_effect=exploding_chat):
+            result = await handle_propose_truth(
+                trail_manager,
+                {"thought_id": record.thought_id},
+                prompt_cache=cache,
+            )
+
+    assert result["status"] == "error"
+    blob = json.dumps(result)
+    _assert_secret_free(blob)
+    stored = await trail_manager.get_thought(record.thought_id)
+    extra = stored.frontmatter.metadata.extra.get("trust_gate") or {}
+    _assert_secret_free(json.dumps(extra))
+    assert stored.frontmatter.validation_status.value in {"draft", "error", "rejected"}
+    assert stored.frontmatter.validation_status.value != "approved"

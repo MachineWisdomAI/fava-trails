@@ -25,6 +25,7 @@ import yaml
 from any_llm.exceptions import AnyLLMError, ProviderError
 
 from .llm import LLMClient
+from .llm.sanitize import sanitize_provider_exception
 from .models import ThoughtRecord
 
 if TYPE_CHECKING:
@@ -537,10 +538,9 @@ async def review_thought(
             )
 
         except ProviderError as e:
-            status_code = getattr(e.original_exception, "status_code", "unknown")
             return TrustResult(
                 verdict="error",
-                reasoning=f"LLM API HTTP {status_code}: {str(e.message)[:200]}",
+                reasoning=f"LLM API {sanitize_provider_exception(e)}",
                 reviewer=reviewer_id,
                 provider=provider,
                 model=model,
@@ -549,7 +549,7 @@ async def review_thought(
         except AnyLLMError as e:
             return TrustResult(
                 verdict="error",
-                reasoning=f"LLM connection error: {type(e).__name__}: {e.message}",
+                reasoning=f"LLM connection error: {sanitize_provider_exception(e)}",
                 reviewer=reviewer_id,
                 provider=provider,
                 model=model,
@@ -571,7 +571,7 @@ async def review_thought(
         except Exception as e:
             return TrustResult(
                 verdict="error",
-                reasoning=f"Unexpected error: {type(e).__name__}: {e}",
+                reasoning=f"Unexpected error: {sanitize_provider_exception(e)}",
                 reviewer=reviewer_id,
                 provider=provider,
                 model=model,
