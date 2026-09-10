@@ -29,7 +29,7 @@ from .jj_install import (
     path_hint,
     select_or_install,
 )
-from .models import HookEntry, ThoughtRecord, GlobalConfig
+from .models import GlobalConfig, HookEntry, ThoughtRecord
 from .runtime_info import format_runtime_report, product_version
 
 # Historical alias: installers resolve GitHub latest unless --version / JJ_VERSION is set.
@@ -633,12 +633,17 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         any_failed = True
 
     if trust_gate_config_ok:
-        provider_line = f"Trust Gate:   policy={trust_gate_policy} provider={provider} model={model}"
-        if api_base:
-            provider_line += f" api_base={api_base}"
-        print(provider_line)
+        from .trust_gate import (
+            describe_trust_gate_egress,
+            format_trust_gate_egress_notice,
+            redact_trust_gate_api_base_for_disclosure,
+        )
 
-        from .trust_gate import describe_trust_gate_egress, format_trust_gate_egress_notice
+        provider_line = f"Trust Gate:   policy={trust_gate_policy} provider={provider} model={model}"
+        disclosed_api_base = redact_trust_gate_api_base_for_disclosure(api_base)
+        if disclosed_api_base:
+            provider_line += f" api_base={disclosed_api_base}"
+        print(provider_line)
 
         egress = describe_trust_gate_egress(global_config)
         # Operator-facing disclosure before any promotion: destination, model, data categories.

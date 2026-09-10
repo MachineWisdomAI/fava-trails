@@ -11,6 +11,7 @@ Policies:
 from __future__ import annotations
 
 import html
+import ipaddress
 import json
 import logging
 import threading
@@ -18,7 +19,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 import yaml
 from any_llm.exceptions import AnyLLMError, ProviderError
@@ -45,11 +46,39 @@ def reset_trust_gate_egress_disclosure_state() -> None:
         _egress_disclosed_in_process = False
 
 
+def redact_trust_gate_api_base_for_disclosure(api_base: str | None) -> str | None:
+    """Return a secret-free api_base suitable for logs, doctor, and tool JSON.
+
+    Strips URL userinfo, query string, and fragment. The live request may still
+    use the full configured value; only disclosed representations are redacted.
+    """
+    if not api_base:
+        return None
+    parsed = urlparse(api_base.strip())
+    hostname = parsed.hostname or ""
+    if ":" in hostname:
+        host_for_netloc = f"[{hostname}]"
+    else:
+        host_for_netloc = hostname
+    if parsed.port is not None:
+        netloc = f"{host_for_netloc}:{parsed.port}"
+    else:
+        netloc = host_for_netloc
+    # Drop username/password (netloc rebuild), params, query, and fragment.
+    return urlunparse((parsed.scheme, netloc, parsed.path, "", "", ""))
+
+
 def _is_loopback_api_base(api_base: str | None) -> bool:
+    """True only for localhost or numeric loopback IP literals (not 127.* DNS names)."""
     if not api_base:
         return False
     host = (urlparse(api_base).hostname or "").lower()
-    return host in {"127.0.0.1", "localhost", "::1"} or host.startswith("127.")
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 def describe_trust_gate_egress(
@@ -94,12 +123,13 @@ def describe_trust_gate_egress(
     provider = config.trust_gate_provider
     model = config.trust_gate_model
     api_base = config.trust_gate_api_base
+    disclosed_api_base = redact_trust_gate_api_base_for_disclosure(api_base)
     if api_base and _is_loopback_api_base(api_base):
         destination_kind: Literal["local_endpoint", "custom_endpoint", "remote_provider"] = "local_endpoint"
-        destination = api_base
+        destination = disclosed_api_base or ""
     elif api_base:
         destination_kind = "custom_endpoint"
-        destination = api_base
+        destination = disclosed_api_base or ""
     elif provider == "openrouter":
         destination_kind = "remote_provider"
         destination = "OpenRouter (provider default API)"

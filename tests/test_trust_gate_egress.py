@@ -15,6 +15,7 @@ from fava_trails.trust_gate import (
     TrustGatePromptCache,
     describe_trust_gate_egress,
     format_trust_gate_egress_notice,
+    redact_trust_gate_api_base_for_disclosure,
     reset_trust_gate_egress_disclosure_state,
 )
 from tests.test_trust_gate_local_provider import _OpenAICompatibleHandler
@@ -101,6 +102,108 @@ def test_describe_never_includes_key_file_path_or_secret(tmp_path):
     assert "super-secret-key-value" not in blob
     assert str(key_file) not in blob
     assert notice["credential_source"] == "credential file"
+
+
+def test_redact_api_base_strips_userinfo_query_and_fragment():
+    dirty = "http://operator:supersecret@127.0.0.1:8888/v1?token=alsosecret#frag"
+    clean = redact_trust_gate_api_base_for_disclosure(dirty)
+    assert clean == "http://127.0.0.1:8888/v1"
+    assert "supersecret" not in clean
+    assert "alsosecret" not in clean
+    assert "operator" not in clean
+    assert "token=" not in clean
+    assert "#frag" not in clean
+
+
+def test_describe_redacts_url_embedded_secrets_in_destination_and_text():
+    dirty = "http://operator:supersecret@127.0.0.1:8888/v1?token=alsosecret"
+    notice = describe_trust_gate_egress(
+        GlobalConfig(
+            trust_gate_provider="openai",
+            trust_gate_model="fixture-local-model",
+            trust_gate_api_base=dirty,
+            trust_gate_api_key_env="LOCAL_TG_KEY",
+        )
+    )
+    assert notice["destination_kind"] == "local_endpoint"
+    assert notice["destination"] == "http://127.0.0.1:8888/v1"
+    blob = json.dumps(notice) + format_trust_gate_egress_notice(notice)
+    assert "supersecret" not in blob
+    assert "alsosecret" not in blob
+    assert "operator:" not in blob
+    assert "token=" not in blob
+
+
+def test_adversarial_127_prefix_hostname_is_not_local_endpoint():
+    notice = describe_trust_gate_egress(
+        GlobalConfig(
+            trust_gate_provider="openai",
+            trust_gate_model="remote-looking-model",
+            trust_gate_api_base="https://127.evil.example/v1",
+            trust_gate_api_key_env="LOCAL_TG_KEY",
+        )
+    )
+    assert notice["destination_kind"] == "custom_endpoint"
+    assert notice["destination"] == "https://127.evil.example/v1"
+
+
+@pytest.mark.parametrize(
+    ("api_base", "kind"),
+    [
+        ("http://127.0.0.1:8888/v1", "local_endpoint"),
+        ("http://localhost:8888/v1", "local_endpoint"),
+        ("http://[::1]:8888/v1", "local_endpoint"),
+        ("http://127.0.0.2:9/v1", "local_endpoint"),
+        ("https://example.com/v1", "custom_endpoint"),
+        ("https://127.0.0.1.nip.io/v1", "custom_endpoint"),
+        ("https://not-localhost.example/v1", "custom_endpoint"),
+    ],
+)
+def test_loopback_classification_uses_ip_literals_and_localhost(api_base: str, kind: str):
+    notice = describe_trust_gate_egress(
+        GlobalConfig(
+            trust_gate_provider="openai",
+            trust_gate_model="m",
+            trust_gate_api_base=api_base,
+            trust_gate_api_key_env="K",
+        )
+    )
+    assert notice["destination_kind"] == kind
+    assert notice["destination"] == redact_trust_gate_api_base_for_disclosure(api_base)
+
+
+def test_doctor_redacts_url_secrets_from_api_base_line(tmp_path, monkeypatch, capsys):
+    from fava_trails.cli import cmd_doctor
+
+    dirty = "http://operator:supersecret@127.0.0.1:8888/v1?token=alsosecret"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LOCAL_TG_KEY", "test-key-not-a-real-secret")
+    data_repo = tmp_path / "data-repo"
+    data_repo.mkdir()
+    (data_repo / "config.yaml").write_text("trails_dir: trails\n")
+    (data_repo / "trails").mkdir()
+    (tmp_path / ".env").write_text("FAVA_TRAILS_SCOPE=mw/eng/test\n")
+    cfg = GlobalConfig(
+        trust_gate_provider="openai",
+        trust_gate_model="local-model",
+        trust_gate_api_base=dirty,
+        trust_gate_api_key_env="LOCAL_TG_KEY",
+    )
+
+    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
+        with patch("fava_trails.cli.load_global_config", return_value=cfg):
+            with patch("shutil.which", return_value="/usr/bin/jj"):
+                with patch("subprocess.run") as mock_run:
+                    mock_run.return_value = MagicMock(returncode=0, stdout="jj 0.25.0\n", stderr="")
+                    rc = cmd_doctor(MagicMock())
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "api_base=http://127.0.0.1:8888/v1" in out
+    assert "supersecret" not in out
+    assert "alsosecret" not in out
+    assert "operator:" not in out
+    assert "token=" not in out
 
 
 def test_doctor_prints_egress_notice_before_promotion_use(tmp_path, monkeypatch, capsys):

@@ -109,12 +109,12 @@ async def handle_propose_truth(
         return {"status": "error", "message": "thought_id is required"}
 
     try:
-        from .thought import _serialize_thought
         from ..trust_gate import (
             describe_trust_gate_egress,
             log_trust_gate_egress_notice,
             mark_trust_gate_egress_disclosed,
         )
+        from .thought import _serialize_thought
 
         # Resolve trust gate policy
         policy = get_trust_gate_policy(trail.trail_name)
