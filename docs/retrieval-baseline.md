@@ -48,7 +48,7 @@ See [governed-recall.md](governed-recall.md).
 | Field | Value |
 | --- | --- |
 | Product version | `0.6.1` (`pyproject.toml`) — **unreleased** release candidate on this tree / `main`; PyPI and GitHub Releases latest remain **0.6.0** |
-| Git baseline (matrix authoring) | Will be pinned to the commit that lands complete visibility sets + FAQ/one-pager honesty repairs for review `5161963110` on `automation/fava-trails-100`. Prior SHA rows (`36d6bbb`, `10b937d`, `32b5b82`, `187f523`) are historical only. |
+| Git baseline (matrix authoring) | `54692dbaae7ca4fdcc80a4a8e26018411541207f` (PR #110 repair for review `5161963110` on `automation/fava-trails-100`). Prior SHA rows (`36d6bbb`, `10b937d`, `32b5b82`, `187f523`) are historical only. |
 | Runner | `uv run pytest tests/test_retrieval_baseline.py -v` |
 | Issue | [#100](https://github.com/MachineWisdomAI/fava-trails/issues/100) |
 
