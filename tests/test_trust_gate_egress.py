@@ -115,6 +115,30 @@ def test_redact_api_base_strips_userinfo_query_and_fragment():
     assert "#frag" not in clean
 
 
+def test_redact_api_base_redacts_non_v1_path_segments():
+    dirty = "https://api.example/v1/secret-token"
+    clean = redact_trust_gate_api_base_for_disclosure(dirty)
+    assert clean == "https://api.example/[redacted]"
+    assert "secret-token" not in clean
+    notice = describe_trust_gate_egress(
+        GlobalConfig(
+            trust_gate_provider="openai",
+            trust_gate_model="m",
+            trust_gate_api_base=dirty,
+            trust_gate_api_key_env="K",
+        )
+    )
+    blob = json.dumps(notice) + format_trust_gate_egress_notice(notice)
+    assert "secret-token" not in blob
+    assert notice["destination"] == "https://api.example/[redacted]"
+
+
+def test_redact_api_base_malformed_port_does_not_raise():
+    clean = redact_trust_gate_api_base_for_disclosure("http://localhost:bogus/v1")
+    assert clean == "http://[invalid-api-base]"
+    assert "bogus" not in clean
+
+
 def test_describe_redacts_url_embedded_secrets_in_destination_and_text():
     dirty = "http://operator:supersecret@127.0.0.1:8888/v1?token=alsosecret"
     notice = describe_trust_gate_egress(
@@ -455,14 +479,20 @@ async def test_local_retry_error_path_stays_on_configured_endpoint(
     cfg.trails_dir = tmp_fava_home / "trails"
     ConfigStore.override(cfg)
 
-    providers_seen: list[str] = []
+    calls_seen: list[dict[str, str | None]] = []
 
     import any_llm
 
     real = any_llm.acompletion
 
     async def track(*args, **kwargs):
-        providers_seen.append(str(kwargs.get("provider")))
+        api_base = kwargs.get("api_base") or (kwargs.get("client_args") or {}).get("base_url")
+        calls_seen.append(
+            {
+                "provider": None if kwargs.get("provider") is None else str(kwargs.get("provider")),
+                "api_base": None if api_base is None else str(api_base),
+            }
+        )
         return await real(*args, **kwargs)
 
     with patch.dict(os.environ, {"LOCAL_ONLY_KEY": "test-local-key"}, clear=False):
@@ -475,8 +505,9 @@ async def test_local_retry_error_path_stays_on_configured_endpoint(
 
     assert result["status"] == "error"
     assert result["trust_gate"]["provider"] == "openai"
-    assert providers_seen
-    assert all(p == "openai" for p in providers_seen)
+    assert calls_seen, "expected at least one LLM call on the retry/error path"
+    assert all(c["provider"] == "openai" for c in calls_seen)
+    assert all(c["api_base"] == base_url for c in calls_seen)
     still = await trail_manager.get_thought(record.thought_id)
     # Fail-closed: not approved into a permanent namespace.
     assert still.frontmatter.validation_status.value in {"draft", "error", "rejected"}

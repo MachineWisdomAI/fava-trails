@@ -293,6 +293,19 @@ class GlobalConfig(BaseModel):
         base = v.strip()
         if not (base.startswith("http://") or base.startswith("https://")):
             raise ValueError("trust_gate_api_base must start with http:// or https://")
+        from urllib.parse import urlparse
+
+        parsed = urlparse(base)
+        if not parsed.hostname:
+            raise ValueError("trust_gate_api_base must include a hostname")
+        try:
+            # urlparse defers port casting until .port is accessed.
+            _ = parsed.port
+        except ValueError as exc:
+            raise ValueError(
+                "trust_gate_api_base port must be an integer "
+                f"(got {base!r}: {exc})"
+            ) from exc
         return base
 
     @model_validator(mode="after")

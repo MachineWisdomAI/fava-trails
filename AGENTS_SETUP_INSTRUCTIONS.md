@@ -50,9 +50,12 @@ fava-trails doctor
 Doctor prints the effective policy, provider, model, destination, and a plain
 **Data egress** explanation of which candidate fields will be sent. API keys and
 credential file paths are never printed. The MCP server also logs the same notice
-at startup, and every `propose_truth` response includes a secret-free
-`trust_gate_egress` object (with `first_in_process: true` on the first promotion
-in that process).
+at startup. Successful LLM or operator `propose_truth` paths (and credential /
+timeout failures after disclosure begins) include a secret-free
+`trust_gate_egress` object (`first_in_process: true` on the first disclosure in
+that process). Early validation failures — missing `thought_id`, missing prompt
+cache, thought not found, or prompt-resolution errors — return before disclosure
+and omit `trust_gate_egress`.
 
 **OpenRouter (default, remote egress):**
 

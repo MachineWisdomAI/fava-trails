@@ -380,6 +380,20 @@ def test_global_config_rejects_invalid_api_base_scheme():
         GlobalConfig(trust_gate_api_base="ftp://localhost/v1")
 
 
+def test_global_config_rejects_malformed_api_base_port():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="port"):
+        GlobalConfig(trust_gate_api_base="http://localhost:bogus/v1")
+
+
+def test_global_config_rejects_api_base_without_hostname():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="hostname"):
+        GlobalConfig(trust_gate_api_base="http:///v1")
+
+
 def test_global_config_validate_runtime_api_base_optional_for_hosted_providers():
     """Issue #85: api_base is optional; hosted OpenAI/Anthropic need no custom base."""
     config = GlobalConfig(

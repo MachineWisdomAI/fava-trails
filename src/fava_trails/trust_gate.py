@@ -46,33 +46,60 @@ def reset_trust_gate_egress_disclosure_state() -> None:
         _egress_disclosed_in_process = False
 
 
+# Paths safe to show in disclosures. Anything else may embed gateway tokens.
+_DISCLOSABLE_API_BASE_PATHS = frozenset({"", "/", "/v1", "/v1/"})
+
+
 def redact_trust_gate_api_base_for_disclosure(api_base: str | None) -> str | None:
     """Return a secret-free api_base suitable for logs, doctor, and tool JSON.
 
-    Strips URL userinfo, query string, and fragment. The live request may still
-    use the full configured value; only disclosed representations are redacted.
+    Strips URL userinfo, query string, and fragment. Path is disclosed only when
+    it is empty or the conventional OpenAI-compatible ``/v1`` suffix; any other
+    path is replaced with ``/[redacted]`` so gateway tokens in path segments
+    cannot leak. Malformed ports fail closed to a non-secret placeholder rather
+    than raising. The live request may still use the full configured value.
     """
     if not api_base:
         return None
-    parsed = urlparse(api_base.strip())
+    raw = api_base.strip()
+    if not raw:
+        return None
+    parsed = urlparse(raw)
     hostname = parsed.hostname or ""
+    if not hostname:
+        return f"{parsed.scheme or 'http'}://[invalid-api-base]"
     if ":" in hostname:
         host_for_netloc = f"[{hostname}]"
     else:
         host_for_netloc = hostname
-    if parsed.port is not None:
-        netloc = f"{host_for_netloc}:{parsed.port}"
+    try:
+        port = parsed.port
+    except ValueError:
+        # Defense in depth: never crash doctor/startup logs on a bad port.
+        return f"{parsed.scheme or 'http'}://[invalid-api-base]"
+    if port is not None:
+        netloc = f"{host_for_netloc}:{port}"
     else:
         netloc = host_for_netloc
+    path = parsed.path or ""
+    if path not in _DISCLOSABLE_API_BASE_PATHS:
+        path = "/[redacted]"
+    elif path == "/v1/":
+        path = "/v1"
+    elif path == "/":
+        path = ""
     # Drop username/password (netloc rebuild), params, query, and fragment.
-    return urlunparse((parsed.scheme, netloc, parsed.path, "", "", ""))
+    return urlunparse((parsed.scheme, netloc, path, "", "", ""))
 
 
 def _is_loopback_api_base(api_base: str | None) -> bool:
     """True only for localhost or numeric loopback IP literals (not 127.* DNS names)."""
     if not api_base:
         return False
-    host = (urlparse(api_base).hostname or "").lower()
+    try:
+        host = (urlparse(api_base).hostname or "").lower()
+    except Exception:
+        return False
     if host == "localhost":
         return True
     try:
