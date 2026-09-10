@@ -12,6 +12,18 @@
     "uniques": 2
   },
   {
+    "path": "/MachineWisdomAI/fava-trails/blob/main/AGENTS_SETUP_INSTRUCTIONS.md",
+    "title": "/blob/main/AGENTS_SETUP_INSTRUCTIONS.md",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/blob/main/docs/fava_trails_faq.md",
+    "title": "/blob/main/docs/fava_trails_faq.md",
+    "count": 1,
+    "uniques": 1
+  },
+  {
     "path": "/MachineWisdomAI/fava-trails/commits/main",
     "title": "/commits/main",
     "count": 1,
