@@ -285,10 +285,11 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     print("[3/6] Created trails/")
 
     # Copy template files (README + agent guides + trust-gate prompt).
-    # Packaged sources use agents-guide.md / claude-code-guide.md so Hermes
-    # agent workspaces can edit them (AGENTS.md/CLAUDE.md basenames are
-    # protected instruction files). Installed data repos still get AGENTS.md
-    # and CLAUDE.md. Fall back to legacy basenames if present.
+    # Canonical editable sources are agents-guide.md / claude-code-guide.md
+    # (Hermes protects AGENTS.md/CLAUDE.md basenames in agent workspaces).
+    # Legacy AGENTS.md/CLAUDE.md may still ship as byte-identical aliases for
+    # older packaging layouts; bootstrap prefers the editable names first.
+    # tests/test_cli.py asserts preferred/legacy pairs cannot drift.
     template_pkg = importlib_resources.files("fava_trails") / "data_repo_template"
 
     def _template_text(*candidates: str) -> str:
