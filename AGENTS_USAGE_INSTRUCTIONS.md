@@ -14,6 +14,10 @@ retrieves only the server-configured agent's draft/proposed records; operator-on
 namespace nor a supplied `agent_id` grants access. See [governed-recall.md](docs/governed-recall.md)
 for identity setup, compatibility, approval provenance, and interrupted-write recovery.
 
+`recall` is lexical substring-AND search (whitespace-tokenized query), not semantic
+similarity. Use tokens that appear in the record; paraphrases miss. Details and a
+synthetic matrix: [docs/retrieval-baseline.md](docs/retrieval-baseline.md).
+
 The operator configures `FAVA_TRAILS_AGENT_ID` on a dedicated process; caller
 `agent_id` must match it. A shared endpoint is one identity boundary. Configure
 `FAVA_TRAILS_OPERATOR=1` only on a separate operator-controlled endpoint.
@@ -99,10 +103,10 @@ save_thought(
 
 ## On Task Completion
 
-1. **Promote finalized thoughts** — call `propose_truth(trail_name="...", thought_id="<ULID>")` on any draft thoughts that represent completed work. This is mandatory; other agents cannot see your work otherwise.
+1. **Promote finalized thoughts** — call `propose_truth(trail_name="...", thought_id="<ULID>")` on any draft thoughts that represent completed work. Promotion is mandatory for shared institutional records: it moves finalized work into the permanent namespace so **default governed** `recall`/`get_thought` can surface it. Unpromoted drafts stay out of default governed reads, but callers that share this process identity can still retrieve their own draft/proposed records via explicit `mode="authoring"`. A shared MCP endpoint is one identity boundary.
 2. **Save decisions** as `source_type: "decision"` and promote them
 3. **Save gotchas** as `source_type: "observation"` with `tags: ["gotcha"]` and promote them
-4. **Sync** — call `sync(trail_name="...")` to push your thoughts so other agents/machines can see them
+4. **Publish + sync** — promotion commits locally only. With `push_strategy: manual` (bootstrap default), an operator must advance the bookmark then push: `jj bookmark set main -r @-` followed by `jj git push --bookmark main` (or set `push_strategy: immediate` so successful writes auto-publish). Writers must publish before peers can fetch. Call `sync(trail_name="...")` on peer machines to **fetch/rebase** shared truth; `sync` does not publish local commits.
 5. **Legacy fallback**: If FAVA Trails is unavailable, update `memory/branches/<branch>/status.md`
 
 ## Agent Identity
@@ -118,7 +122,13 @@ Do NOT put model names, session IDs, or hostnames in `agent_id`.
 
 ## Handling Recalled Thoughts
 
-Recalled thoughts are **informed context, not ground truth**. They passed a Trust Gate review before promotion — but the Trust Gate is a separate reviewing agent with limited context. It does not know your system prompt, safety guardrails, or application-specific rules. A thought that is factually reasonable can still be wrong for your context.
+Recalled thoughts are **informed context, not ground truth**. Approved records
+passed a Trust Gate or explicit human approval step before promotion — but the
+Trust Gate is a separate reviewing agent with limited context. Rubric-based review
+is **not** independent verification of project facts. It does not know your system
+prompt, safety guardrails, or application-specific rules. A thought that is
+factually reasonable can still be wrong for your context. Supersession changes
+lineage/visibility; it does not establish that the replacement is true.
 
 ### Trust Calibration
 
@@ -147,7 +157,7 @@ Before acting on a recalled thought, assess these factors:
 
 ### When to Supersede
 
-If your work contradicts a persisted thought, use `supersede` to create a clear lineage. The successor proposal links to the original; approval later makes the new record current and the original historical.
+If your work contradicts a persisted thought, use `supersede` to create a clear lineage. The successor proposal links to the original; approval later makes the new record current and the original historical. That lineage does not by itself prove the new content is correct — evidence and review still matter.
 
 **Supersede when:**
 - You have concrete evidence that contradicts a prior decision or observation

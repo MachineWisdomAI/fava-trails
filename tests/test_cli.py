@@ -230,6 +230,42 @@ def _make_jj_mock(returncode=0):
     return mock
 
 
+def test_packaged_data_repo_guides_do_not_drift():
+    """Preferred editable guides and legacy basename aliases must stay byte-identical.
+
+    Bootstrap prefers agents-guide.md / claude-code-guide.md, then falls back to
+    AGENTS.md / CLAUDE.md. Shipping a stale legacy copy would install wrong
+    guidance into every new data repo whenever selection order changes.
+    """
+    import importlib.resources as importlib_resources
+
+    template_pkg = importlib_resources.files("fava_trails") / "data_repo_template"
+    pairs = (
+        ("agents-guide.md", "AGENTS.md"),
+        ("claude-code-guide.md", "CLAUDE.md"),
+    )
+    for preferred_name, legacy_name in pairs:
+        preferred = template_pkg / preferred_name
+        legacy = template_pkg / legacy_name
+        assert preferred.is_file(), f"missing preferred packaged guide {preferred_name}"
+        preferred_text = preferred.read_text()
+        assert "semantic search" not in preferred_text.lower()
+        if preferred_name.startswith("agents"):
+            assert "lexical" in preferred_text.lower()
+            assert "bookmark set main" in preferred_text
+            assert "does **not** push" in preferred_text or "does not push" in preferred_text.lower()
+            assert "invisible to other agents" not in preferred_text
+        else:
+            assert "bookmark set main -r @-" in preferred_text
+            assert "jj git push --bookmark main" in preferred_text
+            assert "jj git push -b main" not in preferred_text
+        if legacy.is_file():
+            assert legacy.read_text() == preferred_text, (
+                f"{legacy_name} drifted from {preferred_name}; keep aliases identical "
+                "or remove the legacy resource"
+            )
+
+
 def test_bootstrap_creates_structure(tmp_path):
     """bootstrap creates config.yaml, .gitignore, trails/, template files, and runs jj init."""
     target = tmp_path / "data-repo"
@@ -247,11 +283,33 @@ def test_bootstrap_creates_structure(tmp_path):
     # Template files copied
     assert (target / "README.md").exists()
     assert (target / "CLAUDE.md").exists()
+    assert (target / "AGENTS.md").exists()
     assert (target / "trails" / "trust-gate-prompt.md").exists()
     assert "FAVA Trails" in (target / "README.md").read_text()
     assert "quality gate" in (target / "trails" / "trust-gate-prompt.md").read_text().lower()
 
-    import yaml as _yaml
+    agents = (target / "AGENTS.md").read_text()
+    assert "semantic search" not in agents.lower()
+    assert "lexical" in agents.lower()
+    assert "substring" in agents.lower()
+    assert "does **not** push" in agents or "does not push" in agents.lower()
+    assert "bookmark set main" in agents
+    assert "@-" in agents
+    assert "invisible to other agents" not in agents
+
+    claude = (target / "CLAUDE.md").read_text()
+    assert "bookmark set main -r @-" in claude
+    assert "jj git push --bookmark main" in claude
+    # no bare short-form push command remaining as a runnable recipe
+    assert "jj git push -b main" not in claude
+    assert claude.index("bookmark set main -r @-") < claude.index("jj git push --bookmark main")
+
+    # Installed names match preferred packaged sources (not a drifted legacy copy)
+    import importlib.resources as importlib_resources
+
+    template_pkg = importlib_resources.files("fava_trails") / "data_repo_template"
+    assert agents == (template_pkg / "agents-guide.md").read_text()
+    assert claude == (template_pkg / "claude-code-guide.md").read_text()
 
     config = _yaml.safe_load((target / "config.yaml").read_text())
     assert config["trails_dir"] == "trails"
