@@ -14,6 +14,8 @@ from fava_trails.mcp_context import (
     DEFAULT_TOKENIZER,
     MCP_SURFACE_ENV,
     measure_mcp_context,
+    missing_scope_recovery_evidence,
+    prompt_coverage_from_instructions,
     resolve_mcp_surface,
     serialize_initialize_instructions,
     serialize_tools_list,
@@ -276,24 +278,71 @@ async def test_recall_save_promote_is_executed_on_both_surfaces(tmp_fava_home, t
         assert side["session_started"] is True
         assert side["client_class"] == "mcp.Client"
         assert "scripted_steps" in side
-        assert "observed_skips" in side
+        assert "observed_skips" not in side
+        assert "prompt_coverage" in side
+        coverage = side["prompt_coverage"]
+        assert coverage["kind"] == "deterministic_instruction_scan"
+        assert coverage["not_observed_client_choices"] is True
         assert "invalid_save" in side["scripted_steps"]
         assert "retry_save_with_content" in side["scripted_steps"]
         assert "propose_truth" in side["scripted_steps"]
         recovery = side["error_recovery"]
         assert recovery["invalid_save"]["recovered"] is True
         assert recovery["invalid_save"]["retry_status"] == "ok"
-        assert recovery["missing_scope"]["recovered"] is True
-        assert recovery["missing_scope"]["recovery_action"]
+        missing = recovery["missing_scope"]
+        assert missing["recovered"] is True
+        assert missing["selected_scope"] == side["work_scope"]
+        assert missing["selected_scope"] in missing["returned_paths"]
+        assert missing["retry_status"] == "ok"
+        assert missing["evidence"] == "selected_returned_scope_and_retried"
         naive = side["naive_initialize_only"]
         assert "skipped" in naive
         assert "called" in naive
         assert naive["get_usage_guide_called"] is False
-    assert "session_start_recall" not in payload["full"]["observed_skips"]
-    assert "session_start_recall" in payload["compact"]["observed_skips"]
+        assert "propose_truth" not in naive["skipped"]
+    assert "session_start_recall" not in payload["full"]["prompt_coverage"]["gaps"]
+    assert "session_start_recall" in payload["compact"]["prompt_coverage"]["gaps"]
+    assert "propose_truth" not in payload["compact"]["prompt_coverage"]["gaps"]
+    assert payload["compact"]["prompt_coverage"]["propose_truth_requested_in_instructions"] is True
+    assert payload["compact"]["prompt_coverage"]["promotion_mandate_wording"] is False
     assert "session_start_recall" in payload["compact"]["naive_initialize_only"]["skipped"]
     assert "session_start_recall" not in payload["full"]["naive_initialize_only"]["skipped"]
-    assert "propose_truth" in payload["compact"]["naive_initialize_only"]["skipped"]
+
+
+def test_prompt_coverage_is_instruction_scan_not_observed_client_choice():
+    full = prompt_coverage_from_instructions(serialize_initialize_instructions("full"))
+    compact = prompt_coverage_from_instructions(serialize_initialize_instructions("compact"))
+    assert full["kind"] == compact["kind"] == "deterministic_instruction_scan"
+    assert compact["not_observed_client_choices"] is True
+    assert "session_start_recall" in compact["gaps"]
+    assert "session_start_recall" not in full["gaps"]
+    assert "propose_truth" not in compact["gaps"]
+    assert compact["propose_truth_requested_in_instructions"] is True
+    assert compact["promotion_mandate_wording"] is False
+    assert full["propose_truth_requested_in_instructions"] is True
+    assert full["promotion_mandate_wording"] is True
+
+
+def test_missing_scope_recovery_requires_selected_path_and_retry():
+    empty = missing_scope_recovery_evidence(paths=[], retry_status=None)
+    assert empty["recovered"] is False
+    assert empty["evidence"] == "discovery_attempted"
+    assert empty["selected_scope"] is None
+    listed_only = missing_scope_recovery_evidence(
+        paths=["synthetic/mcp-context-full"],
+        selected_scope=None,
+        retry_status=None,
+    )
+    assert listed_only["recovered"] is False
+    assert listed_only["evidence"] == "discovery_attempted"
+    retried = missing_scope_recovery_evidence(
+        paths=["synthetic/mcp-context-full"],
+        selected_scope="synthetic/mcp-context-full",
+        retry_status={"failed": False, "status": "ok"},
+    )
+    assert retried["recovered"] is True
+    assert retried["evidence"] == "selected_returned_scope_and_retried"
+    assert retried["selected_scope"] == "synthetic/mcp-context-full"
 
 
 def test_tested_release_is_frozen_and_not_relabeled(monkeypatch):

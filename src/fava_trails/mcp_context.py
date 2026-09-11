@@ -261,14 +261,78 @@ def _subject(*, role: str, git_commit: str | None = None, package_version: str |
     }
 
 
-def _skipped_step_risk(surface: str, instructions: str) -> dict[str, Any]:
+def prompt_coverage_from_instructions(instructions: str) -> dict[str, Any]:
+    """Scan initialize text. This is not an observed client choice."""
     has_session = 'query="status"' in instructions
-    has_mandatory = "mandatory" in instructions.lower() and "propose_truth" in instructions
+    requested = "propose_truth" in instructions
+    mandatory = "mandatory" in instructions.lower() and requested
+    gaps: list[str] = []
+    if not has_session:
+        gaps.append("session_start_recall")
+    return {
+        "kind": "deterministic_instruction_scan",
+        "not_observed_client_choices": True,
+        "session_start_recall_in_instructions": has_session,
+        "propose_truth_requested_in_instructions": requested,
+        "promotion_mandate_wording": mandatory,
+        "gaps": gaps,
+    }
+
+
+def missing_scope_recovery_evidence(
+    *,
+    paths: list[str],
+    selected_scope: str | None = None,
+    retry_status: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Recovery requires an exact returned path and a retried recall."""
+    selected = selected_scope if selected_scope in paths else None
+    retried_ok = bool(
+        selected
+        and isinstance(retry_status, dict)
+        and retry_status.get("failed") is False
+        and retry_status.get("status") in (None, "ok")
+    )
+    return {
+        "returned_paths": list(paths),
+        "selected_scope": selected,
+        "retry_status": None if retry_status is None else retry_status.get("status"),
+        "recovered": retried_ok,
+        "evidence": (
+            "selected_returned_scope_and_retried" if retried_ok else "discovery_attempted"
+        ),
+        "recovery_action": (
+            "list_scopes; selected exact returned path; retried recall"
+            if retried_ok
+            else "list_scopes discovery attempted; no exact path selected or recall not retried"
+        ),
+    }
+
+
+def _list_scope_paths(result: Any) -> list[str]:
+    structured = getattr(result, "structured_content", None)
+    if not isinstance(structured, dict):
+        return []
+    scopes = structured.get("scopes")
+    if not isinstance(scopes, list):
+        return []
+    paths: list[str] = []
+    for item in scopes:
+        if isinstance(item, dict):
+            path = item.get("path")
+            if isinstance(path, str) and path:
+                paths.append(path)
+    return paths
+
+
+def _skipped_step_risk(surface: str, instructions: str) -> dict[str, Any]:
+    coverage = prompt_coverage_from_instructions(instructions)
     if surface == "compact":
         note = (
-            "Compact omits session-start and promotion prose from initialize/"
-            "tool descriptions. Clients that never call get_usage_guide may skip "
-            "recall-before-work or propose_truth after save. The server does not "
+            "Compact omits session-start recall examples from initialize/"
+            "tool descriptions. Compact still requests propose_truth in the core "
+            "loop without 'mandatory' wording. Clients that never call "
+            "get_usage_guide may skip recall-before-work. The server does not "
             "invoke those steps."
         )
     else:
@@ -277,8 +341,9 @@ def _skipped_step_risk(surface: str, instructions: str) -> dict[str, Any]:
             "mandate. The server still does not invoke those steps."
         )
     return {
-        "session_start_recall_in_instructions": has_session,
-        "promotion_mandate_in_instructions": has_mandatory,
+        "session_start_recall_in_instructions": coverage["session_start_recall_in_instructions"],
+        "promotion_mandate_in_instructions": coverage["promotion_mandate_wording"],
+        "propose_truth_requested_in_instructions": coverage["propose_truth_requested_in_instructions"],
         "get_usage_guide_optional": True,
         "propose_truth_not_auto_invoked": True,
         "note": note,
@@ -450,21 +515,17 @@ async def _exercise_recall_save_promote(surface: str) -> dict[str, Any]:
         listed = await client.list_tools()
         names = {tool.name for tool in listed.tools}
         instructions = client.instructions or ""
-        observed_skips: list[str] = []
-        if 'query="status"' not in instructions:
-            observed_skips.append("session_start_recall")
-        if not ("mandatory" in instructions.lower() and "propose_truth" in instructions):
-            observed_skips.append("propose_truth_mandate")
+        coverage = prompt_coverage_from_instructions(instructions)
 
         naive_called = ["initialize", "tools/list"]
         naive_skipped: list[str] = []
-        if 'query="status"' in instructions:
+        if coverage["session_start_recall_in_instructions"]:
             await client.call_tool("recall", {"trail_name": scope, "query": "status"})
             naive_called.append("session_start_recall")
         else:
             naive_skipped.append("session_start_recall")
-        if "mandatory" in instructions.lower() and "propose_truth" in instructions:
-            naive_called.append("propose_truth_mentioned")
+        if coverage["propose_truth_requested_in_instructions"]:
+            naive_called.append("propose_truth_requested")
         else:
             naive_skipped.append("propose_truth")
 
@@ -481,8 +542,19 @@ async def _exercise_recall_save_promote(surface: str) -> dict[str, Any]:
         missing = await client.call_tool("recall", {"trail_name": f"synthetic/missing-{resolved}"})
         scripted_steps.append("missing_scope_recall")
         listed_scopes = await client.call_tool("list_scopes", {"prefix": "synthetic"})
-        scripted_steps.append("recover_missing_scope")
-        recovered_missing = not _client_result_status(listed_scopes)["failed"]
+        scripted_steps.append("list_scopes")
+        paths = _list_scope_paths(listed_scopes)
+        selected = scope if scope in paths else (paths[0] if paths else None)
+        retry_status: dict[str, Any] | None = None
+        if selected:
+            retried = await client.call_tool("recall", {"trail_name": selected, "query": "status"})
+            scripted_steps.append("retry_recall_on_returned_scope")
+            retry_status = _client_result_status(retried)
+        recovery_missing = missing_scope_recovery_evidence(
+            paths=paths,
+            selected_scope=selected,
+            retry_status=retry_status,
+        )
 
         authoring = await client.call_tool("recall", {"trail_name": scope, "mode": "authoring"})
         scripted_steps.append("authoring_recall")
@@ -500,6 +572,7 @@ async def _exercise_recall_save_promote(surface: str) -> dict[str, Any]:
             "session_started": True,
             "client_class": "mcp.Client",
             "surface": resolved,
+            "work_scope": scope,
             "session_init": _text_metrics(session_init_payload(resolved)),
             "observed_instructions_chars": len(instructions),
             "discoverability": {
@@ -517,12 +590,11 @@ async def _exercise_recall_save_promote(surface: str) -> dict[str, Any]:
                 },
                 "missing_scope": {
                     **missing_status,
-                    "recovered": recovered_missing,
-                    "recovery_action": "list_scopes after missing-scope error, then continue on the created work scope",
+                    **recovery_missing,
                 },
             },
             "scripted_steps": scripted_steps,
-            "observed_skips": observed_skips,
+            "prompt_coverage": coverage,
             "naive_initialize_only": {
                 "called": naive_called,
                 "skipped": naive_skipped,

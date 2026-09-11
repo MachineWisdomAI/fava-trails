@@ -103,9 +103,10 @@ Executed on both surfaces through in-process `mcp.Client` sessions (`mode="legac
 initialize handshake) against dedicated `Server` instances. The harness instantiates
 the client; it does not call `handle_call_tool` directly. Task: observe initialize
 instructions, follow only those instructions on a naive pass (no `get_usage_guide`),
-then script invalid save, retry with content, missing-scope recall, recover via
-`list_scopes`, authoring `recall`, and `propose_truth` (Trust Gate review mocked).
-Scripted steps are recorded separately from observed skips. Results:
+then script invalid save, retry with content, missing-scope recall, `list_scopes`,
+select an exact returned path, retry recall, authoring `recall`, and `propose_truth`
+(Trust Gate review mocked). Scripted executed steps are recorded separately from
+deterministic prompt-coverage scans of initialize text. Results:
 
 | Check | full | compact |
 | --- | --- | --- |
@@ -117,18 +118,20 @@ Scripted steps are recorded separately from observed skips. Results:
 | Executed save_thought | ok | ok |
 | Executed authoring recall after save | count 1 | count 1 |
 | Executed propose_truth | ok | ok |
-| Error recovery: missing scope | status error | status error |
+| Error recovery: missing scope | status error, then list_scopes + retry recall on returned path | same |
 | Error recovery: save without content | failed, then retry ok | failed, then retry ok |
 | Session-start recall trio in initialize text | yes | no; in `get_usage_guide` |
-| Promotion “mandatory” prose in initialize text | yes | no; in `get_usage_guide` |
-| Observed skip (naive initialize-only, no get_usage_guide) | none for session-start recall | session-start recall and propose_truth skipped |
+| `propose_truth` requested in initialize text | yes (mandatory wording) | yes (core loop; no “mandatory”) |
+| Prompt-coverage gap (instruction scan, not a client choice) | none for session-start recall | session-start recall only |
 
-Skipped-step risk on compact: a client that never calls `get_usage_guide` and
-does not inject its own guide was observed skipping session-start `recall` and
-not calling `propose_truth` unless the harness forced those steps. Full initialize
-text still includes those prompts; the server does not invoke those steps on either
-surface. Scripted retries after invalid save and missing-scope recall succeeded on
-both surfaces.
+Prompt-coverage indicators are a deterministic scan of initialize text, not
+behavior observed from a client. Compact initialize still requests `propose_truth`
+in the core loop; missing the word “mandatory” is not a skip. Compact omits the
+session-start recall trio, which remains a coverage gap unless the client calls
+`get_usage_guide` or injects its own guide. The server does not invoke those
+steps on either surface. Missing-scope recovery selects an exact `list_scopes`
+path and retries recall; a successful empty `list_scopes` is discovery attempted,
+not recovery.
 
 ## What the server enforces vs prompt/client behavior
 
