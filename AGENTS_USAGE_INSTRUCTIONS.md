@@ -24,19 +24,19 @@ Every FAVA Trails tool call requires a `trail_name` parameter — a slash-separa
 
 | Priority | Source | Set where | Purpose |
 |----------|--------|-----------|---------|
-| 1 | `FAVA_TRAILS_SCOPE` env var | `.env` file (gitignored) | Per-worktree override for epic/branch work |
+| 1 | `FAVA_TRAILS_SCOPE` env var | Process environment (optional) | Per-worktree override for epic/branch work |
 | 2 | `.fava-trails.yaml` `scope` | Project root (committed) | Default project scope, shared across clones |
 | 3 | `FAVA_TRAILS_SCOPE_HINT` | MCP server `env` block | Broad org/team fallback baked into tool descriptions |
 
 **How to determine your trail_name:**
 
-1. Check env vars for `FAVA_TRAILS_SCOPE` (loaded from project `.env`) — use that if set
-2. If not set, read `.fava-trails.yaml` at the project root for `scope` — **then write it to `.env` as `FAVA_TRAILS_SCOPE=<scope>`** so all agents in the project pick it up automatically
-3. If in a different directory, check that directory's `.fava-trails.yaml` or `.env`
+1. Check env vars for `FAVA_TRAILS_SCOPE` — use that if set. Do not write application-owned `.env` files.
+2. If not set, read `.fava-trails.yaml` at the project root for `scope` and use it as `trail_name`
+3. If in a different directory, check that directory's `.fava-trails.yaml`
 4. Otherwise, use the scope shown in tool descriptions (from `FAVA_TRAILS_SCOPE_HINT`) — and prompt the user to create a `.fava-trails.yaml` with their intended scope
 5. If none found, ask the user
 
-**Per-worktree `.env` convention:** Use `.env` for the active scope (auto-populated from `.fava-trails.yaml`, or overridden for epic/branch work):
+**Optional process override:** operators may export `FAVA_TRAILS_SCOPE` for epic/branch work. Agents must not silently create or edit application `.env` files. `fava-trails init` and `fava-trails scope set` persist scope in `.fava-trails.yaml`; `--write-env` is an explicit opt-in.
 ```
 FAVA_TRAILS_SCOPE=mwai/eng/fava-trails/0001a-my-epic
 ```

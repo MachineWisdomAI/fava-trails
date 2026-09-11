@@ -137,7 +137,7 @@ jj bookmark track main@origin
 
 ### After setup
 
-Register the MCP server (see [README.md](README.md#register-the-mcp-server)), then use MCP tools (`save_thought`, `recall`, etc.) for all trail operations. Do not use `git` commands to manage thought files.
+Register the MCP server with `fava-trails register` (see [README.md](README.md#register-the-mcp-server)), then use MCP tools (`save_thought`, `recall`, etc.) for all trail operations. Do not use `git` commands to manage thought files. Direct stdio testing does not register the server for native sessions.
 
 ## Setting Up a Second Machine
 

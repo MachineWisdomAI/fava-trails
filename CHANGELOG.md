@@ -4,7 +4,11 @@ All notable changes to FAVA Trails are documented here.
 
 ## Unreleased
 
+### Added
+- `fava-trails register` prints native MCP registration using an ordinary `FAVA_TRAILS_AGENT_ID`, the resolved executable, and the intended data repository. `--write` is an explicit client-config opt-in (atomic write, `.bak` backup, permission denial without bypass). `--verify` labels a direct MCP smoke test versus a native client session and reports stale runtime paths or registration not loaded.
+
 ### Changed
+- `fava-trails init` and `fava-trails scope set` persist scope in `.fava-trails.yaml` and no longer write application `.env` files unless `--write-env` is passed. Existing `FAVA_TRAILS_SCOPE` reads are unchanged. Generated agent guidance no longer tells agents to edit application-owned `.env` files. Resolves #103.
 - Support MCP SDK 2.2 with explicit low-level handlers, preserving tool schemas, annotations, input/output validation, structured results, and Markdown usage guidance over stdio and Streamable HTTP. Adds installed-wheel protocol tests for legacy initialization and current SDK clients. Resolves #83.
 
 ## [0.6.1] — 2026-08-01
