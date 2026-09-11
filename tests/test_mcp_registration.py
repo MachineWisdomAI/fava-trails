@@ -102,6 +102,26 @@ def test_config_writer_preserves_unrelated_servers_and_writes_atomically(tmp_pat
     assert not config.with_name(config.name + ".tmp").exists()
 
 
+def test_config_writer_preserves_restrictive_mode_on_replacement_and_backup(tmp_path):
+    config = tmp_path / "claude.json"
+    config.write_text(json.dumps({"mcpServers": {}}))
+    config.chmod(0o600)
+    entry = build_registration(executable="/bin/fava-trails-server", data_repo="/data", agent_id="claude-code")
+    backup = write_mcp_json_config(config, server_name="fava-trails", entry=entry)
+    assert backup is not None
+    assert stat.S_IMODE(config.stat().st_mode) == 0o600
+    assert stat.S_IMODE(backup.stat().st_mode) == 0o600
+
+
+def test_config_writer_creates_new_files_with_owner_only_mode(tmp_path):
+    config = tmp_path / "new-client.json"
+    entry = build_registration(executable="/bin/fava-trails-server", data_repo="/data", agent_id="claude-code")
+    backup = write_mcp_json_config(config, server_name="fava-trails", entry=entry)
+    assert backup is None
+    assert config.exists()
+    assert stat.S_IMODE(config.stat().st_mode) == 0o600
+
+
 def test_config_writer_reports_permission_denial_without_bypass(tmp_path):
     config = tmp_path / "locked.json"
     config.write_text("{}")
@@ -183,15 +203,62 @@ def test_native_session_reports_not_loaded_without_spawning(tmp_path):
     assert result["status"] == "registration_not_loaded"
 
 
-def test_native_session_runs_registered_command(tmp_path):
-    server = _fake_server(tmp_path, "native")
+def test_native_session_does_not_spawn_registered_command_as_the_client(tmp_path):
+    """Direct stdio of the registered command is not a native client session."""
+    marker = tmp_path / "spawned"
+    server = tmp_path / "fake-server-native"
+    server.write_text(
+        "#!/usr/bin/env python3\n"
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('spawned')\n"
+        "import json, sys\n"
+        "for line in sys.stdin:\n"
+        "    msg = json.loads(line)\n"
+        "    if msg.get('method') == 'initialize':\n"
+        "        print(json.dumps({\n"
+        "            'jsonrpc': '2.0', 'id': msg.get('id'),\n"
+        "            'result': {'protocolVersion': '2025-11-25', 'capabilities': {'tools': {}},\n"
+        "                       'serverInfo': {'name': 'fava-trails', 'version': 'test'}},\n"
+        "        }))\n"
+        "        sys.stdout.flush()\n"
+    )
+    server.chmod(server.stat().st_mode | stat.S_IEXEC)
     config = tmp_path / "claude.json"
     write_mcp_json_config(
         config,
         server_name="fava-trails",
         entry=build_registration(executable=str(server), data_repo=str(tmp_path), agent_id="claude-code"),
     )
-    result = verify_native_client_session(config, current_executable=str(server))
+    result = verify_native_client_session(
+        config,
+        current_executable=str(server),
+        client_probe=lambda *_args: {"ok": False, "status": "native_client_unavailable"},
+    )
+    assert not marker.exists()
+    assert result["verified"] == "native_client_session"
+    assert result["ok"] is False
+    assert result["status"] == "native_client_unavailable"
+
+
+def test_native_session_uses_injected_client_probe(tmp_path):
+    config = tmp_path / "claude.json"
+    write_mcp_json_config(
+        config,
+        server_name="fava-trails",
+        entry=build_registration(executable="/bin/fava-trails-server", data_repo=str(tmp_path), agent_id="claude-code"),
+    )
+    calls: list[tuple[str, str]] = []
+
+    def probe(config_path, server_name):
+        calls.append((str(config_path), server_name))
+        return {"ok": True, "status": "loaded"}
+
+    result = verify_native_client_session(
+        config,
+        current_executable="/bin/fava-trails-server",
+        client_probe=probe,
+    )
+    assert calls == [(str(config), "fava-trails")]
     assert result["verified"] == "native_client_session"
     assert result["ok"] is True
     assert result["status"] == "loaded"
@@ -211,3 +278,14 @@ def test_register_cli_prints_instructions_without_writing(tmp_path, capsys, monk
     assert "/opt/bin/fava-trails-server" in out
     assert "FAVA_TRAILS_AGENT_ID" in out
     assert "codex-cli" in out
+
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_data_repo_template_does_not_route_overrides_through_env_files():
+    template_dir = _REPO_ROOT / "src" / "fava_trails" / "data_repo_template"
+    content = (template_dir / "agents-guide.md").read_text()
+    assert "via `.env`" not in content
+    assert "write it to `.env`" not in content
+    assert "write it to .env" not in content

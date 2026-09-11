@@ -5,13 +5,17 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 DEFAULT_SERVER_NAME = "fava-trails"
 DEFAULT_CLIENT = "claude-code"
+NEW_FILE_MODE = 0o600
+NATIVE_MCP_CLIENT_PACKAGE = "@modelcontextprotocol/inspector@2.6.0"
 _SECRET_KEY_MARKERS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL")
 
 
@@ -85,11 +89,15 @@ def write_mcp_json_config(
     """Merge a server entry into an MCP JSON client config.
 
     Preserves unrelated keys. Writes atomically and makes a ``.bak`` backup of an
-    existing file. Permission errors are reported; this never chmods the target.
+    existing file. Existing restrictive modes are copied to the replacement and
+    backup; new files use owner-only mode ``0o600``. Permission errors are
+    reported; this never chmods the target to loosen access or bypass denial.
     """
     path = Path(path)
     existing_text: str | None = None
+    existing_mode: int | None = None
     if path.exists():
+        existing_mode = stat.S_IMODE(path.stat().st_mode)
         try:
             existing_text = path.read_text()
         except PermissionError as exc:
@@ -116,11 +124,13 @@ def write_mcp_json_config(
         raise ValueError(f"{path} mcpServers is not an object")
     servers[server_name] = entry
 
+    target_mode = existing_mode if existing_mode is not None else NEW_FILE_MODE
     backup_path: Path | None = None
     if existing_text is not None:
         backup_path = path.with_name(path.name + ".bak")
         try:
             backup_path.write_text(existing_text)
+            os.chmod(backup_path, target_mode)
         except PermissionError as exc:
             raise PermissionDenied(f"Permission denied writing backup {backup_path}") from exc
 
@@ -128,7 +138,9 @@ def write_mcp_json_config(
     tmp = path.with_name(path.name + ".tmp")
     try:
         tmp.write_text(serialized)
+        os.chmod(tmp, target_mode)
         os.replace(tmp, path)
+        os.chmod(path, target_mode)
     except PermissionError as exc:
         tmp.unlink(missing_ok=True)
         raise PermissionDenied(f"Permission denied writing {path}") from exc
@@ -148,7 +160,7 @@ def inspect_native_registration(
 ) -> dict[str, Any]:
     config_path = Path(config_path)
     report: dict[str, Any] = {
-        "verified": "native_client_session",
+        "verified": "client_config",
         "config_path": str(config_path),
         "current_executable": current_executable,
         "env_names": [],
@@ -206,6 +218,7 @@ def collect_secret_values(env: dict[str, str] | None = None) -> list[str]:
 def render_diagnostics(sections: dict[str, Any], *, secrets: list[str] | None = None) -> str:
     payload = {
         "direct_mcp_smoke": sections.get("direct_mcp_smoke"),
+        "client_config": sections.get("client_config"),
         "native_client_session": sections.get("native_client_session"),
     }
     text = json.dumps(payload, indent=2)
@@ -257,33 +270,65 @@ def verify_direct_mcp_smoke(executable: str, env: dict[str, str] | None = None) 
     return result
 
 
+def _default_native_client_probe(config_path: Path, server_name: str) -> dict[str, Any]:
+    """Load registration through MCP Inspector, not a direct stdio spawn."""
+    npx = shutil.which("npx")
+    node = shutil.which("node")
+    if not npx or not node:
+        return {"ok": False, "status": "native_client_unavailable"}
+    cmd = [
+        npx,
+        "--yes",
+        NATIVE_MCP_CLIENT_PACKAGE,
+        "--cli",
+        "--config",
+        str(config_path),
+        "--server",
+        server_name,
+        "--method",
+        "initialize",
+        "--format",
+        "json",
+    ]
+    env = os.environ.copy()
+    env.setdefault("MCP_INSPECTOR_SECRET_STORE", "memory")
+    env.setdefault("NO_UPDATE_NOTIFIER", "1")
+    try:
+        completed = subprocess.run(cmd, capture_output=True, text=True, timeout=180, env=env, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"ok": False, "status": "native_client_unavailable", "error": exc.__class__.__name__}
+    if completed.returncode != 0:
+        return {"ok": False, "status": "native_client_unavailable", "error": "initialize_failed"}
+    try:
+        payload = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return {"ok": False, "status": "native_client_unavailable", "error": "initialize_failed"}
+    result = payload.get("result") if isinstance(payload, dict) else None
+    if isinstance(result, dict) or (isinstance(payload, dict) and payload.get("serverInfo")):
+        return {"ok": True, "status": "loaded"}
+    return {"ok": False, "status": "native_client_unavailable", "error": "initialize_failed"}
+
+
 def verify_native_client_session(
     config_path: Path,
     *,
     current_executable: str,
     server_name: str = DEFAULT_SERVER_NAME,
+    client_probe: Callable[[Path, str], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     inspection = inspect_native_registration(
         config_path,
         current_executable=current_executable,
         server_name=server_name,
     )
-    if inspection.get("status") != "loaded":
-        inspection["verified"] = "native_client_session"
-        inspection["ok"] = False
-        return inspection
-    try:
-        loaded = json.loads(Path(config_path).read_text())
-    except (OSError, json.JSONDecodeError):
-        inspection["ok"] = False
-        inspection["status"] = "registration_not_loaded"
-        return inspection
-    entry = loaded["mcpServers"][server_name]
-    env = entry.get("env") if isinstance(entry.get("env"), dict) else {}
-    str_env = {str(key): str(value) for key, value in env.items()}
-    smoked = _initialize_stdio(str(entry["command"]), str_env)
-    inspection["ok"] = bool(smoked.get("ok"))
     inspection["verified"] = "native_client_session"
-    if not inspection["ok"]:
-        inspection["error"] = smoked.get("error", "initialize_failed")
+    if inspection.get("status") != "loaded":
+        inspection["ok"] = False
+        return inspection
+    probe = client_probe if client_probe is not None else _default_native_client_probe
+    probed = probe(Path(config_path), server_name)
+    inspection["ok"] = bool(probed.get("ok"))
+    inspection["status"] = str(probed.get("status") or ("loaded" if inspection["ok"] else "native_client_unavailable"))
+    if probed.get("error"):
+        inspection["error"] = probed["error"]
     return inspection

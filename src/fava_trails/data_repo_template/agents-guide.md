@@ -38,7 +38,7 @@ rebases shared truth; it does **not** push local commits.
 Every tool call requires a `trail_name` (scope path, e.g. `myorg/eng/my-project`).
 Resolve in priority order:
 
-1. `FAVA_TRAILS_SCOPE` env var (per-worktree override via `.env`)
+1. `FAVA_TRAILS_SCOPE` env var (optional process override; do not write application `.env` files)
 2. `.fava-trails.yaml` `scope` field (committed project default)
 3. Ask the user
 

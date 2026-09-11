@@ -34,6 +34,7 @@ from .mcp_registration import (
     build_registration,
     default_client_config_path,
     format_registration_instructions,
+    inspect_native_registration,
     render_diagnostics,
     resolve_server_executable,
     verify_direct_mcp_smoke,
@@ -772,8 +773,9 @@ def cmd_register(args: argparse.Namespace) -> int:
         return 0
 
     direct = verify_direct_mcp_smoke(executable, env={"FAVA_TRAILS_DATA_REPO": data_repo, "FAVA_TRAILS_AGENT_ID": agent_id})
+    client_config = inspect_native_registration(config_path, current_executable=executable)
     native = verify_native_client_session(config_path, current_executable=executable)
-    print(render_diagnostics({"direct_mcp_smoke": direct, "native_client_session": native}))
+    print(render_diagnostics({"direct_mcp_smoke": direct, "client_config": client_config, "native_client_session": native}))
     if not direct.get("ok") or not native.get("ok"):
         return 1
     return 0
@@ -1759,7 +1761,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--verify",
         action="store_true",
         default=False,
-        help="Run a direct MCP smoke test and a native-client-session check. Labels which was verified.",
+        help="Run a direct MCP smoke test and a native client session (MCP Inspector loads the client config). Labels which was verified. Reports native_client_unavailable when no native client is present; does not treat a direct stdio spawn as a native session.",
     )
     p_register.add_argument(
         "--operator",
