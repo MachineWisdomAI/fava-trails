@@ -661,10 +661,6 @@ def test_data_repo_template_does_not_route_overrides_through_env_files():
     assert "write it to .env" not in content
 
 
-@pytest.mark.xfail(
-    reason="Root AGENTS.md still instructs writing FAVA_TRAILS_SCOPE to .env; agent workspaces cannot edit AGENTS.md basenames.",
-    strict=True,
-)
 def test_authoritative_agents_md_does_not_instruct_writing_env():
     content = (_REPO_ROOT / "AGENTS.md").read_text()
     assert "write it to `.env`" not in content
