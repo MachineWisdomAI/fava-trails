@@ -133,57 +133,59 @@ def _make_args(**kwargs):
 
 
 def test_init_with_existing_yaml_no_env(tmp_path, monkeypatch):
-    """init reads scope from .fava-trails.yaml and writes .env."""
+    """init reads scope from .fava-trails.yaml and does not write an application .env."""
     monkeypatch.chdir(tmp_path)
     _write_project_yaml(tmp_path, "mw/eng/test")
-    # Patch get_data_repo_root to avoid real filesystem dependency
     with patch("fava_trails.cli.get_data_repo_root") as mock_repo:
         mock_repo.return_value = tmp_path / "data"
         rc = cmd_init(_make_args(scope=None))
     assert rc == 0
-    assert _read_env_value(tmp_path / ".env", "FAVA_TRAILS_SCOPE") == "mw/eng/test"
+    assert not (tmp_path / ".env").exists()
+    assert _read_project_yaml_scope(tmp_path) == "mw/eng/test"
 
 
-def test_init_with_yaml_and_env_no_scope(tmp_path, monkeypatch):
-    """init appends scope to .env when .env exists but lacks FAVA_TRAILS_SCOPE."""
+def test_init_leaves_existing_app_env_untouched(tmp_path, monkeypatch):
+    """init never mutates an application-owned .env unless --write-env is passed."""
     monkeypatch.chdir(tmp_path)
     _write_project_yaml(tmp_path, "mw/eng/proj")
-    (tmp_path / ".env").write_text("OTHER=foo\n")
+    env = tmp_path / ".env"
+    original = "OTHER=foo\nSECRET=sk-app-owned\n"
+    env.write_text(original)
     with patch("fava_trails.cli.get_data_repo_root") as mock_repo:
         mock_repo.return_value = tmp_path / "data"
         rc = cmd_init(_make_args(scope=None))
     assert rc == 0
-    text = (tmp_path / ".env").read_text()
-    assert "OTHER=foo" in text
-    assert "FAVA_TRAILS_SCOPE=mw/eng/proj" in text
+    assert env.read_text() == original
 
 
 def test_init_env_already_has_scope(tmp_path, monkeypatch, capsys):
-    """init is a no-op when .env already has FAVA_TRAILS_SCOPE."""
+    """init reports an existing FAVA_TRAILS_SCOPE without rewriting .env."""
     monkeypatch.chdir(tmp_path)
     _write_project_yaml(tmp_path, "mw/eng/proj")
-    (tmp_path / ".env").write_text("FAVA_TRAILS_SCOPE=mw/eng/proj\n")
+    env = tmp_path / ".env"
+    env.write_text("FAVA_TRAILS_SCOPE=mw/eng/proj\n")
     with patch("fava_trails.cli.get_data_repo_root") as mock_repo:
         mock_repo.return_value = tmp_path / "data"
         rc = cmd_init(_make_args(scope=None))
     assert rc == 0
     out = capsys.readouterr().out
     assert "already set" in out
+    assert env.read_text() == "FAVA_TRAILS_SCOPE=mw/eng/proj\n"
 
 
 def test_init_noninteractive_scope_flag(tmp_path, monkeypatch):
-    """init --scope creates both files without prompting."""
+    """init --scope writes .fava-trails.yaml without prompting or creating .env."""
     monkeypatch.chdir(tmp_path)
     with patch("fava_trails.cli.get_data_repo_root") as mock_repo:
         mock_repo.return_value = tmp_path / "data"
         rc = cmd_init(_make_args(scope="mw/eng/ci-test"))
     assert rc == 0
     assert _read_project_yaml_scope(tmp_path) == "mw/eng/ci-test"
-    assert _read_env_value(tmp_path / ".env", "FAVA_TRAILS_SCOPE") == "mw/eng/ci-test"
+    assert not (tmp_path / ".env").exists()
 
 
 def test_init_neither_file_interactive(tmp_path, monkeypatch):
-    """init prompts for scope when neither .fava-trails.yaml nor .env exists."""
+    """init prompts for scope and writes only .fava-trails.yaml."""
     monkeypatch.chdir(tmp_path)
     with patch("fava_trails.cli.get_data_repo_root") as mock_repo:
         mock_repo.return_value = tmp_path / "data"
@@ -191,11 +193,36 @@ def test_init_neither_file_interactive(tmp_path, monkeypatch):
             rc = cmd_init(_make_args(scope=None))
     assert rc == 0
     assert _read_project_yaml_scope(tmp_path) == "mw/eng/interactive"
-    assert _read_env_value(tmp_path / ".env", "FAVA_TRAILS_SCOPE") == "mw/eng/interactive"
+    assert not (tmp_path / ".env").exists()
 
 
-def test_init_gitignore_warning(tmp_path, monkeypatch, capsys):
-    """init warns when .env is not in .gitignore."""
+def test_init_write_env_opt_in(tmp_path, monkeypatch):
+    """--write-env is the documented opt-in that may update FAVA_TRAILS_SCOPE."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("OTHER=foo\n")
+    with patch("fava_trails.cli.get_data_repo_root") as mock_repo:
+        mock_repo.return_value = tmp_path / "data"
+        rc = cmd_init(_make_args(scope="mw/eng/opt-in", write_env=True))
+    assert rc == 0
+    text = (tmp_path / ".env").read_text()
+    assert "OTHER=foo\n" in text
+    assert "FAVA_TRAILS_SCOPE=mw/eng/opt-in\n" in text
+
+
+def test_init_write_env_gitignore_warning(tmp_path, monkeypatch, capsys):
+    """init warns about .gitignore only when it actually wrote .env."""
+    monkeypatch.chdir(tmp_path)
+    _write_project_yaml(tmp_path, "mw/test")
+    with patch("fava_trails.cli.get_data_repo_root") as mock_repo:
+        mock_repo.return_value = tmp_path / "data"
+        rc = cmd_init(_make_args(scope=None, write_env=True))
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert ".gitignore" in out
+
+
+def test_init_default_skips_gitignore_warning(tmp_path, monkeypatch, capsys):
+    """Default init does not warn about .env gitignore because it does not write .env."""
     monkeypatch.chdir(tmp_path)
     _write_project_yaml(tmp_path, "mw/test")
     with patch("fava_trails.cli.get_data_repo_root") as mock_repo:
@@ -203,7 +230,7 @@ def test_init_gitignore_warning(tmp_path, monkeypatch, capsys):
         rc = cmd_init(_make_args(scope=None))
     assert rc == 0
     out = capsys.readouterr().out
-    assert ".gitignore" in out
+    assert ".gitignore" not in out
 
 
 def test_init_no_gitignore_warning_when_ignored(tmp_path, monkeypatch, capsys):
@@ -213,7 +240,7 @@ def test_init_no_gitignore_warning_when_ignored(tmp_path, monkeypatch, capsys):
     _write_project_yaml(tmp_path, "mw/test")
     with patch("fava_trails.cli.get_data_repo_root") as mock_repo:
         mock_repo.return_value = tmp_path / "data"
-        rc = cmd_init(_make_args(scope=None))
+        rc = cmd_init(_make_args(scope=None, write_env=True))
     assert rc == 0
     out = capsys.readouterr().out
     assert ".gitignore" not in out
@@ -407,12 +434,32 @@ def test_scope_not_configured(tmp_path, monkeypatch, capsys):
 # ─── cmd_scope_set ────────────────────────────────────────────────────────────
 
 
-def test_scope_set_updates_both_files(tmp_path, monkeypatch):
+def test_scope_set_updates_yaml_only(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     rc = cmd_scope_set(_make_args(scope_value="mw/eng/new-scope"))
     assert rc == 0
     assert _read_project_yaml_scope(tmp_path) == "mw/eng/new-scope"
-    assert _read_env_value(tmp_path / ".env", "FAVA_TRAILS_SCOPE") == "mw/eng/new-scope"
+    assert not (tmp_path / ".env").exists()
+
+
+def test_scope_set_leaves_existing_app_env_untouched(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    env = tmp_path / ".env"
+    original = "APP_SECRET=keep-me\n"
+    env.write_text(original)
+    rc = cmd_scope_set(_make_args(scope_value="mw/eng/new-scope"))
+    assert rc == 0
+    assert env.read_text() == original
+
+
+def test_scope_set_write_env_opt_in(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("APP_SECRET=keep-me\n")
+    rc = cmd_scope_set(_make_args(scope_value="mw/eng/new-scope", write_env=True))
+    assert rc == 0
+    text = (tmp_path / ".env").read_text()
+    assert "APP_SECRET=keep-me\n" in text
+    assert "FAVA_TRAILS_SCOPE=mw/eng/new-scope\n" in text
 
 
 def test_scope_set_prints_trust_gate_hint(tmp_path, monkeypatch, capsys):
@@ -516,15 +563,29 @@ def test_cleanup_empty_scopes_skips_real_thoughts(tmp_path, capsys):
 # ─── .env idempotency ─────────────────────────────────────────────────────────
 
 
-def test_env_write_idempotent(tmp_path, monkeypatch):
-    """Running init twice produces the same .env content."""
+def test_repeated_init_does_not_create_env(tmp_path, monkeypatch):
+    """Running init twice leaves application .env absent and yaml unchanged."""
     monkeypatch.chdir(tmp_path)
     _write_project_yaml(tmp_path, "mw/eng/idem")
     with patch("fava_trails.cli.get_data_repo_root") as mock_repo:
         mock_repo.return_value = tmp_path / "data"
-        cmd_init(_make_args(scope=None))
+        assert cmd_init(_make_args(scope=None)) == 0
+        first_yaml = (tmp_path / ".fava-trails.yaml").read_text()
+        assert cmd_init(_make_args(scope=None)) == 0
+        second_yaml = (tmp_path / ".fava-trails.yaml").read_text()
+    assert first_yaml == second_yaml
+    assert not (tmp_path / ".env").exists()
+
+
+def test_write_env_idempotent(tmp_path, monkeypatch):
+    """Running init --write-env twice produces the same .env content."""
+    monkeypatch.chdir(tmp_path)
+    _write_project_yaml(tmp_path, "mw/eng/idem")
+    with patch("fava_trails.cli.get_data_repo_root") as mock_repo:
+        mock_repo.return_value = tmp_path / "data"
+        cmd_init(_make_args(scope=None, write_env=True))
         first_content = (tmp_path / ".env").read_text()
-        cmd_init(_make_args(scope=None))
+        cmd_init(_make_args(scope=None, write_env=True))
         second_content = (tmp_path / ".env").read_text()
     assert first_content == second_content
 
@@ -577,6 +638,7 @@ def test_cli_help():
     assert "init" in result.stdout
     assert "bootstrap" in result.stdout
     assert "scope" in result.stdout
+    assert "register" in result.stdout
     assert "version" in result.stdout
 
 

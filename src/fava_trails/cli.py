@@ -29,6 +29,19 @@ from .jj_install import (
     path_hint,
     select_or_install,
 )
+from .mcp_registration import (
+    PermissionDenied,
+    build_registration,
+    default_client_config_path,
+    format_registration_instructions,
+    inspect_native_registration,
+    render_diagnostics,
+    resolve_explicit_executable,
+    resolve_server_executable,
+    verify_direct_mcp_smoke,
+    verify_native_client_session,
+    write_mcp_json_config,
+)
 from .models import GlobalConfig, HookEntry, ThoughtRecord
 from .runtime_info import format_runtime_report, product_version
 
@@ -205,18 +218,28 @@ def cmd_init(args: argparse.Namespace) -> int:
             _write_project_yaml(project_dir, scope)
             print(f"Created .fava-trails.yaml with scope: {scope}")
 
-    # 2. Update .env
+    # 2. Optionally update .env (never by default — application .env files are client-owned)
+    write_env = bool(getattr(args, "write_env", False))
     existing_env_scope = _read_env_value(env_path, "FAVA_TRAILS_SCOPE")
+    wrote_env = False
     if existing_env_scope:
         print(f"Scope already set in .env: {existing_env_scope}")
         if existing_env_scope != scope:
             print(f"  (Note: .fava-trails.yaml has scope '{scope}' — run `fava-trails scope set {scope}` to sync)")
-    else:
+        if write_env and existing_env_scope != scope:
+            _update_env_file(env_path, "FAVA_TRAILS_SCOPE", scope)
+            print(f"Wrote FAVA_TRAILS_SCOPE={scope} to .env")
+            wrote_env = True
+    elif write_env:
         _update_env_file(env_path, "FAVA_TRAILS_SCOPE", scope)
         print(f"Wrote FAVA_TRAILS_SCOPE={scope} to .env")
+        wrote_env = True
+    else:
+        print("Skipped writing application .env (pass --write-env to opt in).")
+        print("  Scope is stored in .fava-trails.yaml. FAVA_TRAILS_SCOPE is still read if already set.")
 
-    # 3. Warn if .env is not gitignored
-    if not _is_env_gitignored(project_dir):
+    # 3. Warn if we wrote .env and it is not gitignored
+    if wrote_env and not _is_env_gitignored(project_dir):
         print("Warning: .env is not in .gitignore — add it to avoid committing local config.")
 
     # 4. Validate data repo
@@ -475,7 +498,7 @@ def cmd_scope(args: argparse.Namespace) -> int:
 
 
 def cmd_scope_set(args: argparse.Namespace) -> int:
-    """Set scope in both .fava-trails.yaml and .env."""
+    """Set scope in .fava-trails.yaml; write application .env only with --write-env."""
     project_dir = Path.cwd()
     env_path = project_dir / ".env"
 
@@ -488,8 +511,11 @@ def cmd_scope_set(args: argparse.Namespace) -> int:
     _write_project_yaml(project_dir, scope)
     print(f"Updated .fava-trails.yaml scope: {scope}")
 
-    _update_env_file(env_path, "FAVA_TRAILS_SCOPE", scope)
-    print(f"Updated .env FAVA_TRAILS_SCOPE={scope}")
+    if bool(getattr(args, "write_env", False)):
+        _update_env_file(env_path, "FAVA_TRAILS_SCOPE", scope)
+        print(f"Updated .env FAVA_TRAILS_SCOPE={scope}")
+    else:
+        print("Skipped writing application .env (pass --write-env to opt in).")
 
     trails_dir = "trails"  # default; could read from config
     print(
@@ -707,6 +733,80 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         any_failed = True
 
     return 1 if any_failed else 0
+
+
+def cmd_register(args: argparse.Namespace) -> int:
+    """Print native MCP registration instructions; write client config only when opted in."""
+    explicit = getattr(args, "executable", None)
+    if explicit:
+        executable = resolve_explicit_executable(explicit)
+        if not executable:
+            print(
+                "Error: --executable must name an existing executable file. "
+                "The path was not printed or persisted.",
+                file=sys.stderr,
+            )
+            return 1
+    else:
+        executable = resolve_server_executable()
+        if not executable:
+            print(
+                "Error: could not resolve fava-trails-server. Pass --executable PATH to use an explicit command.",
+                file=sys.stderr,
+            )
+            return 1
+    try:
+        data_repo = str(get_data_repo_root())
+        data_repo_resolved = True
+    except (OSError, ValueError):
+        data_repo = "<path-to-fava-trails-data>"
+        data_repo_resolved = False
+    agent_id = getattr(args, "agent_id", None) or "codex-cli"
+    print(format_registration_instructions(executable=executable, data_repo=data_repo, agent_id=agent_id))
+
+    if getattr(args, "operator", False):
+        print("Operator mode is print-only. Refusing to write FAVA_TRAILS_OPERATOR into a shared client config.")
+        if getattr(args, "write", False):
+            print("Error: --write cannot be combined with --operator.", file=sys.stderr)
+            return 1
+
+    if (getattr(args, "write", False) or getattr(args, "verify", False)) and not data_repo_resolved:
+        print(
+            "Error: --write and --verify require a real intended data repository path. "
+            "Print-only guidance may show a placeholder.",
+            file=sys.stderr,
+        )
+        return 1
+
+    config_path = Path(args.config).expanduser() if getattr(args, "config", None) else default_client_config_path(
+        getattr(args, "client", None) or "claude-code"
+    )
+
+    if getattr(args, "write", False):
+        entry = build_registration(executable=executable, data_repo=data_repo, agent_id=agent_id)
+        try:
+            backup = write_mcp_json_config(config_path, server_name="fava-trails", entry=entry)
+        except PermissionDenied as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            print("Native client permission controls were not bypassed.", file=sys.stderr)
+            return 1
+        except (OSError, ValueError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+        print(f"Wrote native registration to {config_path}")
+        if backup:
+            print(f"Backup: {backup}")
+
+    if not getattr(args, "verify", False):
+        return 0
+
+    direct = verify_direct_mcp_smoke(executable, env={"FAVA_TRAILS_DATA_REPO": data_repo, "FAVA_TRAILS_AGENT_ID": agent_id})
+    client_config = inspect_native_registration(config_path, current_executable=executable)
+    native = verify_native_client_session(config_path, current_executable=executable)
+    print(render_diagnostics({"direct_mcp_smoke": direct, "client_config": client_config, "inspector_config_load": native}))
+    if not direct.get("ok") or not native.get("ok"):
+        return 1
+    return 0
 
 
 def _scope_thought_files(scope_dir: Path) -> list[Path]:
@@ -1648,7 +1748,61 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Scope path (e.g. mw/eng/my-project). Skips interactive prompt.",
     )
+    p_init.add_argument(
+        "--write-env",
+        dest="write_env",
+        action="store_true",
+        default=False,
+        help="Opt in to writing FAVA_TRAILS_SCOPE into the application .env. Default is to use .fava-trails.yaml only.",
+    )
     p_init.set_defaults(func=cmd_init)
+
+    # register
+    p_register = subparsers.add_parser(
+        "register",
+        help="Print native MCP registration instructions (opt-in client config write and verification)",
+    )
+    p_register.add_argument(
+        "--write",
+        action="store_true",
+        default=False,
+        help="Opt in to writing the client MCP config. Default is print-only.",
+    )
+    p_register.add_argument(
+        "--config",
+        default=None,
+        help="Client config path. Defaults to the selected client's ordinary config file.",
+    )
+    p_register.add_argument(
+        "--client",
+        default="claude-code",
+        choices=("claude-code", "claude-desktop"),
+        help="Native client whose default config path is used when --config is omitted.",
+    )
+    p_register.add_argument(
+        "--agent-id",
+        dest="agent_id",
+        default="codex-cli",
+        help="Ordinary server-configured agent identity (default: codex-cli). Do not use this for operator mode.",
+    )
+    p_register.add_argument(
+        "--executable",
+        default=None,
+        help="Explicit server executable. Must exist and be executable; unresolved or non-executable paths are not printed or written.",
+    )
+    p_register.add_argument(
+        "--verify",
+        action="store_true",
+        default=False,
+        help="Run a direct MCP smoke test and MCP Inspector config-load verification. Labels which was verified. Does not claim Claude Code/Desktop loaded the registration. Reports inspector_unavailable, inspector_invocation_failed, config_load_failed, server_spawn_failed, server_initialize_failed, inspector_failed, stale runtime paths, or registration not loaded.",
+    )
+    p_register.add_argument(
+        "--operator",
+        action="store_true",
+        default=False,
+        help="Print elevated operator notes. Cannot be combined with --write.",
+    )
+    p_register.set_defaults(func=cmd_register)
 
     # bootstrap
     p_bootstrap = subparsers.add_parser(
@@ -1671,6 +1825,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_scope_set = scope_sub.add_parser("set", help="Set the current scope")
     p_scope_set.add_argument("scope_value", metavar="SCOPE", help="Scope path to set")
+    p_scope_set.add_argument(
+        "--write-env",
+        dest="write_env",
+        action="store_true",
+        default=False,
+        help="Opt in to writing FAVA_TRAILS_SCOPE into the application .env. Default is to update .fava-trails.yaml only.",
+    )
     p_scope_set.set_defaults(func=cmd_scope_set)
 
     p_scope_list = scope_sub.add_parser("list", help="List all scopes in the data repo")

@@ -109,6 +109,32 @@ installing the package alone does not update a running process.
 value is not the MCP SDK distribution version. Use `fava-trails version` to print
 both, plus the loaded module path, without credentials.
 
+Direct stdio testing is not native registration. Print current instructions that
+use an ordinary server-configured agent identity, the resolved `fava-trails-server`
+executable, and the intended data repository:
+
+```bash
+fava-trails register --agent-id claude-code
+```
+
+Optional client-config write is explicit (`--write`). It preserves unrelated client
+settings, writes atomically, keeps a `.bak` backup, opens backup and replacement
+files with the final mode before writing, caps that mode at `0600` (stricter
+existing modes are kept), refuses non-writable existing configs, and reports
+permission denial without bypassing client controls. Unresolved `fava-trails-server`
+is an error unless `--executable` names an existing executable. `--verify` runs a
+direct MCP smoke test, inspects the client config, and loads that config through
+MCP Inspector. Diagnostics label which ran. Inspector success is
+`inspector_config_load`, not a Claude Code/Desktop session. Missing Inspector is
+`inspector_unavailable`; invocation/download failures, config load failures, server
+spawn failures, MCP initialize failures, stale runtime paths, and registration not
+loaded stay distinct. Native-session evidence that a client loaded Claude-shaped
+`mcpServers` config is `tests/test_mcp_protocol.py::test_native_client_registration_loads_and_initializes`.
+
+```bash
+fava-trails register --write --verify --config ~/.claude.json --agent-id claude-code
+```
+
 Set `FAVA_TRAILS_AGENT_ID` on each ordinary authoring process. A shared endpoint
 is one identity boundary; `FAVA_TRAILS_OPERATOR=1` belongs only on a separate
 operator endpoint. Details:
@@ -362,7 +388,7 @@ Environment variables:
 | `FAVA_TRAILS_DATA_REPO` | Server | Root directory for trail data (monorepo root) | `~/.fava-trails` |
 | `FAVA_TRAILS_DIR` | Server | Override trails directory location (absolute path) | `$FAVA_TRAILS_DATA_REPO/trails` |
 | `FAVA_TRAILS_SCOPE_HINT` | Server | Broad scope hint baked into tool descriptions | *(none)* |
-| `FAVA_TRAILS_SCOPE` | Agent | Project-specific scope from `.env` file | *(none)* |
+| `FAVA_TRAILS_SCOPE` | Agent | Optional process override for project scope. Read if set; `fava-trails init` does not write application `.env` files unless `--write-env` is passed. | *(none)* |
 | `OPENROUTER_API_KEY` | Server | Default Trust Gate API key env (OpenRouter). Override the env var *name* via `trust_gate_api_key_env` / legacy `openrouter_api_key_env` in `config.yaml`. | *(none — required for `propose_truth` when using llm-oneshot)* |
 
 **LLM Provider:** FAVA Trails uses [any-llm-sdk](https://github.com/mozilla-ai/any-llm) for unified LLM access. OpenRouter is the default Trust Gate provider. To use a local OpenAI-compatible server (Unsloth Studio, vLLM, etc.) on one machine, put its Trust Gate runtime fields in `$XDG_CONFIG_HOME/fava-trails/config.yaml` (default `~/.config/fava-trails/config.yaml`). A credential file configured with `trust_gate_api_key_file` takes precedence over the environment and must be a regular, non-symlink, owner-only file. Slow local quantized models may need a higher `trust_gate_timeout_secs` (still below `tool_timeout_secs`). There is no automatic fallback between providers — misconfigured or unavailable endpoints fail closed without auto-approving. `fava-trails doctor` prints a secret-free Data egress notice; successful LLM or operator `propose_truth` paths (and credential/timeout failures after disclosure begins) include `trust_gate_egress` describing destination, model, and which candidate fields are sent. Early validation failures omit that field.

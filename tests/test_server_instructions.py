@@ -39,6 +39,13 @@ class TestServerInstructions:
         assert "FAVA_TRAILS_SCOPE" in instructions
         assert ".fava-trails.yaml" in instructions
 
+    def test_instructions_do_not_tell_agents_to_write_env(self):
+        """Generated guidance must not instruct agents to modify application .env files."""
+        instructions = _build_server_instructions()
+        assert "write it to `.env`" not in instructions
+        assert "write it to .env" not in instructions
+        assert "FAVA_TRAILS_SCOPE=<scope>" not in instructions
+
     def test_instructions_contain_session_protocol(self):
         """Instructions must cover session start protocol."""
         instructions = _build_server_instructions()
@@ -290,6 +297,11 @@ class TestGetUsageGuide:
         assert "Session Start" in content or "At Session Start" in content
         assert "Task Completion" in content or "On Task Completion" in content
         assert "Trust Calibration" in content or "Handling Recalled Thoughts" in content
+
+    def test_load_usage_guide_does_not_instruct_env_write(self):
+        content = _load_usage_guide()
+        assert "write it to `.env`" not in content
+        assert "write it to .env" not in content
 
     def test_tool_count(self):
         """TOOL_DEFINITIONS should have 17 tools (15 original + list_trails alias + get_usage_guide)."""
