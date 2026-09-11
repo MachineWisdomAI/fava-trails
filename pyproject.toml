@@ -68,6 +68,7 @@ include = [
 
 [tool.hatch.build.targets.wheel.force-include]
 "AGENTS_USAGE_INSTRUCTIONS.md" = "fava_trails/AGENTS_USAGE_INSTRUCTIONS.md"
+"src/fava_trails/issue_104_tested_release.json" = "fava_trails/issue_104_tested_release.json"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

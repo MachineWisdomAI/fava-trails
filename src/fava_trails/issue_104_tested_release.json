@@ -1,0 +1,67 @@
+{
+  "frozen": true,
+  "relabeling_forbidden": true,
+  "role": "release",
+  "package": "fava-trails",
+  "version": "0.6.1",
+  "git_commit": "6c5278a40a86246014901a88417f3455a46cdfcc",
+  "surface": "full",
+  "compact_surface_existed": false,
+  "client": {
+    "name": "mcp.Client",
+    "package": "mcp",
+    "version": "2.2.0",
+    "frozen": true,
+    "note": "Client identity frozen with this artifact. Do not overwrite with a later environment's MCP SDK version."
+  },
+  "tokenizer": {
+    "name": "chars/4 heuristic",
+    "not_universal": true
+  },
+  "lazy_loading": false,
+  "enabled_tools": [
+    "start_thought",
+    "save_thought",
+    "get_thought",
+    "propose_truth",
+    "recall",
+    "forget",
+    "sync",
+    "conflicts",
+    "rollback",
+    "diff",
+    "list_scopes",
+    "list_trails",
+    "learn_preference",
+    "update_thought",
+    "supersede",
+    "get_usage_guide",
+    "change_scope"
+  ],
+  "tool_count": 17,
+  "recurrence": {
+    "instructions": "once per initialize",
+    "tools_list": "once per tools/list; typical clients list once per session and may re-list if they refresh the catalog. Cost recurs only when the client re-lists."
+  },
+  "instructions": {
+    "chars": 3843,
+    "utf8_bytes": 3867,
+    "tokens": 961
+  },
+  "tools_list": {
+    "chars": 21804,
+    "utf8_bytes": 21814,
+    "tokens": 5451
+  },
+  "session_init": {
+    "chars": 25647,
+    "utf8_bytes": 25681,
+    "tokens": 6412
+  },
+  "usage_guide_on_demand": {
+    "chars": 10077,
+    "utf8_bytes": 10123,
+    "tokens": 2520
+  },
+  "measured_how": "Frozen artifact: checkout 6c5278a40a86246014901a88417f3455a46cdfcc, serialize advertised initialize instructions plus tools/list JSON with compact separators, tokenize with chars/4 heuristic. Compact surface did not exist on that commit. Command loads this file and does not re-measure or relabel client/SDK fields."
+}
