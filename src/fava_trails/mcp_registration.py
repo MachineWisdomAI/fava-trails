@@ -317,24 +317,26 @@ def verify_direct_mcp_smoke(executable: str, env: dict[str, str] | None = None) 
     return result
 
 
+def _loads_json_object(text: str) -> dict[str, Any] | None:
+    try:
+        loaded = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    return loaded if isinstance(loaded, dict) else None
+
+
 def _last_json_object(text: str) -> dict[str, Any] | None:
     if not text:
         return None
     stripped = text.strip()
-    try:
-        loaded = json.loads(stripped)
-        if isinstance(loaded, dict):
-            return loaded
-    except json.JSONDecodeError:
-        pass
+    loaded = _loads_json_object(stripped)
+    if loaded is not None:
+        return loaded
     start = stripped.rfind("{")
     while start >= 0:
-        try:
-            loaded = json.loads(stripped[start:])
-            if isinstance(loaded, dict):
-                return loaded
-        except json.JSONDecodeError:
-            pass
+        loaded = _loads_json_object(stripped[start:])
+        if loaded is not None:
+            return loaded
         start = stripped.rfind("{", 0, start)
     return None
 

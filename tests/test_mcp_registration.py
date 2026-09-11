@@ -403,6 +403,19 @@ def test_inspector_nonzero_and_non_json_keep_actionable_categories(tmp_path, mon
             "inspector_invocation_failed",
             "npm ERR! code E404\nnpm ERR! 404 Not Found - GET https://registry.npmjs.org/@modelcontextprotocol/inspector",
         ),
+        (
+            "config_load_failed",
+            "Downloading inspector...\n"
+            + json.dumps(
+                {"error": {"code": "error", "message": "Error loading configuration: Config file not found"}}
+            ),
+        ),
+        (
+            "server_spawn_failed",
+            json.dumps([{"noise": True}])
+            + "\n"
+            + json.dumps({"error": {"code": "error", "message": "spawn /no/such/server-bin ENOENT"}}),
+        ),
     ]
     for status, stderr in cases:
         monkeypatch.setattr(
