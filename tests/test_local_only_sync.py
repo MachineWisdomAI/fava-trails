@@ -167,7 +167,10 @@ async def test_healthy_disposable_remote_syncs(trail_manager, tmp_path):
     _git(tmp_path, "init", "--bare", str(remote))
     await trail_manager.vcs.add_remote("origin", str(remote))
     await trail_manager.vcs._run("bookmark", "set", "main", "-r", "@-")
-    await trail_manager.vcs._run("git", "push", "--allow-new", "-b", "main")
+    # Seed the bare remote with local bookmarks. Prefer --all over --allow-new:
+    # --allow-new was removed in JJ 0.42+; --all still creates new remote bookmarks
+    # on both the supported floor (0.28) and current stable.
+    await trail_manager.vcs._run("git", "push", "--allow-empty-description", "--all")
 
     result = await trail_manager.vcs.fetch_and_rebase()
 
