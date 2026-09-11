@@ -85,11 +85,31 @@ class TestToolDescriptionEnhancements:
         assert "WARNING" in desc
         assert "Trust Gate" in desc
 
+    def test_recall_describes_lexical_matching(self):
+        """recall must not claim semantic search; document lexical AND matching."""
+        desc = _get_tool_desc("recall")
+        assert "Lexical" in desc or "lexical" in desc
+        assert "semantic similarity" in desc.lower()
+        assert "Not semantic" in desc or "not semantic" in desc.lower()
+        instructions = _build_server_instructions()
+        assert "Lexical recall" in instructions
+        assert "substring" in instructions.lower()
+
     def test_propose_truth_contains_mandatory(self):
-        """propose_truth description must mention mandatory promotion."""
+        """propose_truth description must mention mandatory promotion and draft visibility bounds."""
         desc = _get_tool_desc("propose_truth")
         assert "mandatory" in desc
-        assert "invisible" in desc
+        assert "governed" in desc.lower()
+        assert 'mode="authoring"' in desc or "mode='authoring'" in desc or "authoring" in desc
+        assert "invisible to other agents" not in desc
+
+    def test_save_thought_describes_governed_draft_hiding(self):
+        """save_thought must not claim absolute cross-agent invisibility."""
+        desc = _get_tool_desc("save_thought")
+        assert "governed" in desc.lower()
+        assert "authoring" in desc
+        assert "invisible to other agents" not in desc
+        assert "invisible to everyone" not in desc
 
     def test_save_thought_contains_agent_identity(self):
         """save_thought description must mention stable role identifier."""
@@ -102,10 +122,27 @@ class TestToolDescriptionEnhancements:
         assert "propose_truth" in desc
         assert "finalized" in desc
 
-    def test_propose_truth_contains_sync_guidance(self):
-        """propose_truth description must advise calling sync after promoting."""
+    def test_propose_truth_contains_publication_guidance(self):
+        """propose_truth must separate local promotion from remote publish/sync."""
         desc = _get_tool_desc("propose_truth")
+        assert "push_strategy" in desc
         assert "sync" in desc
+        assert "does not publish" in desc.lower() or "does not publish local commits" in desc
+        assert "bookmark set main" in desc
+        assert "@-" in desc
+        instructions = _build_server_instructions()
+        assert "push_strategy: immediate" in instructions
+        assert "does not push local commits" in instructions
+        assert "bookmark set main" in instructions
+        assert "call `sync` to push to remote" not in instructions
+
+    def test_sync_tool_does_not_claim_push(self):
+        """sync description must state fetch/rebase only, not publish."""
+        desc = _get_tool_desc("sync")
+        assert "fetch" in desc.lower() or "Fetch" in desc
+        assert "does not" in desc.lower() and "push" in desc.lower()
+        assert "bookmark set main" in desc
+        assert "publish before peers" in desc.lower() or "Writers must publish" in desc
 
     def test_recall_contains_scope_discovery(self):
         """recall description must include scope discovery priority order."""

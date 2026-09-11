@@ -30,6 +30,7 @@ from fava_trails.cli import (
     cmd_scope_set,
     cmd_secom_setup,
     cmd_secom_warmup,
+    cmd_version,
 )
 from fava_trails.config import ConfigStore
 from fava_trails.models import GlobalConfig
@@ -256,6 +257,42 @@ def _make_jj_mock(returncode=0):
     return mock
 
 
+def test_packaged_data_repo_guides_do_not_drift():
+    """Preferred editable guides and legacy basename aliases must stay byte-identical.
+
+    Bootstrap prefers agents-guide.md / claude-code-guide.md, then falls back to
+    AGENTS.md / CLAUDE.md. Shipping a stale legacy copy would install wrong
+    guidance into every new data repo whenever selection order changes.
+    """
+    import importlib.resources as importlib_resources
+
+    template_pkg = importlib_resources.files("fava_trails") / "data_repo_template"
+    pairs = (
+        ("agents-guide.md", "AGENTS.md"),
+        ("claude-code-guide.md", "CLAUDE.md"),
+    )
+    for preferred_name, legacy_name in pairs:
+        preferred = template_pkg / preferred_name
+        legacy = template_pkg / legacy_name
+        assert preferred.is_file(), f"missing preferred packaged guide {preferred_name}"
+        preferred_text = preferred.read_text()
+        assert "semantic search" not in preferred_text.lower()
+        if preferred_name.startswith("agents"):
+            assert "lexical" in preferred_text.lower()
+            assert "bookmark set main" in preferred_text
+            assert "does **not** push" in preferred_text or "does not push" in preferred_text.lower()
+            assert "invisible to other agents" not in preferred_text
+        else:
+            assert "bookmark set main -r @-" in preferred_text
+            assert "jj git push --bookmark main" in preferred_text
+            assert "jj git push -b main" not in preferred_text
+        if legacy.is_file():
+            assert legacy.read_text() == preferred_text, (
+                f"{legacy_name} drifted from {preferred_name}; keep aliases identical "
+                "or remove the legacy resource"
+            )
+
+
 def test_bootstrap_creates_structure(tmp_path):
     """bootstrap creates config.yaml, .gitignore, trails/, template files, and runs jj init."""
     target = tmp_path / "data-repo"
@@ -273,11 +310,33 @@ def test_bootstrap_creates_structure(tmp_path):
     # Template files copied
     assert (target / "README.md").exists()
     assert (target / "CLAUDE.md").exists()
+    assert (target / "AGENTS.md").exists()
     assert (target / "trails" / "trust-gate-prompt.md").exists()
     assert "FAVA Trails" in (target / "README.md").read_text()
     assert "quality gate" in (target / "trails" / "trust-gate-prompt.md").read_text().lower()
 
-    import yaml as _yaml
+    agents = (target / "AGENTS.md").read_text()
+    assert "semantic search" not in agents.lower()
+    assert "lexical" in agents.lower()
+    assert "substring" in agents.lower()
+    assert "does **not** push" in agents or "does not push" in agents.lower()
+    assert "bookmark set main" in agents
+    assert "@-" in agents
+    assert "invisible to other agents" not in agents
+
+    claude = (target / "CLAUDE.md").read_text()
+    assert "bookmark set main -r @-" in claude
+    assert "jj git push --bookmark main" in claude
+    # no bare short-form push command remaining as a runnable recipe
+    assert "jj git push -b main" not in claude
+    assert claude.index("bookmark set main -r @-") < claude.index("jj git push --bookmark main")
+
+    # Installed names match preferred packaged sources (not a drifted legacy copy)
+    import importlib.resources as importlib_resources
+
+    template_pkg = importlib_resources.files("fava_trails") / "data_repo_template"
+    assert agents == (template_pkg / "agents-guide.md").read_text()
+    assert claude == (template_pkg / "claude-code-guide.md").read_text()
 
     config = _yaml.safe_load((target / "config.yaml").read_text())
     assert config["trails_dir"] == "trails"
@@ -546,6 +605,28 @@ def test_cli_version():
     assert "fava-trails" in result.stdout or "unknown" in result.stdout
 
 
+def test_cli_version_subcommand_reports_loaded_runtime(capsys):
+    """fava-trails version reports product, module path, and MCP SDK without secrets."""
+    rc = cmd_version(_make_args())
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Package version:" in out
+    assert "Module version:" in out
+    assert "Module path:" in out
+    assert "MCP SDK version:" in out
+    assert "OPENROUTER" not in out
+    assert "sk-" not in out
+
+    result = subprocess.run(
+        [sys.executable, "-m", "fava_trails.cli", "version"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+    assert "Package version:" in result.stdout
+    assert "MCP SDK version:" in result.stdout
+
+
 def test_cli_help():
     """fava-trails --help exits 0."""
     result = subprocess.run(
@@ -558,6 +639,7 @@ def test_cli_help():
     assert "bootstrap" in result.stdout
     assert "scope" in result.stdout
     assert "register" in result.stdout
+    assert "version" in result.stdout
 
 
 # ─── cmd_doctor ───────────────────────────────────────────────────────────────
@@ -596,6 +678,8 @@ def test_doctor_all_green(tmp_path, monkeypatch, capsys):
 
     assert rc == 0
     out = capsys.readouterr().out
+    assert "Package version:" in out
+    assert "MCP SDK version:" in out
     assert "JJ:" in out
     assert "Data repo:" in out
     assert "Trust Gate:" in out
@@ -848,6 +932,35 @@ def test_doctor_reports_invalid_trust_gate_runtime(tmp_path, monkeypatch, capsys
     assert "API key:" not in out
 
 
+def test_doctor_malformed_api_base_port_is_secret_free(tmp_path, monkeypatch, capsys):
+    """Malformed trust_gate_api_base must not leak path tokens via doctor output."""
+    from fava_trails.config import ConfigStore
+
+    monkeypatch.chdir(tmp_path)
+    data_repo = _make_valid_data_repo(tmp_path)
+    dirty = "http://localhost:bogus/v1/private-token"
+    (data_repo / "config.yaml").write_text(f"trails_dir: trails\ntrust_gate_api_base: {dirty}\n")
+    (tmp_path / ".env").write_text("FAVA_TRAILS_SCOPE=mw/eng/test\n")
+    monkeypatch.setenv("FAVA_TRAILS_DATA_REPO", str(data_repo))
+    # Isolate from the operator host config (~/.config/fava-trails/...).
+    empty_xdg = tmp_path / "xdg-config-empty"
+    empty_xdg.mkdir()
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(empty_xdg))
+    ConfigStore.reset()
+
+    with patch("shutil.which", return_value="/usr/bin/jj"):
+        with patch("subprocess.run", return_value=_make_jj_mock(0)) as mock_run:
+            mock_run.return_value.stdout = "jj 0.25.0\n"
+            rc = cmd_doctor(_make_args())
+
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "private-token" not in out
+    assert dirty not in out
+    assert "input_value" not in out
+    assert "port" in out
+
+
 def test_doctor_hosted_openai_without_api_base_ok(tmp_path, monkeypatch, capsys):
     """Hosted openai + key without api_base is healthy (matches tunnel contract)."""
     monkeypatch.chdir(tmp_path)
@@ -908,48 +1021,47 @@ def test_bootstrap_refuses_existing_config(tmp_path):
 # ─── install-jj tests ─────────────────────────────────────────────────────────
 
 
-def _make_install_jj_args(version=None):
+def _make_install_jj_args(version=None, force=False):
     args = MagicMock()
     args.jj_version = version
+    args.force = force
     return args
 
 
-def test_install_jj_skips_if_version_matches(tmp_path, capsys):
-    """install-jj exits 0 without downloading when the installed version matches."""
-    jj_bin = str(tmp_path / "jj")
-    Path(jj_bin).touch()
+def test_install_jj_reuses_compatible_version(tmp_path, capsys):
+    """install-jj exits 0 without downloading when installed JJ is >= minimum."""
+    jj_bin = tmp_path / "jj"
+    jj_bin.write_text("#!/bin/sh\necho 'jj 0.45.1'\n")
+    jj_bin.chmod(0o755)
 
-    mock_result = MagicMock()
-    mock_result.stdout = "jj 0.28.0\n"
-    mock_result.returncode = 0
-
-    with patch("shutil.which", return_value=jj_bin):
-        with patch("subprocess.run", return_value=mock_result):
+    with patch("fava_trails.jj_install.find_jj_candidates", return_value=[jj_bin]):
+        with patch("fava_trails.cli._JJ_INSTALL_DIR", tmp_path / "managed"):
             rc = cmd_install_jj(_make_install_jj_args())
 
     assert rc == 0
     out = capsys.readouterr().out
-    assert "already installed" in out
+    assert "reuse" in out
+    assert "0.45.1" in out
 
 
 def test_install_jj_unsupported_platform(capsys):
     """install-jj exits 1 on Windows and prints winget instructions."""
-    with patch("sys.platform", "win32"):
-        with patch("shutil.which", return_value=None):
-            rc = cmd_install_jj(_make_install_jj_args())
+    with patch("fava_trails.jj_install.sys.platform", "win32"):
+        with patch("fava_trails.jj_install.platform.machine", return_value="AMD64"):
+            with patch("fava_trails.jj_install.discover_existing", return_value=None):
+                rc = cmd_install_jj(_make_install_jj_args())
 
     assert rc == 1
-    out = capsys.readouterr().out
-    assert "winget" in out
+    err = capsys.readouterr().err
+    assert "winget" in err
 
 
 def test_install_jj_unsupported_arch(capsys):
     """install-jj exits 1 on unsupported Linux architecture."""
-    with patch("sys.platform", "linux"):
-        with patch("platform.machine", return_value="mips"):
-            with patch("shutil.which", return_value=None):
-                with patch("subprocess.run", side_effect=OSError("no jj")):
-                    rc = cmd_install_jj(_make_install_jj_args())
+    with patch("fava_trails.jj_install.sys.platform", "linux"):
+        with patch("fava_trails.jj_install.platform.machine", return_value="mips"):
+            with patch("fava_trails.jj_install.discover_existing", return_value=None):
+                rc = cmd_install_jj(_make_install_jj_args())
 
     assert rc == 1
     err = capsys.readouterr().err
@@ -965,71 +1077,78 @@ def _make_fake_tarball(jj_data: bytes = b"#!/bin/sh\necho jj") -> bytes:
     with _tarfile.open(fileobj=buf, mode="w:gz") as tf:
         info = _tarfile.TarInfo(name="jj")
         info.size = len(jj_data)
+        info.mode = 0o755
         tf.addfile(info, io.BytesIO(jj_data))
     return buf.getvalue()
 
 
-def _fake_urlopen(fake_bytes: bytes):
-    """Return a context-manager mock for urllib.request.urlopen."""
-    import io
-
-    class FakeResponse:
-        def read(self, n=-1):
-            return self._buf.read(n)
-
-        def __enter__(self):
-            self._buf = io.BytesIO(fake_bytes)
-            return self
-
-        def __exit__(self, *a):
-            pass
-
-    return FakeResponse()
-
-
 def test_install_jj_downloads_and_installs(tmp_path, capsys):
     """install-jj downloads tarball, extracts binary, and verifies installation."""
-    fake_bytes = _make_fake_tarball(b"#!/bin/sh\necho jj 0.28.0")
+    import hashlib
+
+    from fava_trails.jj_install import select_or_install
+
+    version = "0.45.1"
+    fake_bytes = _make_fake_tarball(f"#!/bin/sh\necho 'jj {version}'\n".encode())
     install_dir = tmp_path / ".local" / "bin"
-    install_dir.mkdir(parents=True)
+    digest = hashlib.sha256(fake_bytes).hexdigest()
+    suffix = "x86_64-unknown-linux-musl"
+    payload = {
+        "tag_name": f"v{version}",
+        "assets": [
+            {
+                "name": f"jj-v{version}-{suffix}.tar.gz",
+                "browser_download_url": f"https://example.test/jj-v{version}.tar.gz",
+                "digest": f"sha256:{digest}",
+            }
+        ],
+    }
 
-    mock_run_result = MagicMock()
-    mock_run_result.stdout = "jj 0.28.0\n"
-    mock_run_result.returncode = 0
-
-    with patch("shutil.which", return_value=None):
-        with patch("fava_trails.cli._JJ_INSTALL_DIR", install_dir):
-            with patch("urllib.request.urlopen", return_value=_fake_urlopen(fake_bytes)):
-                with patch("subprocess.run", return_value=mock_run_result):
-                    rc = cmd_install_jj(_make_install_jj_args())
-
-    assert rc == 0
+    result = select_or_install(
+        install_dir=install_dir,
+        which_jj=None,
+        fetch_json=lambda _u: payload,
+        download=lambda _u, dest: dest.write_bytes(fake_bytes),
+        os_name="linux",
+        machine="x86_64",
+    )
+    assert result.exit_code == 0
+    assert result.action == "install"
     assert (install_dir / "jj").exists()
 
 
-def test_install_jj_custom_version(tmp_path, capsys):
-    """install-jj uses --version argument in the download URL."""
-    captured_urls = []
-    fake_bytes = _make_fake_tarball()
+def test_install_jj_custom_version(tmp_path):
+    """install-jj uses explicit version in the release tag API URL."""
+    captured_urls: list[str] = []
+    version = "0.29.0"
+    fake_bytes = _make_fake_tarball(f"#!/bin/sh\necho 'jj {version}'\n".encode())
     install_dir = tmp_path / ".local" / "bin"
-    install_dir.mkdir(parents=True)
 
-    def fake_urlopen(url, timeout=None):
+    def fetch_json(url: str):
         captured_urls.append(url)
-        return _fake_urlopen(fake_bytes)
+        return {
+            "tag_name": f"v{version}",
+            "assets": [
+                {
+                    "name": f"jj-v{version}-x86_64-unknown-linux-musl.tar.gz",
+                    "browser_download_url": f"https://example.test/{version}.tar.gz",
+                }
+            ],
+        }
 
-    mock_run_result = MagicMock()
-    mock_run_result.stdout = "jj 0.29.0\n"
+    from fava_trails.jj_install import select_or_install
 
-    with patch("shutil.which", return_value=None):
-        with patch("fava_trails.cli._JJ_INSTALL_DIR", install_dir):
-            with patch("urllib.request.urlopen", side_effect=fake_urlopen):
-                with patch("subprocess.run", return_value=mock_run_result):
-                    rc = cmd_install_jj(_make_install_jj_args(version="0.29.0"))
-
-    assert rc == 0
-    assert len(captured_urls) == 1
-    assert "0.29.0" in captured_urls[0]
+    result = select_or_install(
+        explicit_version=version,
+        install_dir=install_dir,
+        which_jj=None,
+        fetch_json=fetch_json,
+        download=lambda _u, dest: dest.write_bytes(fake_bytes),
+        os_name="linux",
+        machine="x86_64",
+    )
+    assert result.exit_code == 0
+    assert any("0.29.0" in u for u in captured_urls)
 
 
 def test_install_jj_in_help(capsys):

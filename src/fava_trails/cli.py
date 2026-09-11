@@ -5,14 +5,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
-import platform
 import re
 import shutil
 import signal
 import subprocess
 import sys
-import tarfile
-import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -23,6 +20,15 @@ import yaml
 
 from .config import get_data_repo_root, get_trails_dir, load_global_config, sanitize_scope_path, save_global_config
 from .credentials import load_trust_gate_api_key, trust_gate_credential_description
+from .jj_install import (
+    DEFAULT_INSTALL_DIR as _JJ_INSTALL_DIR,
+)
+from .jj_install import (
+    JJ_MIN_VERSION,
+    format_selection_report,
+    path_hint,
+    select_or_install,
+)
 from .mcp_registration import (
     PermissionDenied,
     build_registration,
@@ -34,7 +40,11 @@ from .mcp_registration import (
     verify_native_client_session,
     write_mcp_json_config,
 )
-from .models import HookEntry, ThoughtRecord
+from .models import GlobalConfig, HookEntry, ThoughtRecord
+from .runtime_info import format_runtime_report, product_version
+
+# Historical alias: installers resolve GitHub latest unless --version / JJ_VERSION is set.
+JJ_DEFAULT_VERSION = JJ_MIN_VERSION
 
 # ─── JJ binary helper ─────────────────────────────────────────────────────────
 
@@ -295,16 +305,33 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     (target / "trails").mkdir(exist_ok=True)
     print("[3/6] Created trails/")
 
-    # Copy template files (README.md, CLAUDE.md, trust-gate-prompt.md)
+    # Copy template files (README + agent guides + trust-gate prompt).
+    # Canonical editable sources are agents-guide.md / claude-code-guide.md
+    # (Hermes protects AGENTS.md/CLAUDE.md basenames in agent workspaces).
+    # Legacy AGENTS.md/CLAUDE.md may still ship as byte-identical aliases for
+    # older packaging layouts; bootstrap prefers the editable names first.
+    # tests/test_cli.py asserts preferred/legacy pairs cannot drift.
     template_pkg = importlib_resources.files("fava_trails") / "data_repo_template"
-    for name, dest in [
-        ("README.md", target / "README.md"),
-        ("CLAUDE.md", target / "CLAUDE.md"),
-        ("AGENTS.md", target / "AGENTS.md"),
-        ("trust-gate-prompt.md", target / "trails" / "trust-gate-prompt.md"),
-    ]:
-        src = template_pkg / name
-        dest.write_text(src.read_text())
+
+    def _template_text(*candidates: str) -> str:
+        for name in candidates:
+            src = template_pkg / name
+            if src.is_file():
+                return src.read_text()
+        raise FileNotFoundError(
+            f"data_repo_template missing one of: {', '.join(candidates)}"
+        )
+
+    (target / "README.md").write_text(_template_text("README.md"))
+    (target / "CLAUDE.md").write_text(
+        _template_text("claude-code-guide.md", "CLAUDE.md")
+    )
+    (target / "AGENTS.md").write_text(
+        _template_text("agents-guide.md", "AGENTS.md")
+    )
+    (target / "trails" / "trust-gate-prompt.md").write_text(
+        _template_text("trust-gate-prompt.md")
+    )
     print("[4/6] Created README.md, CLAUDE.md, AGENTS.md, trails/trust-gate-prompt.md")
 
     # Initialize JJ colocated repo
@@ -365,8 +392,8 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     )
     print(f"  fava-trails-tunnel start --data-repo {target} --profile fava-trails")
     if remote_url:
-        print("\nPush to remote:")
-        print(f"  cd {target} && jj git push -b main")
+        print("\nPush to remote (advance main to latest committed change first):")
+        print(f"  cd {target} && jj bookmark set main -r @- && jj git push --bookmark main")
     print("\nAvailable integrations:")
     print("  fava-trails integrate codev    Set up codev artifact storage with quality gate")
     return 0
@@ -534,9 +561,18 @@ def cmd_scope_list(args: argparse.Namespace) -> int:
 # ─── Doctor ───────────────────────────────────────────────────────────────────
 
 
+def cmd_version(_args: argparse.Namespace) -> int:
+    """Report the loaded FAVA product runtime and MCP SDK version without secrets."""
+    print(format_runtime_report(), end="")
+    return 0
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     """Health check: JJ, data repo, OpenRouter key, scope. Exits 0 if all pass, 1 if any fail."""
     any_failed = False
+
+    # Always show which binary/module is loaded so local checkout selectors are visible.
+    print(format_runtime_report(), end="")
 
     # Check 1: JJ installed?
     jj_bin = shutil.which("jj")
@@ -604,6 +640,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     api_base = None
     trust_gate_policy = "llm-oneshot"
     trust_gate_config_ok = True
+    global_config = GlobalConfig()
     try:
         global_config = load_global_config()
         env_var_name = global_config.validate_trust_gate_runtime()
@@ -620,10 +657,30 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         any_failed = True
 
     if trust_gate_config_ok:
+        from .trust_gate import (
+            describe_trust_gate_egress,
+            format_trust_gate_egress_notice,
+            redact_trust_gate_api_base_for_disclosure,
+        )
+
         provider_line = f"Trust Gate:   policy={trust_gate_policy} provider={provider} model={model}"
-        if api_base:
-            provider_line += f" api_base={api_base}"
+        disclosed_api_base = redact_trust_gate_api_base_for_disclosure(api_base)
+        if disclosed_api_base:
+            provider_line += f" api_base={disclosed_api_base}"
         print(provider_line)
+
+        egress = describe_trust_gate_egress(global_config)
+        # Operator-facing disclosure before any promotion: destination, model, data categories.
+        print("Data egress:")
+        for line in format_trust_gate_egress_notice(egress).splitlines():
+            if line.startswith("Trust Gate data egress"):
+                continue
+            print(f"  {line.strip()}" if line.startswith("  ") else f"  {line}")
+        # Keep a stable machine-oriented summary line for scripts/tests.
+        print(
+            f"  summary: provider={egress.get('provider')} model={egress.get('model')} "
+            f"destination={egress.get('destination')} kind={egress.get('destination_kind')}"
+        )
 
         if trust_gate_policy == "llm-oneshot":
             try:
@@ -796,117 +853,37 @@ def cmd_cleanup_empty_scopes(args: argparse.Namespace) -> int:
 
 # ─── install-jj ───────────────────────────────────────────────────────────────
 
-JJ_DEFAULT_VERSION = "0.28.0"
-_JJ_INSTALL_DIR = Path.home() / ".local" / "bin"
-
 
 def cmd_install_jj(args: argparse.Namespace) -> int:
-    """Download and install the Jujutsu (JJ) binary."""
-    version = getattr(args, "jj_version", None) or JJ_DEFAULT_VERSION
+    """Select or install a compatible Jujutsu (JJ) binary.
 
-    # Platform detection first — Windows requires a different installer
-    os_name = sys.platform  # "linux", "darwin", "win32"
-    machine = platform.machine().lower()
+    Reuses any installed JJ at or above the supported minimum. Never silently
+    downgrades or overwrites a user-managed executable. When installation is
+    needed, resolves the current official stable release unless --version /
+    JJ_VERSION is set for reproducible environments.
+    """
+    explicit = getattr(args, "jj_version", None) or os.environ.get("JJ_VERSION") or None
+    if explicit:
+        explicit = str(explicit).strip() or None
 
-    if os_name == "win32":
-        print("Windows detected. Install JJ with:")
-        print("  winget install Jujutsu.Jujutsu")
-        print("Or manually from: https://jj-vcs.github.io/jj/")
-        return 1
+    force = bool(getattr(args, "force", False))
+    install_dir = _JJ_INSTALL_DIR
+    if os.environ.get("INSTALL_DIR"):
+        install_dir = Path(os.environ["INSTALL_DIR"])
+    result = select_or_install(
+        explicit_version=explicit,
+        force_install=force,
+        install_dir=install_dir,
+    )
+    print(format_selection_report(result))
 
-    # Check if JJ is already installed at the target version
-    existing = shutil.which("jj") or str(_JJ_INSTALL_DIR / "jj")
-    if Path(existing).exists():
-        try:
-            result = subprocess.run(
-                [existing, "--version"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            installed_output = result.stdout.strip()
-            if re.search(rf"jj {re.escape(version)}(\s|$)", installed_output):
-                print(f"JJ already installed: {installed_output}")
-                return 0
-        except (OSError, subprocess.TimeoutExpired):
-            pass
+    if result.exit_code != 0:
+        print(result.reason, file=sys.stderr)
+        return result.exit_code
 
-    if os_name == "linux":
-        if machine in ("x86_64", "amd64"):
-            suffix = "x86_64-unknown-linux-musl"
-        elif machine in ("aarch64", "arm64"):
-            suffix = "aarch64-unknown-linux-musl"
-        else:
-            print(f"Unsupported Linux architecture: {machine}", file=sys.stderr)
-            print("Install manually from: https://jj-vcs.github.io/jj/", file=sys.stderr)
-            return 1
-    elif os_name == "darwin":
-        if machine in ("x86_64", "amd64"):
-            suffix = "x86_64-apple-darwin"
-        elif machine in ("arm64", "aarch64"):
-            suffix = "aarch64-apple-darwin"
-        else:
-            print(f"Unsupported macOS architecture: {machine}", file=sys.stderr)
-            print("Install manually from: https://jj-vcs.github.io/jj/", file=sys.stderr)
-            return 1
-    else:
-        print(f"Unsupported OS: {os_name}", file=sys.stderr)
-        print("Install manually from: https://jj-vcs.github.io/jj/", file=sys.stderr)
-        return 1
-
-    url = f"https://github.com/jj-vcs/jj/releases/download/v{version}/jj-v{version}-{suffix}.tar.gz"
-    print(f"Downloading JJ v{version} for {suffix}...")
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tarball = Path(tmpdir) / "jj.tar.gz"
-        try:
-            with urllib.request.urlopen(url, timeout=30) as r, open(tarball, "wb") as f:
-                shutil.copyfileobj(r, f)
-        except (urllib.error.URLError, OSError) as e:
-            print(f"Error: download failed: {e}", file=sys.stderr)
-            return 1
-
-        with tarfile.open(tarball, "r:gz") as tf:
-            # Find the jj binary member
-            members = [m for m in tf.getmembers() if Path(m.name).name == "jj"]
-            if not members:
-                print("Error: jj binary not found in tarball", file=sys.stderr)
-                return 1
-            member = members[0]
-            if not member.isfile():
-                print("Error: jj entry in tarball is not a regular file", file=sys.stderr)
-                return 1
-            # Safe extraction: read via extractfile(), write manually (avoids path traversal)
-            src_f = tf.extractfile(member)
-            if src_f is None:
-                print("Error: failed to read jj from tarball", file=sys.stderr)
-                return 1
-            extracted = Path(tmpdir) / "jj"
-            with src_f, open(extracted, "wb") as dst_f:
-                shutil.copyfileobj(src_f, dst_f)
-
-        try:
-            _JJ_INSTALL_DIR.mkdir(parents=True, exist_ok=True)
-            dest = _JJ_INSTALL_DIR / "jj"
-            shutil.copy2(extracted, dest)
-            dest.chmod(0o755)
-        except OSError as e:
-            print(f"Error: failed to install JJ to {dest}: {e}", file=sys.stderr)
-            return 1
-
-    # Verify
-    try:
-        result = subprocess.run([str(dest), "--version"], capture_output=True, text=True, timeout=5)
-        print(f"Installed: {result.stdout.strip()}")
-    except Exception as e:
-        print(f"Warning: install completed but verification failed: {e}", file=sys.stderr)
-
-    # PATH check
-    if not shutil.which("jj"):
-        shell_rc = ".zshrc" if "zsh" in os.environ.get("SHELL", "") or sys.platform == "darwin" else ".bashrc"
-        print(f"\nWarning: {_JJ_INSTALL_DIR} is not in your PATH.")
-        print("Add it with:")
-        print(f"  echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> ~/{shell_rc} && source ~/{shell_rc}")
+    if result.action == "install" and result.path and not shutil.which("jj"):
+        print()
+        print(path_hint(Path(result.path).parent))
 
     return 0
 
@@ -1716,12 +1693,7 @@ def _add_rich_view_trails_dir_arg(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    try:
-        from importlib.metadata import version
-
-        _version = version("fava-trails")
-    except Exception:
-        _version = "unknown"
+    _version = product_version()
 
     parser = argparse.ArgumentParser(
         prog="fava-trails",
@@ -1730,6 +1702,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"%(prog)s {_version}")
 
     subparsers = parser.add_subparsers(dest="command", metavar="<command>")
+
+    # version (loaded runtime provenance; distinct from --version short form)
+    p_version = subparsers.add_parser(
+        "version",
+        help="Report the loaded FAVA product runtime, module path, and MCP SDK version",
+    )
+    p_version.set_defaults(func=cmd_version)
 
     # init
     p_init = subparsers.add_parser("init", help="Initialize a project directory for FAVA Trails")
@@ -1848,13 +1827,24 @@ def build_parser() -> argparse.ArgumentParser:
     p_cleanup.set_defaults(func=cmd_cleanup_empty_scopes)
 
     # install-jj
-    p_install_jj = subparsers.add_parser("install-jj", help="Download and install the Jujutsu (JJ) binary")
+    p_install_jj = subparsers.add_parser(
+        "install-jj",
+        help="Select or install a compatible Jujutsu (JJ) binary (reuses >= min; resolves latest stable)",
+    )
     p_install_jj.add_argument(
         "--version",
         dest="jj_version",
         default=None,
         metavar="VERSION",
-        help=f"JJ version to install (default: {JJ_DEFAULT_VERSION})",
+        help=(
+            "Exact JJ version to install (also JJ_VERSION env). "
+            f"Default: current GitHub stable. Minimum supported: {JJ_MIN_VERSION}."
+        ),
+    )
+    p_install_jj.add_argument(
+        "--force",
+        action="store_true",
+        help="Replace the managed ~/.local/bin/jj even when a compatible JJ is already on PATH",
     )
     p_install_jj.set_defaults(func=cmd_install_jj)
 
