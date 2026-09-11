@@ -7,6 +7,7 @@ import logging
 from typing import Any
 
 from ..config import ConfigStore, get_trails_dir, get_trust_gate_policy
+from ..secret_preflight import refuse_obvious_secret_in_value
 from ..trail import AmbiguousThoughtID
 from ..trust_gate import TrustGateConfigError, TrustGatePromptCache, review_thought
 
@@ -109,6 +110,11 @@ async def handle_propose_truth(
         return {"status": "error", "message": "thought_id is required"}
 
     try:
+        from ..trust_gate import (
+            describe_trust_gate_egress,
+            log_trust_gate_egress_notice,
+            mark_trust_gate_egress_disclosed,
+        )
         from .thought import _serialize_thought
 
         # Resolve trust gate policy
@@ -116,18 +122,34 @@ async def handle_propose_truth(
 
         trust_result = None
         reviewed_record = None
+        egress_notice = None
         if arguments.get("approval") == "human":
             from ..governance import runtime_principal
             from ..trust_gate import TrustResult
             principal = runtime_principal()
             if not principal.operator or not principal.agent_id:
                 raise ValueError("Explicit human approval requires an operator-controlled endpoint")
+            first = mark_trust_gate_egress_disclosed()
+            # Human path: no GlobalConfig LLM destination; still disclose the choice.
+            from ..models import GlobalConfig
+
+            egress_notice = describe_trust_gate_egress(
+                GlobalConfig(),
+                approval="human",
+                first_in_process=first,
+            )
+            log_trust_gate_egress_notice(egress_notice)
             trust_result = TrustResult(
                 verdict="approve", reasoning="Explicit operator approval",
                 reviewer=f"human:{principal.agent_id}", approval_kind="human",
             )
             promoted = await trail.propose_truth(thought_id, trust_result=trust_result, reviewed_record=reviewed_record)
-            return {"status": "ok", "thought": _serialize_thought(promoted), "message": "Approved by explicit operator action"}
+            return {
+                "status": "ok",
+                "thought": _serialize_thought(promoted),
+                "message": "Approved by explicit operator action",
+                "trust_gate_egress": egress_notice,
+            }
         if policy == "llm-oneshot" and prompt_cache is None:
             return {
                 "status": "error",
@@ -139,6 +161,9 @@ async def handle_propose_truth(
             record = await trail.get_thought(thought_id)
             if record is None:
                 return {"status": "error", "message": f"Thought {thought_id} not found"}
+            refuse_obvious_secret_in_value(
+                record.model_dump(mode="json"), persisted_already=True
+            )
 
             reviewed_record = record.model_copy(deep=True)
             try:
@@ -149,12 +174,21 @@ async def handle_propose_truth(
             global_config = ConfigStore.get().global_config
             from ..credentials import load_trust_gate_api_key
 
+            first = mark_trust_gate_egress_disclosed()
+            egress_notice = describe_trust_gate_egress(
+                global_config,
+                first_in_process=first,
+            )
+            # Disclose destination + data categories before any network I/O.
+            log_trust_gate_egress_notice(egress_notice)
+
             try:
                 load_trust_gate_api_key(global_config)
             except ValueError as exc:
                 return {
                     "status": "error",
                     "message": str(exc),
+                    "trust_gate_egress": egress_notice,
                 }
 
             from ..llm import LLMClient
@@ -190,6 +224,7 @@ async def handle_propose_truth(
                             f"Trust Gate timed out after {tg_timeout}s reviewing thought {thought_id[:8]}. "
                             "The LLM provider did not respond. Retry propose_truth to try again."
                         ),
+                        "trust_gate_egress": egress_notice,
                     }
             else:
                 trust_result = await _review_coro
@@ -200,6 +235,8 @@ async def handle_propose_truth(
             "thought": _serialize_thought(promoted),
             "message": f"Promoted {thought_id[:8]} to {promoted.frontmatter.validation_status.value}",
         }
+        if egress_notice is not None:
+            result["trust_gate_egress"] = egress_notice
 
         if trust_result is not None:
             result["trust_gate"] = {

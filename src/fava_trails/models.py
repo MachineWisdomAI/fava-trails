@@ -6,8 +6,30 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field, NonNegativeInt, field_validator, model_validator
+from pydantic import BaseModel, Field, NonNegativeInt, ValidationError, field_validator, model_validator
 from ulid import ULID
+
+
+def format_validation_error_for_diagnostics(exc: ValidationError) -> str:
+    """Format a ValidationError without raw input values (may hold secrets).
+
+    Pydantic's default ``str(ValidationError)`` embeds ``input_value``. Config
+    fields such as ``trust_gate_api_base`` can carry path tokens or URL secrets,
+    so user-facing diagnostics must never print the raw input.
+    """
+    parts: list[str] = []
+    for err in exc.errors(include_url=False, include_input=False):
+        loc = ".".join(str(item) for item in err.get("loc", ()))
+        msg = str(err.get("msg") or "invalid value")
+        # Pydantic prefixes custom ValueError text with "Value error, ".
+        if msg.startswith("Value error, "):
+            msg = msg[len("Value error, ") :]
+        parts.append(f"{loc}: {msg}" if loc else msg)
+    if not parts:
+        return "configuration is invalid"
+    if len(parts) == 1:
+        return parts[0]
+    return "configuration is invalid: " + "; ".join(parts)
 
 
 class SourceType(StrEnum):
@@ -293,6 +315,20 @@ class GlobalConfig(BaseModel):
         base = v.strip()
         if not (base.startswith("http://") or base.startswith("https://")):
             raise ValueError("trust_gate_api_base must start with http:// or https://")
+        from urllib.parse import urlparse
+
+        parsed = urlparse(base)
+        if not parsed.hostname:
+            raise ValueError("trust_gate_api_base must include a hostname")
+        try:
+            # urlparse defers port casting until .port is accessed.
+            _ = parsed.port
+        except ValueError as exc:
+            # Do not interpolate the raw URL or exception text: both can embed
+            # secret-bearing path/query segments into doctor/startup diagnostics.
+            raise ValueError(
+                "trust_gate_api_base port must be an integer between 0 and 65535"
+            ) from exc
         return base
 
     @model_validator(mode="after")

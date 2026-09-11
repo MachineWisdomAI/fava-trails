@@ -1,0 +1,158 @@
+# MCP context overhead
+
+This note records how FAVA Trails measures advertised MCP session-init text, what a
+compact surface changes, and which learning-workflow steps the server actually
+enforces. Figures below are for one serialization and one tokenizer. They are not
+a universal client token cost.
+
+## How to measure
+
+```bash
+fava-trails measure-mcp-context --surface both
+```
+
+The command serializes:
+
+- initialize `instructions`
+- `tools/list` items as this server advertises them (JSON, compact separators)
+
+It records FAVA package version and git commit of the measured checkout
+(candidate), a frozen issue #104 tested-release artifact (`6c5278a40a86246014901a88417f3455a46cdfcc`,
+not re-measured or relabeled from the current SDK), tokenizer name, MCP Python SDK
+`mcp.Client` version, enabled tool names, `lazy_loading` (always `false`: every
+tool is listed at `tools/list`), and whether the cost recurs. Instructions are
+sent once per `initialize`. `tools/list` is sent once per list request; typical
+clients list once per session and only re-pay the cost if they refresh the catalog.
+
+Default tokenizer: `chars/4 heuristic` (`ceil(character_count / 4)`). If
+`tiktoken` is installed, `cl100k_base` is recorded as an optional extra. Neither
+figure is a client invoice.
+
+## Provenance
+
+| Checkout | Role | FAVA version | Git commit | Client |
+| --- | --- | --- | --- | --- |
+| Issue #104 source review baseline | tested release (frozen artifact) | 0.6.1 | `6c5278a40a86246014901a88417f3455a46cdfcc` | `mcp.Client` 2.2.0 (frozen) |
+| This branch | candidate | 0.6.1 | current `git rev-parse HEAD` | live `mcp.Client` (currently 2.2.0) |
+
+The tested release had no compact surface. Its full-surface payload, enabled tool
+names, lazy-loading flag, recurrence, tokenizer, and client version are stored in
+`src/fava_trails/issue_104_tested_release.json`. `fava-trails measure-mcp-context`
+loads that file and does not overwrite client/SDK fields from the current
+environment. Reproduce by checking out `6c5278a` and serializing advertised
+initialize instructions plus `tools/list` JSON with the chars/4 heuristic.
+
+## Recorded baseline
+
+Tokenizer `chars/4 heuristic`, all 17 tools enabled, no lazy loading, no `tiktoken`.
+
+Tested release (`6c5278a`, full surface only):
+
+| Instructions tokens | tools/list tokens | Session-init tokens | Session-init chars | `get_usage_guide` chars / tokens |
+| ---: | ---: | ---: | ---: | ---: |
+| 961 | 5451 | 6412 | 25647 | 10077 / 2520 |
+
+Candidate (this head, live `mcp.Client`):
+
+| Surface | Instructions tokens | tools/list tokens | Session-init tokens | Session-init chars |
+| --- | ---: | ---: | ---: | ---: |
+| full (default) | 1184 | 5867 | 7051 | 28201 |
+| compact | 187 | 3186 | 3373 | 13487 |
+
+`get_usage_guide` body on this candidate (on demand, not in session-init): 2884
+heuristic tokens (11536 chars). An evaluator previously estimated about 6000 tokens
+of schemas and instructions versus about 1600 for a committed agent guide; that
+estimate was client-specific and is not reproduced here as a universal number.
+
+Budget, from the candidate full session-init baseline: compact session-init tokens
+must be ≤ 70% of full under the same tokenizer. This run: 3373 / 7051 ≈ 0.48. Met.
+
+Largest full-surface source is advertised `tools/list` JSON (schemas, then
+descriptions), then initialize instructions. Compact therefore:
+
+1. Shortens initialize instructions and points at `get_usage_guide`.
+2. Shortens tool descriptions (drops duplicated session/promotion prose).
+3. Omits advertised `outputSchema` on `tools/list`. Server-side validation still
+   uses `TOOL_DEFINITIONS`.
+
+Input schemas, tool names, and authorization are unchanged.
+
+## Compact surface
+
+Default remains `full` (backward compatible). Opt in per MCP process:
+
+```json
+{
+  "mcpServers": {
+    "fava-trails": {
+      "command": "fava-trails-server",
+      "env": {
+        "FAVA_TRAILS_MCP_SURFACE": "compact"
+      }
+    }
+  }
+}
+```
+
+Unknown values log as `full` at server start so a typo does not fail the process.
+`fava-trails measure-mcp-context` rejects unknown surfaces.
+
+## recall / save / promote comparison
+
+Executed on both surfaces through in-process `mcp.Client` sessions (`mode="legacy"`
+initialize handshake) against dedicated `Server` instances. The harness instantiates
+the client; it does not call `handle_call_tool` directly. Task: observe initialize
+instructions, follow only those instructions on a naive pass (no `get_usage_guide`),
+then script invalid save, retry with content, missing-scope recall, `list_scopes`,
+select an exact returned path, retry recall, authoring `recall`, and `propose_truth`
+(Trust Gate review mocked). Scripted executed steps are recorded separately from
+deterministic prompt-coverage scans of initialize text. Instruction scans are
+not labeled as `called` or `skipped` client behavior. Results:
+
+| Check | full | compact |
+| --- | --- | --- |
+| Token usage (session-init, this tokenizer) | 6947 | 3366 |
+| Discoverability of recall, save_thought, propose_truth, get_usage_guide, list_scopes | yes | yes |
+| All 17 tools advertised | yes | yes |
+| Input schemas | full | same |
+| Advertised outputSchema | yes | omitted |
+| Executed save_thought | ok | ok |
+| Executed authoring recall after save | count 1 | count 1 |
+| Executed propose_truth | ok | ok |
+| Error recovery: missing scope | status error, then list_scopes + retry recall on returned path (same arguments except `trail_name`; count 1) | same |
+| Error recovery: save without content | failed, then retry ok | failed, then retry ok |
+| Session-start recall trio in initialize text | yes | no; in `get_usage_guide` |
+| `propose_truth` requested in initialize text | yes (mandatory wording) | yes (core loop; no “mandatory”) |
+| Prompt-coverage gap (instruction scan, not a client choice) | none for session-start recall | session-start recall only |
+
+Prompt-coverage indicators are a deterministic scan of initialize text, not
+behavior observed from a client. Compact initialize still requests `propose_truth`
+in the core loop; missing the word “mandatory” is not a skip. Compact omits the
+session-start recall trio, which remains a coverage gap unless the client calls
+`get_usage_guide` or injects its own guide. The server does not invoke those
+steps on either surface. Missing-scope recovery selects an exact `list_scopes`
+path and retries recall; a successful empty `list_scopes` is discovery attempted,
+not recovery.
+
+## What the server enforces vs prompt/client behavior
+
+Server-enforced (same on both surfaces):
+
+- `FAVA_TRAILS_AGENT_ID` identity match; caller `agent_id` cannot impersonate
+- governed / authoring / history visibility
+- operator-only tools (`diff`, `conflicts`, `rollback`, `forget`, `learn_preference`)
+- writes require a configured agent identity
+- input and output validation against `TOOL_DEFINITIONS`
+- unpromoted drafts are not governed current records
+
+Prompt/client behavior (not enforced by listing or instructions):
+
+- calling `get_usage_guide`
+- session-start recall of status/decisions/gotchas
+- deciding work is “finalized” and calling `propose_truth`
+- creating `.fava-trails.yaml` (do not write application `.env` files)
+- whether the client shows initialize instructions or re-lists tools
+
+Instructions do not provide reliable cross-session sharing. Sharing requires
+`propose_truth` plus durable approval. Asking an agent to remember something in
+the MCP instructions field does not make it available to the next session.

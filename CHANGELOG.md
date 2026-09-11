@@ -4,10 +4,60 @@ All notable changes to FAVA Trails are documented here.
 
 ## Unreleased
 
-### Changed
-- Support MCP SDK 2.2 with explicit low-level handlers, preserving tool schemas, annotations, input/output validation, structured results, and Markdown usage guidance over stdio and Streamable HTTP. Adds installed-wheel protocol tests for legacy initialization and current SDK clients. Resolves #83.
+### Added
+- `FAVA_TRAILS_MCP_SURFACE=compact` advertises shorter initialize instructions and tool descriptions and omits list-time `outputSchema`, with `get_usage_guide` as on-demand protocol. Default remains `full`. `fava-trails measure-mcp-context` records tokenizer-labeled session-init size, loads a frozen issue #104 tested-release artifact (not relabeled from the current SDK), and the same-task comparison runs through `mcp.Client` sessions. Prompt-coverage gaps are instruction scans, not observed client skips, and the comparison payload does not label those scans as `called`/`skipped`; missing-scope recovery selects an exact returned path and retries recall with the original arguments except `trail_name`, requiring a non-empty result. Full initialize instructions are a maintained subset of `AGENTS_USAGE_INSTRUCTIONS.md`, not a verbatim inject. See [docs/mcp-context-overhead.md](docs/mcp-context-overhead.md). Addresses #104.
+- `fava-trails register` prints native MCP registration using an ordinary `FAVA_TRAILS_AGENT_ID`, the resolved executable, and the intended data repository. Unresolved executables fail unless `--executable` names an existing executable file. `--write` is an explicit client-config opt-in (atomic write, `.bak` backup, files opened with the final mode before content is written, modes capped at `0600` while stricter existing modes are kept, new files `0600`, non-writable existing configs refused). `--verify` labels a direct MCP smoke test, client-config inspection, and MCP Inspector config-load (`inspector_config_load`). It does not claim Claude Code/Desktop loaded the registration. Failures stay distinct (`inspector_unavailable`, `inspector_invocation_failed`, `config_load_failed`, `server_spawn_failed`, `server_initialize_failed`, `inspector_failed`, stale runtime path, registration not loaded). Native-session evidence that a client loaded Claude-shaped `mcpServers` config is `test_native_client_registration_loads_and_initializes`.
+- Bounded obvious-secret preflight before save, update, supersede, and promotion persist or transmit. Supported high-confidence patterns are refused with a safe explanation, including nested caller-controlled metadata and relationships after hook mutation, and the complete MCP request (tool name plus arguments) before schema validation, logging, lookup, auto-initialization, or JJ operations. Assembled Trust Gate result metadata is scanned before governance persist. Nested walks deeper than 32 fail closed. Block logs use a fixed message without pattern ids. Legacy matching drafts are left unchanged and are not sent for review. Documents data flow and detection limits; does not claim complete DLP. Fixes #102.
+- **Trust Gate data-egress disclosure (issue #101):** `describe_trust_gate_egress`
+  + `fava-trails doctor` **Data egress** section and MCP startup log show the
+  effective review destination/model and which candidate fields are sent before
+  promotion. Successful LLM or operator `propose_truth` paths (and credential /
+  timeout failures after disclosure begins) include a secret-free
+  `trust_gate_egress` object (`first_in_process` on the first disclosure in
+  that process). Early validation failures — missing `thought_id`, missing
+  prompt cache, thought not found, or prompt-resolution errors — return before
+  disclosure and omit `trust_gate_egress`. Local-only OpenAI-compatible setups
+  remain fail-closed with no cloud fallback; missing cloud credentials never
+  auto-approve. Docs separate the operator `approval="human"` path from
+  automatic LLM review.
+- `fava-trails version` (and a matching preamble on `fava-trails doctor`) reports
+  the loaded product package/module version, module path/source kind, and the
+  MCP SDK distribution version separately, without credentials. MCP
+  `serverInfo.version` now carries the FAVA product version. Documents identity
+  configuration, local runtime selectors that can keep an old checkout active,
+  and release-candidate install/upgrade verification. Wheel/sdist packaging
+  tests cover fresh install, upgrade from published 0.6.0, installed-entrypoint
+  MCP protocol (#83), and governed recall isolation (#72). Prepares #99; **0.6.1
+  remains merged but unreleased on PyPI until an authorized tag is published.**
+- Issue #99 verification depth: real native MCP client registration via
+  `@modelcontextprotocol/inspector` loading Claude-shaped `mcpServers` config
+  (distinct from direct stdio probes); two separately configured ordinary server
+  processes for authoring isolation + spoof rejection on the installed wheel;
+  packaged verifier binds to `FAVA_CANDIDATE_WHEEL`/`FAVA_CANDIDATE_SDIST` for
+  fresh wheel install, sdist install, and 0.6.0→candidate upgrade; `release.yml`
+  is a pre-publication `workflow_dispatch` on an existing tag under the
+  `fava-release` environment that resolves draft-resume before the main check
+  (first publish: tag peel == protected `origin/main`; draft resume: tag peel is
+  an ancestor of `origin/main`), peels to verified `HEAD` (env-passed tag input;
+  provenance via `$GITHUB_ENV` inheritance, not dispatch `GITHUB_SHA` or empty
+  expression-context remaps), validates exact artifacts, stages or normalizes a
+  **draft** GitHub Release (title/notes/target bound to the candidate), publishes
+  the same `dist/` to PyPI, requires published PyPI SHA-256 to match
+  `candidate-SHA256SUMS` before undraft (still owner-gated; no automatic
+  publication from this PR).
 
-## [0.6.1] — 2026-08-01
+### Changed
+- `fava-trails init` and `fava-trails scope set` persist scope in `.fava-trails.yaml` and no longer write application `.env` files unless `--write-env` is passed. Existing `FAVA_TRAILS_SCOPE` reads are unchanged. Generated agent guidance (`AGENTS_USAGE_INSTRUCTIONS.md`, server instructions, data-repo `agents-guide.md`) and root `AGENTS.md` no longer tell agents to edit application-owned `.env` files. `fava-trails register --write` and `--verify` fail unless a real data-repository path is resolved; print-only guidance may still show a placeholder.
+- Public Trust Gate wording no longer implies that a review verdict prevents secret persistence or egress.
+- Support MCP SDK 2.2 with explicit low-level handlers, preserving tool schemas, annotations, input/output validation, structured results, and Markdown usage guidance over stdio and Streamable HTTP. Adds installed-wheel protocol tests for legacy initialization and current SDK clients. Resolves #83.
+- **JJ installer policy (issue #98):** `fava-trails install-jj` (canonical `jj_install.py`; `scripts/install-jj.sh` is a thin Bash 3.2-safe delegate) reuses any installed JJ `>= 0.28.0` before platform checks, never silently downgrades or overwrites a user-managed binary, resolves current GitHub stable when install is needed (explicit `--version` / `JJ_VERSION` override retained), verifies GitHub asset SHA-256 digests when published, requires exactly one safe regular `jj` archive member, installs atomically with restore of the prior managed binary after any post-replacement failure, and PATH-hints the selected install directory. CI matrix covers JJ **0.28.0** and **0.45.1**. See `docs/jj-compatibility.md`.
+
+## [0.6.1] — merged on main, not published (candidate)
+
+> **Publication status:** GitHub/PyPI latest remain **0.6.0**. Main identifies as
+> **0.6.1** and includes governed-read and MCP registration fixes. A normal
+> `pip install fava-trails` does **not** receive those fixes until an authorized
+> release. See [docs/runtime-and-upgrade.md](docs/runtime-and-upgrade.md).
 
 ### Fixed
 - Raised direct MCP (`>=1.28.1`) and Starlette (`>=1.3.1`) floors and refreshed the lockfile to clear open Dependabot advisories (including high-severity transitive updates such as NLTK and Transformers). Supersedes #81.
