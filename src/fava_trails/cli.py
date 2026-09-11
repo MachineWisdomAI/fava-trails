@@ -736,7 +736,13 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
 def cmd_register(args: argparse.Namespace) -> int:
     """Print native MCP registration instructions; write client config only when opted in."""
-    executable = resolve_server_executable() or "fava-trails-server"
+    executable = getattr(args, "executable", None) or resolve_server_executable()
+    if not executable:
+        print(
+            "Error: could not resolve fava-trails-server. Pass --executable PATH to use an explicit command.",
+            file=sys.stderr,
+        )
+        return 1
     try:
         data_repo = str(get_data_repo_root())
     except (OSError, ValueError):
@@ -775,7 +781,7 @@ def cmd_register(args: argparse.Namespace) -> int:
     direct = verify_direct_mcp_smoke(executable, env={"FAVA_TRAILS_DATA_REPO": data_repo, "FAVA_TRAILS_AGENT_ID": agent_id})
     client_config = inspect_native_registration(config_path, current_executable=executable)
     native = verify_native_client_session(config_path, current_executable=executable)
-    print(render_diagnostics({"direct_mcp_smoke": direct, "client_config": client_config, "native_client_session": native}))
+    print(render_diagnostics({"direct_mcp_smoke": direct, "client_config": client_config, "inspector_config_load": native}))
     if not direct.get("ok") or not native.get("ok"):
         return 1
     return 0
@@ -1758,10 +1764,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Ordinary server-configured agent identity (default: codex-cli). Do not use this for operator mode.",
     )
     p_register.add_argument(
+        "--executable",
+        default=None,
+        help="Explicit server executable. Required when fava-trails-server cannot be resolved; unresolved names are not written.",
+    )
+    p_register.add_argument(
         "--verify",
         action="store_true",
         default=False,
-        help="Run a direct MCP smoke test and a native client session (MCP Inspector loads the client config). Labels which was verified. Reports native_client_unavailable when no native client is present; does not treat a direct stdio spawn as a native session.",
+        help="Run a direct MCP smoke test and MCP Inspector config-load verification. Labels which was verified. Does not claim Claude Code/Desktop loaded the registration. Reports inspector_unavailable, inspector_failed, server_initialize_failed, stale runtime paths, or registration not loaded.",
     )
     p_register.add_argument(
         "--operator",

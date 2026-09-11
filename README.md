@@ -118,13 +118,15 @@ fava-trails register --agent-id claude-code
 ```
 
 Optional client-config write is explicit (`--write`). It preserves unrelated client
-settings, writes atomically, keeps a `.bak` backup, preserves existing restrictive
-file modes (new files `0600`), and reports permission denial without bypassing
-client controls. `--verify` runs a direct MCP smoke test, inspects the client
-config, and asks a native MCP client (Inspector) to load that config. Diagnostics
-label which ran. Direct stdio is not reported as a native session. Missing native
-clients are `native_client_unavailable`; stale runtime paths and registration not
-loaded are also reported.
+settings, writes atomically, keeps a `.bak` backup, opens backup and replacement
+files with the final restrictive mode before writing (new files `0600`), refuses
+non-writable existing configs, and reports permission denial without bypassing
+client controls. Unresolved `fava-trails-server` is an error unless `--executable`
+is passed. `--verify` runs a direct MCP smoke test, inspects the client config,
+and loads that config through MCP Inspector. Diagnostics label which ran.
+Inspector success is `inspector_config_load`, not a Claude Code/Desktop session.
+Missing Inspector is `inspector_unavailable`; Inspector errors, server initialize
+failures, stale runtime paths, and registration not loaded stay distinct.
 
 ```bash
 fava-trails register --write --verify --config ~/.claude.json --agent-id claude-code

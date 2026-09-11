@@ -80,6 +80,25 @@ def format_registration_instructions(
     )
 
 
+def _write_text_with_mode(path: Path, text: str, mode: int) -> None:
+    """Create ``path`` with ``mode`` before any secret-bearing content is written."""
+    path.unlink(missing_ok=True)
+    previous_umask = os.umask(0)
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+    finally:
+        os.umask(previous_umask)
+    try:
+        with os.fdopen(fd, "w") as handle:
+            fd = -1
+            handle.write(text)
+    except Exception:
+        if fd != -1:
+            os.close(fd)
+        path.unlink(missing_ok=True)
+        raise
+
+
 def write_mcp_json_config(
     path: Path,
     *,
@@ -98,6 +117,8 @@ def write_mcp_json_config(
     existing_mode: int | None = None
     if path.exists():
         existing_mode = stat.S_IMODE(path.stat().st_mode)
+        if not os.access(path, os.W_OK):
+            raise PermissionDenied(f"Permission denied writing {path}")
         try:
             existing_text = path.read_text()
         except PermissionError as exc:
@@ -129,25 +150,22 @@ def write_mcp_json_config(
     if existing_text is not None:
         backup_path = path.with_name(path.name + ".bak")
         try:
-            backup_path.write_text(existing_text)
-            os.chmod(backup_path, target_mode)
+            _write_text_with_mode(backup_path, existing_text, target_mode)
         except PermissionError as exc:
             raise PermissionDenied(f"Permission denied writing backup {backup_path}") from exc
 
     serialized = json.dumps(data, indent=2) + "\n"
     tmp = path.with_name(path.name + ".tmp")
     try:
-        tmp.write_text(serialized)
-        os.chmod(tmp, target_mode)
+        _write_text_with_mode(tmp, serialized, target_mode)
         os.replace(tmp, path)
-        os.chmod(path, target_mode)
-    except PermissionError as exc:
+    except PermissionError as extra:
         tmp.unlink(missing_ok=True)
-        raise PermissionDenied(f"Permission denied writing {path}") from exc
-    except OSError as exc:
+        raise PermissionDenied(f"Permission denied writing {path}") from extra
+    except OSError as extra:
         tmp.unlink(missing_ok=True)
-        if getattr(exc, "errno", None) == 13:
-            raise PermissionDenied(f"Permission denied writing {path}") from exc
+        if getattr(extra, "errno", None) == 13:
+            raise PermissionDenied(f"Permission denied writing {path}") from extra
         raise
     return backup_path
 
@@ -219,7 +237,7 @@ def render_diagnostics(sections: dict[str, Any], *, secrets: list[str] | None = 
     payload = {
         "direct_mcp_smoke": sections.get("direct_mcp_smoke"),
         "client_config": sections.get("client_config"),
-        "native_client_session": sections.get("native_client_session"),
+        "inspector_config_load": sections.get("inspector_config_load"),
     }
     text = json.dumps(payload, indent=2)
     return _redact(text, secrets if secrets is not None else collect_secret_values())
@@ -271,11 +289,11 @@ def verify_direct_mcp_smoke(executable: str, env: dict[str, str] | None = None) 
 
 
 def _default_native_client_probe(config_path: Path, server_name: str) -> dict[str, Any]:
-    """Load registration through MCP Inspector, not a direct stdio spawn."""
+    """Load registration through MCP Inspector, not a native Claude session."""
     npx = shutil.which("npx")
     node = shutil.which("node")
     if not npx or not node:
-        return {"ok": False, "status": "native_client_unavailable"}
+        return {"ok": False, "status": "inspector_unavailable"}
     cmd = [
         npx,
         "--yes",
@@ -295,18 +313,20 @@ def _default_native_client_probe(config_path: Path, server_name: str) -> dict[st
     env.setdefault("NO_UPDATE_NOTIFIER", "1")
     try:
         completed = subprocess.run(cmd, capture_output=True, text=True, timeout=180, env=env, check=False)
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return {"ok": False, "status": "native_client_unavailable", "error": exc.__class__.__name__}
+    except OSError as exc:
+        return {"ok": False, "status": "inspector_unavailable", "error": exc.__class__.__name__}
+    except subprocess.TimeoutExpired as exc:
+        return {"ok": False, "status": "inspector_failed", "error": exc.__class__.__name__}
     if completed.returncode != 0:
-        return {"ok": False, "status": "native_client_unavailable", "error": "initialize_failed"}
+        return {"ok": False, "status": "inspector_failed", "error": "initialize_failed"}
     try:
         payload = json.loads(completed.stdout)
     except json.JSONDecodeError:
-        return {"ok": False, "status": "native_client_unavailable", "error": "initialize_failed"}
+        return {"ok": False, "status": "inspector_failed", "error": "initialize_failed"}
     result = payload.get("result") if isinstance(payload, dict) else None
     if isinstance(result, dict) or (isinstance(payload, dict) and payload.get("serverInfo")):
         return {"ok": True, "status": "loaded"}
-    return {"ok": False, "status": "native_client_unavailable", "error": "initialize_failed"}
+    return {"ok": False, "status": "server_initialize_failed", "error": "initialize_failed"}
 
 
 def verify_native_client_session(
@@ -321,14 +341,14 @@ def verify_native_client_session(
         current_executable=current_executable,
         server_name=server_name,
     )
-    inspection["verified"] = "native_client_session"
+    inspection["verified"] = "inspector_config_load"
     if inspection.get("status") != "loaded":
         inspection["ok"] = False
         return inspection
     probe = client_probe if client_probe is not None else _default_native_client_probe
     probed = probe(Path(config_path), server_name)
     inspection["ok"] = bool(probed.get("ok"))
-    inspection["status"] = str(probed.get("status") or ("loaded" if inspection["ok"] else "native_client_unavailable"))
+    inspection["status"] = str(probed.get("status") or ("loaded" if inspection["ok"] else "inspector_failed"))
     if probed.get("error"):
         inspection["error"] = probed["error"]
     return inspection
