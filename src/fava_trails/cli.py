@@ -36,6 +36,7 @@ from .mcp_registration import (
     format_registration_instructions,
     inspect_native_registration,
     render_diagnostics,
+    resolve_explicit_executable,
     resolve_server_executable,
     verify_direct_mcp_smoke,
     verify_native_client_session,
@@ -736,13 +737,24 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
 def cmd_register(args: argparse.Namespace) -> int:
     """Print native MCP registration instructions; write client config only when opted in."""
-    executable = getattr(args, "executable", None) or resolve_server_executable()
-    if not executable:
-        print(
-            "Error: could not resolve fava-trails-server. Pass --executable PATH to use an explicit command.",
-            file=sys.stderr,
-        )
-        return 1
+    explicit = getattr(args, "executable", None)
+    if explicit:
+        executable = resolve_explicit_executable(explicit)
+        if not executable:
+            print(
+                "Error: --executable must name an existing executable file. "
+                "The path was not printed or persisted.",
+                file=sys.stderr,
+            )
+            return 1
+    else:
+        executable = resolve_server_executable()
+        if not executable:
+            print(
+                "Error: could not resolve fava-trails-server. Pass --executable PATH to use an explicit command.",
+                file=sys.stderr,
+            )
+            return 1
     try:
         data_repo = str(get_data_repo_root())
     except (OSError, ValueError):
@@ -1766,13 +1778,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_register.add_argument(
         "--executable",
         default=None,
-        help="Explicit server executable. Required when fava-trails-server cannot be resolved; unresolved names are not written.",
+        help="Explicit server executable. Must exist and be executable; unresolved or non-executable paths are not printed or written.",
     )
     p_register.add_argument(
         "--verify",
         action="store_true",
         default=False,
-        help="Run a direct MCP smoke test and MCP Inspector config-load verification. Labels which was verified. Does not claim Claude Code/Desktop loaded the registration. Reports inspector_unavailable, inspector_failed, server_initialize_failed, stale runtime paths, or registration not loaded.",
+        help="Run a direct MCP smoke test and MCP Inspector config-load verification. Labels which was verified. Does not claim Claude Code/Desktop loaded the registration. Reports inspector_unavailable, inspector_invocation_failed, config_load_failed, server_spawn_failed, server_initialize_failed, inspector_failed, stale runtime paths, or registration not loaded.",
     )
     p_register.add_argument(
         "--operator",

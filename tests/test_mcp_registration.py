@@ -123,6 +123,18 @@ def test_config_writer_creates_new_files_with_owner_only_mode(tmp_path):
     assert stat.S_IMODE(config.stat().st_mode) == 0o600
 
 
+def test_config_writer_caps_permissive_mode_at_owner_read_write(tmp_path):
+    config = tmp_path / "claude.json"
+    config.write_text(json.dumps({"mcpServers": {"other": {"command": "keep-me"}}}))
+    config.chmod(0o644)
+    entry = build_registration(executable="/bin/fava-trails-server", data_repo="/data", agent_id="claude-code")
+    backup = write_mcp_json_config(config, server_name="fava-trails", entry=entry)
+    assert backup is not None
+    assert stat.S_IMODE(config.stat().st_mode) == 0o600
+    assert stat.S_IMODE(backup.stat().st_mode) == 0o600
+    assert json.loads(backup.read_text())["mcpServers"]["other"]["command"] == "keep-me"
+
+
 def test_config_writer_reports_permission_denial_without_bypass(tmp_path):
     config = tmp_path / "locked.json"
     config.write_text("{}")
@@ -354,6 +366,60 @@ def test_inspector_and_server_failures_keep_distinct_status(tmp_path, monkeypatc
     assert server_miss["status"] == "server_initialize_failed"
 
 
+def _inspector_result(stderr: str, stdout: str = "", returncode: int = 1):
+    class _Completed:
+        def __init__(self):
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    return _Completed()
+
+
+def test_inspector_nonzero_and_non_json_keep_actionable_categories(tmp_path, monkeypatch):
+    config = tmp_path / "claude.json"
+    write_mcp_json_config(
+        config,
+        server_name="fava-trails",
+        entry=build_registration(executable="/bin/fava-trails-server", data_repo=str(tmp_path), agent_id="claude-code"),
+    )
+    monkeypatch.setattr("fava_trails.mcp_registration.shutil.which", lambda name: f"/usr/bin/{name}")
+    secret = "sk-live-not-for-output"
+
+    cases = [
+        (
+            "config_load_failed",
+            json.dumps({"error": {"code": "error", "message": "Error loading configuration: Config file not found"}}),
+        ),
+        (
+            "server_spawn_failed",
+            json.dumps({"error": {"code": "error", "message": "spawn /no/such/server-bin ENOENT"}}),
+        ),
+        (
+            "server_initialize_failed",
+            json.dumps({"error": {"code": "error", "message": "Connection closed"}}),
+        ),
+        (
+            "inspector_invocation_failed",
+            "npm ERR! code E404\nnpm ERR! 404 Not Found - GET https://registry.npmjs.org/@modelcontextprotocol/inspector",
+        ),
+    ]
+    for status, stderr in cases:
+        monkeypatch.setattr(
+            "fava_trails.mcp_registration.subprocess.run",
+            lambda *args, _stderr=stderr, **kwargs: _inspector_result(stderr=_stderr + f"\n{secret}"),
+        )
+        result = verify_native_client_session(config, current_executable="/bin/fava-trails-server")
+        assert result["verified"] == "inspector_config_load"
+        assert result["ok"] is False
+        assert result["status"] == status
+        dumped = json.dumps(result)
+        assert secret not in dumped
+        assert "ENOENT" not in dumped
+        assert "Config file not found" not in dumped
+        assert "npm ERR" not in dumped
+
+
 def test_register_cli_prints_instructions_without_writing(tmp_path, capsys, monkeypatch):
     from fava_trails.cli import cmd_register
 
@@ -402,6 +468,7 @@ def test_register_uses_explicit_executable_when_unresolved(tmp_path, capsys, mon
     from fava_trails.cli import cmd_register
 
     monkeypatch.setattr("fava_trails.cli.resolve_server_executable", lambda: None)
+    executable = _fake_server(tmp_path, "explicit")
     with patch("fava_trails.cli.get_data_repo_root", return_value=tmp_path / "data"):
         rc = cmd_register(
             type(
@@ -414,14 +481,72 @@ def test_register_uses_explicit_executable_when_unresolved(tmp_path, capsys, mon
                     "verify": False,
                     "operator": False,
                     "client": "claude-code",
-                    "executable": "/explicit/fava-trails-server",
+                    "executable": str(executable),
                 },
             )()
         )
     assert rc == 0
     out = capsys.readouterr().out
-    assert "/explicit/fava-trails-server" in out
-    assert "fava-trails-server" in out
+    assert str(executable.resolve()) in out
+
+
+def test_register_rejects_missing_explicit_executable(tmp_path, capsys, monkeypatch):
+    from fava_trails.cli import cmd_register
+
+    monkeypatch.setattr("fava_trails.cli.resolve_server_executable", lambda: None)
+    missing = tmp_path / "missing-server"
+    config = tmp_path / "claude.json"
+    with patch("fava_trails.cli.get_data_repo_root", return_value=tmp_path / "data"):
+        rc = cmd_register(
+            type(
+                "Args",
+                (),
+                {
+                    "write": True,
+                    "config": str(config),
+                    "agent_id": "codex-cli",
+                    "verify": False,
+                    "operator": False,
+                    "client": "claude-code",
+                    "executable": str(missing),
+                },
+            )()
+        )
+    assert rc == 1
+    assert not config.exists()
+    captured = capsys.readouterr()
+    assert "existing executable" in captured.err
+    assert str(missing) not in captured.out
+    assert str(missing) not in captured.err
+
+
+def test_register_rejects_non_executable_explicit_path(tmp_path, capsys, monkeypatch):
+    from fava_trails.cli import cmd_register
+
+    monkeypatch.setattr("fava_trails.cli.resolve_server_executable", lambda: None)
+    not_exec = tmp_path / "not-exec"
+    not_exec.write_text("#!/bin/sh\n")
+    config = tmp_path / "claude.json"
+    with patch("fava_trails.cli.get_data_repo_root", return_value=tmp_path / "data"):
+        rc = cmd_register(
+            type(
+                "Args",
+                (),
+                {
+                    "write": False,
+                    "config": str(config),
+                    "agent_id": "codex-cli",
+                    "verify": False,
+                    "operator": False,
+                    "client": "claude-code",
+                    "executable": str(not_exec),
+                },
+            )()
+        )
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert "existing executable" in captured.err
+    assert str(not_exec) not in captured.out
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]

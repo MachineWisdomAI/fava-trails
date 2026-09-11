@@ -17,20 +17,48 @@ DEFAULT_CLIENT = "claude-code"
 NEW_FILE_MODE = 0o600
 NATIVE_MCP_CLIENT_PACKAGE = "@modelcontextprotocol/inspector@2.6.0"
 _SECRET_KEY_MARKERS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL")
+_CONFIG_LOAD_MARKERS = (
+    "config file",
+    "loading configuration",
+    "not valid json",
+    "available servers",
+    "server '",
+)
+_SPAWN_MARKERS = ("spawn ", " enoent", "eacces")
+_INIT_MARKERS = ("connection closed", "initialize", "mcp error")
+_INVOCATION_MARKERS = ("npm err", "e404", "cannot find package", "failed to fetch", "enoent")
 
 
 class PermissionDenied(Exception):
     """Client config could not be read or written because permission was denied."""
 
 
+def _usable_executable(path: Path) -> str | None:
+    if path.is_file() and os.access(path, os.X_OK):
+        return str(path.resolve())
+    return None
+
+
+def resolve_explicit_executable(value: str) -> str | None:
+    """Return a real executable path, or None if ``value`` is missing or not executable."""
+    explicit = Path(value).expanduser()
+    found = _usable_executable(explicit)
+    if found:
+        return found
+    which = shutil.which(value)
+    if which:
+        return _usable_executable(Path(which))
+    return None
+
+
 def resolve_server_executable() -> str | None:
     found = shutil.which("fava-trails-server")
     if found:
-        return str(Path(found).resolve())
+        usable = _usable_executable(Path(found))
+        if usable:
+            return usable
     sibling = Path(sys.executable).parent / "fava-trails-server"
-    if sibling.is_file() and os.access(sibling, os.X_OK):
-        return str(sibling.resolve())
-    return None
+    return _usable_executable(sibling)
 
 
 def default_client_config_path(client: str = DEFAULT_CLIENT) -> Path:
@@ -108,9 +136,10 @@ def write_mcp_json_config(
     """Merge a server entry into an MCP JSON client config.
 
     Preserves unrelated keys. Writes atomically and makes a ``.bak`` backup of an
-    existing file. Existing restrictive modes are copied to the replacement and
-    backup; new files use owner-only mode ``0o600``. Permission errors are
-    reported; this never chmods the target to loosen access or bypass denial.
+    existing file. Replacement and backup modes never exceed owner-only
+    ``0o600``; already-stricter modes are preserved. New files use ``0o600``.
+    Permission errors are reported; this never chmods the target to loosen
+    access or bypass denial.
     """
     path = Path(path)
     existing_text: str | None = None
@@ -145,7 +174,7 @@ def write_mcp_json_config(
         raise ValueError(f"{path} mcpServers is not an object")
     servers[server_name] = entry
 
-    target_mode = existing_mode if existing_mode is not None else NEW_FILE_MODE
+    target_mode = NEW_FILE_MODE if existing_mode is None else (existing_mode & NEW_FILE_MODE)
     backup_path: Path | None = None
     if existing_text is not None:
         backup_path = path.with_name(path.name + ".bak")
@@ -288,6 +317,61 @@ def verify_direct_mcp_smoke(executable: str, env: dict[str, str] | None = None) 
     return result
 
 
+def _last_json_object(text: str) -> dict[str, Any] | None:
+    if not text:
+        return None
+    stripped = text.strip()
+    try:
+        loaded = json.loads(stripped)
+        if isinstance(loaded, dict):
+            return loaded
+    except json.JSONDecodeError:
+        pass
+    start = stripped.rfind("{")
+    while start >= 0:
+        try:
+            loaded = json.loads(stripped[start:])
+            if isinstance(loaded, dict):
+                return loaded
+        except json.JSONDecodeError:
+            pass
+        start = stripped.rfind("{", 0, start)
+    return None
+
+
+def _inspector_error_message(*blobs: str) -> str:
+    for blob in blobs:
+        payload = _last_json_object(blob)
+        if not isinstance(payload, dict):
+            continue
+        error = payload.get("error")
+        if isinstance(error, dict) and error.get("message"):
+            return str(error["message"])
+        if isinstance(error, str) and error:
+            return error
+    return "\n".join(blob for blob in blobs if blob)
+
+
+def _classify_inspector_failure(text: str) -> str:
+    lower = text.lower()
+    if any(marker in lower for marker in _SPAWN_MARKERS):
+        return "server_spawn_failed"
+    if any(marker in lower for marker in _CONFIG_LOAD_MARKERS):
+        return "config_load_failed"
+    if any(marker in lower for marker in _INIT_MARKERS):
+        return "server_initialize_failed"
+    if any(marker in lower for marker in _INVOCATION_MARKERS):
+        return "inspector_invocation_failed"
+    return "inspector_failed"
+
+
+def _inspector_success_payload(payload: dict[str, Any] | None) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    result = payload.get("result")
+    return isinstance(result, dict) or bool(payload.get("serverInfo"))
+
+
 def _default_native_client_probe(config_path: Path, server_name: str) -> dict[str, Any]:
     """Load registration through MCP Inspector, not a native Claude session."""
     npx = shutil.which("npx")
@@ -316,17 +400,15 @@ def _default_native_client_probe(config_path: Path, server_name: str) -> dict[st
     except OSError as exc:
         return {"ok": False, "status": "inspector_unavailable", "error": exc.__class__.__name__}
     except subprocess.TimeoutExpired as exc:
-        return {"ok": False, "status": "inspector_failed", "error": exc.__class__.__name__}
-    if completed.returncode != 0:
-        return {"ok": False, "status": "inspector_failed", "error": "initialize_failed"}
-    try:
-        payload = json.loads(completed.stdout)
-    except json.JSONDecodeError:
-        return {"ok": False, "status": "inspector_failed", "error": "initialize_failed"}
-    result = payload.get("result") if isinstance(payload, dict) else None
-    if isinstance(result, dict) or (isinstance(payload, dict) and payload.get("serverInfo")):
+        return {"ok": False, "status": "inspector_invocation_failed", "error": exc.__class__.__name__}
+    stdout_payload = _last_json_object(completed.stdout)
+    if _inspector_success_payload(stdout_payload):
         return {"ok": True, "status": "loaded"}
-    return {"ok": False, "status": "server_initialize_failed", "error": "initialize_failed"}
+    failure_text = _inspector_error_message(completed.stderr, completed.stdout)
+    status = _classify_inspector_failure(failure_text)
+    if status == "inspector_failed" and stdout_payload and stdout_payload.get("error"):
+        status = "server_initialize_failed"
+    return {"ok": False, "status": status}
 
 
 def verify_native_client_session(

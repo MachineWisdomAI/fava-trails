@@ -119,14 +119,17 @@ fava-trails register --agent-id claude-code
 
 Optional client-config write is explicit (`--write`). It preserves unrelated client
 settings, writes atomically, keeps a `.bak` backup, opens backup and replacement
-files with the final restrictive mode before writing (new files `0600`), refuses
-non-writable existing configs, and reports permission denial without bypassing
-client controls. Unresolved `fava-trails-server` is an error unless `--executable`
-is passed. `--verify` runs a direct MCP smoke test, inspects the client config,
-and loads that config through MCP Inspector. Diagnostics label which ran.
-Inspector success is `inspector_config_load`, not a Claude Code/Desktop session.
-Missing Inspector is `inspector_unavailable`; Inspector errors, server initialize
-failures, stale runtime paths, and registration not loaded stay distinct.
+files with the final mode before writing, caps that mode at `0600` (stricter
+existing modes are kept), refuses non-writable existing configs, and reports
+permission denial without bypassing client controls. Unresolved `fava-trails-server`
+is an error unless `--executable` names an existing executable. `--verify` runs a
+direct MCP smoke test, inspects the client config, and loads that config through
+MCP Inspector. Diagnostics label which ran. Inspector success is
+`inspector_config_load`, not a Claude Code/Desktop session. Missing Inspector is
+`inspector_unavailable`; invocation/download failures, config load failures, server
+spawn failures, MCP initialize failures, stale runtime paths, and registration not
+loaded stay distinct. Native-session evidence that a client loaded Claude-shaped
+`mcpServers` config is `tests/test_mcp_protocol.py::test_native_client_registration_loads_and_initializes`.
 
 ```bash
 fava-trails register --write --verify --config ~/.claude.json --agent-id claude-code
