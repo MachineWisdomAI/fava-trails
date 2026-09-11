@@ -64,10 +64,25 @@ uv sync
 
 ### Set up your data repo
 
-**New data repo (from scratch):**
+**Local-only evaluation (no git remote):**
+
+A separate local JJ/Git repository is a valid evaluation setup. Save, recall,
+review, and supersession work without a remote. FAVA never creates a hosted
+repository, pushes private content, or changes remotes automatically.
 
 ```bash
-# Create an empty repo on GitHub (or any git remote), then clone it
+fava-trails bootstrap fava-trails-data
+```
+
+The `sync` tool reports status `not_configured` until an operator adds a
+reachable remote. That is not a broken remote. Do not enable tunnel
+`--sync-on-start` on a local-only repository; required startup sync stays
+fail-closed.
+
+**New shared data repo (from scratch):**
+
+```bash
+# Create an empty repo on a git host you already operate, then clone it
 git clone https://github.com/YOUR-ORG/fava-trails-data.git
 
 # Bootstrap it (creates config, .gitignore, initializes JJ in colocate mode)
@@ -195,7 +210,26 @@ Generate a private, read-only dashboard from a FAVA scope and its descendants, t
 
 ## Cross-Machine Sync
 
-FAVA Trails uses git remotes for cross-machine sync. The `fava-trails bootstrap` command sets `push_strategy: immediate` which auto-pushes after every write.
+Cross-machine sharing is optional. It requires a configured, reachable git
+remote that every machine can fetch and, when using push, write to. Before
+encouraging `sync`, plan for that remote as an operational dependency:
+
+- Hosting and access: who can read private thoughts, how credentials rotate,
+  and how you revoke a machine.
+- Maintenance: keep the remote URL reachable, monitor disk/hosting cost, and
+  recover from permission or connectivity failures yourself.
+- Failure modes: a missing remote is `not_configured` (local-only). A
+  configured remote that is unreachable or denies permission is an error, not
+  local-only. Required startup sync (`--sync-on-start`) stays fail-closed in
+  every non-`ok` case.
+
+FAVA does not create hosted repositories, push private content, or change
+remote settings automatically. Add a remote yourself (`git remote add origin
+<url>`) or clone an existing shared repository with `fava-trails clone`.
+
+When `push_strategy: immediate` is set, the server auto-pushes after every
+write. Push failures are non-fatal. Local-only repositories should keep
+`push_strategy: manual`.
 
 ### Setting up a second machine
 

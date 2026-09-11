@@ -247,6 +247,15 @@ async def handle_sync(trail, arguments: dict, *, private_details: bool = True) -
     """Sync with shared truth; repository diagnostics are operator-only."""
     result = await trail.sync()
     if not private_details:
+        if getattr(result, "missing_remote", False):
+            return {
+                "status": "not_configured",
+                "message": (
+                    "Remote sync is not configured. Ask an operator to add a reachable "
+                    "git remote or clone a shared repository before using sync. Local "
+                    "save, recall, review, and supersession still work."
+                ),
+            }
         if result.has_case_collisions:
             return {"status": "blocked", "message": "Sync blocked by repository path conflicts. Operator attention is required."}
         if result.has_dirty_working_copy:
@@ -256,6 +265,11 @@ async def handle_sync(trail, arguments: dict, *, private_details: bool = True) -
         if not result.success:
             return {"status": "error", "message": "Sync failed. Ask an operator to check repository state and connectivity."}
         return {"status": "ok", "message": "Sync complete."}
+    if getattr(result, "missing_remote", False):
+        return {
+            "status": "not_configured",
+            "message": result.summary,
+        }
     if getattr(result, "has_case_collisions", False):
         return {
             "status": "blocked",

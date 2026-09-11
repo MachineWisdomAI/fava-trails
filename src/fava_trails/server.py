@@ -115,7 +115,7 @@ unique matching thought from another existing scope and returns `source_trail`.
 - Refine wording: `update_thought`. Replace wrong conclusions: `supersede`
 
 ### Task Completion — MANDATORY
-**`propose_truth` is mandatory for finalized work.** Unpromoted drafts are private authoring records and require explicit authoring mode. After promoting, call `sync` to push to remote.
+**`propose_truth` is mandatory for finalized work.** Unpromoted drafts are private authoring records and require explicit authoring mode. After promoting, call `sync` only when a reachable git remote is configured; a local-only repository does not need sync.
 
 ### Governed Visibility
 Default recall/get returns approved current governed records only. `mode="authoring"`
@@ -495,7 +495,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "propose_truth",
-        "description": "Promote a draft thought to its permanent namespace based on source_type. Moves from drafts/ to decisions/, observations/, etc. This is mandatory for finalized work — unpromoted drafts are invisible to other agents and sessions. After promoting, use configured automatic push or operator sync to publish the result.",
+        "description": "Promote a draft thought to its permanent namespace based on source_type. Moves from drafts/ to decisions/, observations/, etc. This is mandatory for finalized work — unpromoted drafts are invisible to other agents and sessions. After promoting, use configured automatic push or operator sync only when a reachable remote is configured; local-only repositories do not require sync.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -549,7 +549,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "sync",
-        "description": "Sync with shared truth. Fetches from remote and rebases. Aborts automatically on conflict.",
+        "description": "Sync with shared truth when a reachable git remote is configured. Fetches from that remote and rebases. Missing remotes return status not_configured with a next step; a configured but unreachable or permission-denied remote is an error. Local save, recall, review, and supersession still work without a remote. Aborts automatically on conflict. Also blocks before fetching if the data repo has a dirty working copy or tracked paths that collide by case.",
         "inputSchema": {
             "type": "object",
             "properties": {
