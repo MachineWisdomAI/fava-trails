@@ -2,7 +2,7 @@
 
 Canonical usage instructions for AI agents using FAVA Trails MCP tools. Other docs reference this file — keep it up to date.
 
-> **Auto-injected:** On the default `full` MCP surface, core guidance from this file is injected via the server's `instructions` field at session init. `FAVA_TRAILS_MCP_SURFACE=compact` sends a short pointer instead. The full version below is always available on-demand via `get_usage_guide`. This file is the canonical source. Compact does not make instructions a shared memory store.
+> **Session-init subset:** On the default `full` MCP surface, the server `instructions` field is a maintained subset of this file, not a verbatim inject. Session-start recall examples in that subset must match the fenced examples below. `FAVA_TRAILS_MCP_SURFACE=compact` sends a short pointer instead. This file is the canonical source and is returned verbatim by `get_usage_guide`. Compact does not make instructions a shared memory store.
 
 ## Governed recall
 

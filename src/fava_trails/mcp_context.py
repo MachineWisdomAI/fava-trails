@@ -69,8 +69,8 @@ If `FAVA_TRAILS_SCOPE` is not set but `.fava-trails.yaml` exists, read the `scop
 ### Session Start Protocol
 Before starting work, recall existing context:
 ```
-recall(trail_name="<scope>", query="status")
-recall(trail_name="<scope>", query="decisions")
+recall(trail_name="<scope>", query="status", scope={"project": "<project-name>"})
+recall(trail_name="<scope>", query="decisions", scope={"project": "<project-name>"})
 recall(trail_name="<scope>", query="gotcha", scope={"tags": ["gotcha"]})
 ```
 Use `trail_names` with globs for broader context: `recall(trail_name="<scope>", query="architecture", trail_names=["mw/eng/*"])`
@@ -232,10 +232,10 @@ def _git_head() -> str:
         return "unknown"
 
 
-def _client_info() -> dict[str, Any]:
+def _client_info(*, instantiated: bool = False) -> dict[str, Any]:
     from .runtime_info import mcp_sdk_version
 
-    return {
+    info: dict[str, Any] = {
         "name": "mcp.Client",
         "package": "mcp",
         "version": mcp_sdk_version(),
@@ -245,6 +245,9 @@ def _client_info() -> dict[str, Any]:
             "not this client's invoice."
         ),
     }
+    if instantiated:
+        info["instantiated"] = True
+    return info
 
 
 def _subject(*, role: str, git_commit: str | None = None, package_version: str | None = None) -> dict[str, Any]:
@@ -283,34 +286,19 @@ def _skipped_step_risk(surface: str, instructions: str) -> dict[str, Any]:
 
 
 def measure_tested_release() -> dict[str, Any]:
-    """Record issue #104 tested-release provenance (full surface at 6c5278a).
+    """Load the frozen issue #104 tested-release measurement.
 
-    Compact did not exist on that commit. Figures use the same chars/4 serializer
-    applied to that commit's advertised initialize instructions and tools/list JSON.
+    The command does not re-measure commit 6c5278a or relabel client/SDK fields
+    from the current environment. Reproduce by checking out that commit and
+    serializing advertised initialize instructions plus tools/list JSON.
     """
-    instructions = {"chars": 3843, "tokens": 961}
-    tools_list = {"chars": 21804, "tokens": 5451}
-    return {
-        **_subject(
-            role="release",
-            git_commit=ISSUE_104_TESTED_RELEASE_COMMIT,
-            package_version="0.6.1",
-        ),
-        "surface": "full",
-        "client": _client_info(),
-        "tokenizer": {"name": DEFAULT_TOKENIZER, "not_universal": True},
-        "lazy_loading": False,
-        "tool_count": 17,
-        "instructions": instructions,
-        "tools_list": tools_list,
-        "session_init": {"chars": 25647, "tokens": 6412},
-        "usage_guide_on_demand": {"chars": 10077, "tokens": 2520},
-        "measured_how": (
-            "Same chars/4 serializer applied to advertised initialize instructions "
-            "and tools/list JSON at the issue #104 source review baseline. "
-            "Compact surface did not exist on that commit."
-        ),
-    }
+    path = Path(__file__).with_name("issue_104_tested_release.json")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not payload.get("frozen") or not payload.get("relabeling_forbidden"):
+        raise RuntimeError("tested-release artifact must be frozen against relabeling")
+    if payload.get("git_commit") != ISSUE_104_TESTED_RELEASE_COMMIT:
+        raise RuntimeError("tested-release artifact commit does not match issue #104 baseline")
+    return payload
 
 
 def measure_mcp_context(surface: str = "full") -> dict[str, Any]:
@@ -398,64 +386,155 @@ def compare_surfaces() -> dict[str, Any]:
     }
 
 
-def _result_status(result: Any) -> dict[str, Any]:
-    if isinstance(result, dict):
-        status = result.get("status")
-        failed = status not in (None, "ok")
+def _client_result_status(result: Any) -> dict[str, Any]:
+    is_error = bool(getattr(result, "is_error", False))
+    structured = getattr(result, "structured_content", None)
+    if isinstance(structured, dict):
+        status = structured.get("status")
+        failed = is_error or status not in (None, "ok")
         return {
             "status": status,
-            "count": result.get("count"),
+            "count": structured.get("count"),
             "failed": failed,
-            "message": result.get("message"),
+            "message": structured.get("message"),
+            "mcp_is_error": is_error,
         }
-    return {"status": "unknown", "failed": True, "count": None, "message": None}
-
-
-async def _exercise_recall_save_promote(surface: str) -> dict[str, Any]:
-    from .server import handle_call_tool, handle_list_tools
-
-    resolved = resolve_mcp_surface(surface)
-    tools = await handle_list_tools(surface=resolved)
-    names = {tool.name for tool in tools}
-    instructions = serialize_initialize_instructions(resolved)
-    scope = f"synthetic/mcp-context-{resolved}"
-    invalid = await handle_call_tool("save_thought", {"trail_name": scope})
-    missing = await handle_call_tool("recall", {"trail_name": f"synthetic/missing-{resolved}"})
-    saved = await handle_call_tool(
-        "save_thought",
-        {"trail_name": scope, "content": f"Synthetic {resolved} recall-save-promote draft"},
-    )
-    thought_id = saved.get("thought", {}).get("thought_id") if isinstance(saved, dict) else None
-    authoring = await handle_call_tool(
-        "recall",
-        {"trail_name": scope, "mode": "authoring"},
-    )
-    proposed = await handle_call_tool(
-        "propose_truth",
-        {"trail_name": scope, "thought_id": thought_id or ""},
-    )
+    message = None
+    content = getattr(result, "content", None)
+    if content:
+        first = content[0]
+        message = getattr(first, "text", None)
     return {
-        "executed": True,
-        "surface": resolved,
-        "session_init": _text_metrics(session_init_payload(resolved)),
-        "discoverability": {
-            "present": sorted(names),
-            "common_workflow_present": COMMON_WORKFLOW_TOOLS <= names,
-        },
-        "save": _result_status(saved),
-        "recall_authoring": _result_status(authoring),
-        "propose": _result_status(proposed),
-        "error_recovery": {
-            "invalid_save": _result_status(invalid),
-            "missing_scope": _result_status(missing),
-        },
-        "skipped_step_risk": _skipped_step_risk(resolved, instructions),
-        "client": _client_info(),
+        "status": "mcp_error" if is_error else "unknown",
+        "failed": True,
+        "count": None,
+        "message": message,
+        "mcp_is_error": is_error,
     }
 
 
+def _surface_server(surface: str):
+    """Build a dedicated MCP Server so full and compact sessions initialize independently."""
+    from mcp.server import Server
+    from mcp.types import ListToolsResult
+
+    from .runtime_info import product_version
+    from .server import _call_tool, handle_list_tools
+
+    resolved = resolve_mcp_surface(surface)
+
+    async def on_list_tools(ctx, params):
+        return ListToolsResult(tools=await handle_list_tools(surface=resolved))
+
+    return Server(
+        "fava-trails",
+        version=product_version(),
+        instructions=serialize_initialize_instructions(resolved),
+        on_list_tools=on_list_tools,
+        on_call_tool=_call_tool,
+    )
+
+
+async def _exercise_recall_save_promote(surface: str) -> dict[str, Any]:
+    from mcp import Client
+    from mcp.types import Implementation
+
+    from .runtime_info import mcp_sdk_version
+
+    resolved = resolve_mcp_surface(surface)
+    scope = f"synthetic/mcp-context-{resolved}"
+    scripted_steps: list[str] = []
+    srv = _surface_server(resolved)
+    client_info = Implementation(name="mcp.Client", version=mcp_sdk_version())
+    async with Client(srv, mode="legacy", read_timeout_seconds=30, client_info=client_info) as client:
+        listed = await client.list_tools()
+        names = {tool.name for tool in listed.tools}
+        instructions = client.instructions or ""
+        observed_skips: list[str] = []
+        if 'query="status"' not in instructions:
+            observed_skips.append("session_start_recall")
+        if not ("mandatory" in instructions.lower() and "propose_truth" in instructions):
+            observed_skips.append("propose_truth_mandate")
+
+        naive_called = ["initialize", "tools/list"]
+        naive_skipped: list[str] = []
+        if 'query="status"' in instructions:
+            await client.call_tool("recall", {"trail_name": scope, "query": "status"})
+            naive_called.append("session_start_recall")
+        else:
+            naive_skipped.append("session_start_recall")
+        if "mandatory" in instructions.lower() and "propose_truth" in instructions:
+            naive_called.append("propose_truth_mentioned")
+        else:
+            naive_skipped.append("propose_truth")
+
+        invalid = await client.call_tool("save_thought", {"trail_name": scope})
+        scripted_steps.append("invalid_save")
+        saved = await client.call_tool(
+            "save_thought",
+            {"trail_name": scope, "content": f"Synthetic {resolved} recall-save-promote draft"},
+        )
+        scripted_steps.append("retry_save_with_content")
+        structured = saved.structured_content if isinstance(saved.structured_content, dict) else {}
+        thought_id = structured.get("thought", {}).get("thought_id") if isinstance(structured.get("thought"), dict) else None
+
+        missing = await client.call_tool("recall", {"trail_name": f"synthetic/missing-{resolved}"})
+        scripted_steps.append("missing_scope_recall")
+        listed_scopes = await client.call_tool("list_scopes", {"prefix": "synthetic"})
+        scripted_steps.append("recover_missing_scope")
+        recovered_missing = not _client_result_status(listed_scopes)["failed"]
+
+        authoring = await client.call_tool("recall", {"trail_name": scope, "mode": "authoring"})
+        scripted_steps.append("authoring_recall")
+        proposed = await client.call_tool(
+            "propose_truth",
+            {"trail_name": scope, "thought_id": thought_id or ""},
+        )
+        scripted_steps.append("propose_truth")
+
+        invalid_status = _client_result_status(invalid)
+        saved_status = _client_result_status(saved)
+        missing_status = _client_result_status(missing)
+        return {
+            "executed": True,
+            "session_started": True,
+            "client_class": "mcp.Client",
+            "surface": resolved,
+            "session_init": _text_metrics(session_init_payload(resolved)),
+            "observed_instructions_chars": len(instructions),
+            "discoverability": {
+                "present": sorted(names),
+                "common_workflow_present": COMMON_WORKFLOW_TOOLS <= names,
+            },
+            "save": saved_status,
+            "recall_authoring": _client_result_status(authoring),
+            "propose": _client_result_status(proposed),
+            "error_recovery": {
+                "invalid_save": {
+                    **invalid_status,
+                    "recovered": saved_status.get("status") == "ok",
+                    "retry_status": saved_status.get("status"),
+                },
+                "missing_scope": {
+                    **missing_status,
+                    "recovered": recovered_missing,
+                    "recovery_action": "list_scopes after missing-scope error, then continue on the created work scope",
+                },
+            },
+            "scripted_steps": scripted_steps,
+            "observed_skips": observed_skips,
+            "naive_initialize_only": {
+                "called": naive_called,
+                "skipped": naive_skipped,
+                "get_usage_guide_called": False,
+            },
+            "skipped_step_risk": _skipped_step_risk(resolved, instructions),
+            "client": _client_info(instantiated=True),
+        }
+
+
 async def run_recall_save_promote_comparison() -> dict[str, Any]:
-    """Execute the same recall/save/promote task on full and compact surfaces."""
+    """Run the same recall/save/promote task through mcp.Client sessions."""
     full = await _exercise_recall_save_promote("full")
     compact = await _exercise_recall_save_promote("compact")
     unchanged = (
@@ -465,19 +544,22 @@ async def run_recall_save_promote_comparison() -> dict[str, Any]:
         == compact["error_recovery"]["missing_scope"]["status"]
         and full["error_recovery"]["invalid_save"]["failed"]
         == compact["error_recovery"]["invalid_save"]["failed"]
+        and full["error_recovery"]["invalid_save"]["recovered"]
+        == compact["error_recovery"]["invalid_save"]["recovered"]
     )
     note = (
-        "Same handlers and authorization on both surfaces. Compact omits advertised "
-        "outputSchema; server-side validation still uses TOOL_DEFINITIONS."
+        "Same handlers and authorization on both surfaces via mcp.Client sessions. "
+        "Compact omits advertised outputSchema; server-side validation still uses TOOL_DEFINITIONS."
     )
     full["permissions"] = {"read_and_authoring_unchanged": unchanged, "note": note}
     compact["permissions"] = {"read_and_authoring_unchanged": unchanged, "note": note}
     return {
         "task": "recall/save/promote",
         "executed": True,
+        "transport": "mcp.Client",
         "full": full,
         "compact": compact,
-        "client": _client_info(),
+        "client": _client_info(instantiated=True),
         "not_claimed": (
             "Instructions do not provide reliable cross-session sharing. "
             "Sharing requires propose_truth plus durable approval, not prompt text."

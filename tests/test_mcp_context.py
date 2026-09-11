@@ -269,3 +269,77 @@ async def test_recall_save_promote_is_executed_on_both_surfaces(tmp_fava_home, t
     assert "Compact omits" not in full_skip["note"]
     assert "Compact omits" in compact_skip["note"]
     assert payload["full"]["propose"]["status"] == payload["compact"]["propose"]["status"]
+    assert payload["transport"] == "mcp.Client"
+    assert payload["client"]["instantiated"] is True
+    for surface in ("full", "compact"):
+        side = payload[surface]
+        assert side["session_started"] is True
+        assert side["client_class"] == "mcp.Client"
+        assert "scripted_steps" in side
+        assert "observed_skips" in side
+        assert "invalid_save" in side["scripted_steps"]
+        assert "retry_save_with_content" in side["scripted_steps"]
+        assert "propose_truth" in side["scripted_steps"]
+        recovery = side["error_recovery"]
+        assert recovery["invalid_save"]["recovered"] is True
+        assert recovery["invalid_save"]["retry_status"] == "ok"
+        assert recovery["missing_scope"]["recovered"] is True
+        assert recovery["missing_scope"]["recovery_action"]
+        naive = side["naive_initialize_only"]
+        assert "skipped" in naive
+        assert "called" in naive
+        assert naive["get_usage_guide_called"] is False
+    assert "session_start_recall" not in payload["full"]["observed_skips"]
+    assert "session_start_recall" in payload["compact"]["observed_skips"]
+    assert "session_start_recall" in payload["compact"]["naive_initialize_only"]["skipped"]
+    assert "session_start_recall" not in payload["full"]["naive_initialize_only"]["skipped"]
+    assert "propose_truth" in payload["compact"]["naive_initialize_only"]["skipped"]
+
+
+def test_tested_release_is_frozen_and_not_relabeled(monkeypatch):
+    from fava_trails import mcp_context
+
+    monkeypatch.setattr("fava_trails.runtime_info.mcp_sdk_version", lambda: "99.99.99")
+    monkeypatch.setattr(mcp_context, "_client_info", lambda: {
+        "name": "mcp.Client",
+        "package": "mcp",
+        "version": "99.99.99",
+    })
+    release = mcp_context.measure_tested_release()
+    assert release["frozen"] is True
+    assert release["relabeling_forbidden"] is True
+    assert release["git_commit"] == mcp_context.ISSUE_104_TESTED_RELEASE_COMMIT
+    assert release["enabled_tools"]
+    assert len(release["enabled_tools"]) == 17
+    assert "recall" in release["enabled_tools"]
+    assert release["recurrence"]["instructions"] == "once per initialize"
+    assert "tools/list" in release["recurrence"]["tools_list"]
+    assert release["lazy_loading"] is False
+    assert release["client"]["version"] != "99.99.99"
+    assert release["client"]["frozen"] is True
+    assert release["client"]["version"] == "2.2.0"
+    compared = mcp_context.compare_surfaces()
+    assert compared["tested_release"]["client"]["version"] == "2.2.0"
+    assert compared["full"]["client"]["version"] == "99.99.99"
+
+
+def test_full_instructions_include_canonical_session_start_recalls():
+    canonical = (Path(__file__).resolve().parents[1] / "AGENTS_USAGE_INSTRUCTIONS.md").read_text()
+    runtime = serialize_initialize_instructions("full")
+    lines = (
+        'recall(trail_name="<scope>", query="status", scope={"project": "<project-name>"})',
+        'recall(trail_name="<scope>", query="decisions", scope={"project": "<project-name>"})',
+        'recall(trail_name="<scope>", query="gotcha", scope={"tags": ["gotcha"]})',
+    )
+    for line in lines:
+        assert line in canonical
+        assert line in runtime
+
+
+def test_canonical_guide_states_subset_not_verbatim_inject():
+    canonical = (Path(__file__).resolve().parents[1] / "AGENTS_USAGE_INSTRUCTIONS.md").read_text()
+    lowered = canonical.lower()
+    assert "verbatim inject" in lowered or "not a verbatim" in lowered or "maintained subset" in lowered
+    assert "this file is the canonical source" in lowered
+    assert "get_usage_guide" in lowered
+    assert "core guidance from this file is injected" not in lowered
