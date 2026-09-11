@@ -137,17 +137,33 @@ fava-trails clone https://github.com/YOUR-ORG/fava-trails-data.git fava-trails-d
 
 This clones in JJ colocated mode and tracks the remote bookmark automatically. Skip to [After setup](#after-setup).
 
-### Creating a new data repo (bootstrap)
+### Local-only evaluation
+
+A local JJ/Git data repository is valid for evaluation. Bootstrap without a
+remote:
 
 ```bash
-# 1. Create an empty repo on GitHub, then clone it
+fava-trails bootstrap fava-trails-data
+```
+
+Save, recall, review, and supersession work without a git remote. `sync`
+returns `not_configured` with the next step (`git remote add origin <url>` or
+`fava-trails clone`). That is not a broken remote. FAVA does not create hosted
+repositories, push private content, or change remotes automatically. Do not
+pass `--sync-on-start` until a reachable remote is configured; required startup
+sync stays fail-closed.
+
+### Creating a new shared data repo (bootstrap)
+
+```bash
+# 1. Create an empty repo on a git host you already operate, then clone it
 git clone https://github.com/YOUR-ORG/fava-trails-data.git
 
 # 2. Bootstrap it (creates config, .gitignore, initializes JJ)
 fava-trails bootstrap fava-trails-data
 ```
 
-The bootstrap command creates a **new** data repo from scratch — it does not connect to existing remote data. Use `fava-trails clone` instead if the remote already has data.
+The bootstrap command creates a **new** data repo from scratch — it does not connect to existing remote data. Use `fava-trails clone` instead if the remote already has data. Cross-machine sharing needs a reachable remote plus ongoing access, credential, and hosting maintenance before you rely on `sync`.
 
 ### Manual
 

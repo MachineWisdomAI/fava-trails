@@ -396,6 +396,13 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     if remote_url:
         print("\nPush to remote (advance main to latest committed change first):")
         print(f"  cd {target} && jj bookmark set main -r @- && jj git push --bookmark main")
+    else:
+        print("\nThis repository is local-only. Save, recall, review, and supersession")
+        print("work without a git remote. Remote sync is not configured until an operator")
+        print("adds a reachable remote (`git remote add origin <url>`) or clones a shared")
+        print("repository (`fava-trails clone <url> <path>`). FAVA does not create hosted")
+        print("repositories, push private content, or change remotes automatically.")
+        print("Do not use --sync-on-start until a reachable remote is configured.")
     print("\nAvailable integrations:")
     print("  fava-trails integrate codev    Set up codev artifact storage with quality gate")
     return 0

@@ -56,8 +56,8 @@ Candidate (this head, live `mcp.Client`):
 
 | Surface | Instructions tokens | tools/list tokens | Session-init tokens | Session-init chars |
 | --- | ---: | ---: | ---: | ---: |
-| full (default) | 1154 | 5793 | 6947 | 27782 |
-| compact | 187 | 3179 | 3366 | 13458 |
+| full (default) | 1184 | 5867 | 7051 | 28201 |
+| compact | 187 | 3186 | 3373 | 13487 |
 
 `get_usage_guide` body on this candidate (on demand, not in session-init): 2884
 heuristic tokens (11536 chars). An evaluator previously estimated about 6000 tokens
@@ -65,7 +65,7 @@ of schemas and instructions versus about 1600 for a committed agent guide; that
 estimate was client-specific and is not reproduced here as a universal number.
 
 Budget, from the candidate full session-init baseline: compact session-init tokens
-must be ≤ 70% of full under the same tokenizer. This run: 3366 / 6947 ≈ 0.48. Met.
+must be ≤ 70% of full under the same tokenizer. This run: 3373 / 7051 ≈ 0.48. Met.
 
 Largest full-surface source is advertised `tools/list` JSON (schemas, then
 descriptions), then initialize instructions. Compact therefore:

@@ -33,7 +33,7 @@ _COMPACT_DESCRIPTIONS: dict[str, str] = {
     "propose_truth": "Promote a draft thought to its permanent namespace based on source_type.",
     "recall": "Search thoughts by query, namespace, and scope. Default view is governed current approved records.",
     "forget": "Discard the current reasoning line.",
-    "sync": "Fetch from remote and rebase. Aborts automatically on conflict.",
+    "sync": "Fetch/rebase when a remote is configured. Missing remotes are not_configured; does not push.",
     "conflicts": "Return structured conflict summaries, never raw VCS notation.",
     "rollback": "Restore the trail to a historical JJ operation.",
     "diff": "Show what changed in a revision.",
@@ -87,7 +87,7 @@ unique matching thought from another existing scope and returns `source_trail`.
 - Refine wording: `update_thought`. Replace wrong conclusions: `supersede`
 
 ### Task Completion — MANDATORY
-**`propose_truth` is mandatory for finalized work.** Unpromoted drafts are private authoring records and require explicit authoring mode. Promotion commits locally; publishing to a remote requires `push_strategy: immediate` (auto-push after successful writes) or the full manual protocol `jj bookmark set main -r @-` then `jj git push --bookmark main` (completed writes sit at `@-`). The `sync` tool only fetches/rebases shared truth and does not push local commits.
+**`propose_truth` is mandatory for finalized work.** Unpromoted drafts are private authoring records and require explicit authoring mode. Promotion commits locally; publishing to a remote requires a reachable git remote plus `push_strategy: immediate` (auto-push after successful writes) or the full manual protocol `jj bookmark set main -r @-` then `jj git push --bookmark main` (completed writes sit at `@-`). Local-only repositories do not require publication. The `sync` tool only fetches/rebases shared truth and does not push local commits. Missing remotes return `not_configured`.
 
 ### Governed Visibility
 Default recall/get returns approved current governed records only. `mode="authoring"`

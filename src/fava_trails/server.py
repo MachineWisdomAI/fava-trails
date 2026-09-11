@@ -454,7 +454,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "propose_truth",
-        "description": "Promote a draft thought to its permanent namespace based on source_type. Moves from drafts/ to decisions/, observations/, etc. This is mandatory for finalized work — unpromoted drafts stay out of default governed recall and are readable only under mode=\"authoring\" for the process-configured identity (shared endpoint = shared identity; filesystem access is operator-trusted). When Trust Gate LLM review is enabled, propose_truth awaits a synchronous single-record rubric review before promotion. Promotion commits locally; remote publication requires push_strategy: immediate (auto-push after successful writes) or the full manual protocol jj bookmark set main -r @- then jj git push --bookmark main (completed writes sit at @-). The sync tool only fetches/rebases and does not publish local commits.",
+        "description": "Promote a draft thought to its permanent namespace based on source_type. Moves from drafts/ to decisions/, observations/, etc. This is mandatory for finalized work — unpromoted drafts stay out of default governed recall and are readable only under mode=\"authoring\" for the process-configured identity (shared endpoint = shared identity; filesystem access is operator-trusted). When Trust Gate LLM review is enabled, propose_truth awaits a synchronous single-record rubric review before promotion. Promotion commits locally; remote publication requires a reachable git remote plus push_strategy: immediate (auto-push after successful writes) or the full manual protocol jj bookmark set main -r @- then jj git push --bookmark main (completed writes sit at @-). Local-only repositories do not require publication. The sync tool only fetches/rebases and does not publish local commits.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -508,7 +508,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "sync",
-        "description": "Fetch/rebase shared truth from the configured git remote. Does not commit dirty local files and does not publish/push local commits. Writers must publish before peers can fetch. Under push_strategy: manual (bootstrap default), operators must jj bookmark set main -r @- then jj git push --bookmark main (or set push_strategy: immediate for auto-push after writes). Aborts automatically on conflict; blocks on dirty working copy or case-colliding paths.",
+        "description": "Fetch/rebase shared truth when a reachable git remote is configured. Does not commit dirty local files and does not publish/push local commits. Missing remotes return status not_configured with a next step; a configured but unreachable or permission-denied remote is an error. Local save, recall, review, and supersession still work without a remote. Writers must publish before peers can fetch. Under push_strategy: manual (bootstrap default), operators must jj bookmark set main -r @- then jj git push --bookmark main (or set push_strategy: immediate for auto-push after writes). Aborts automatically on conflict; blocks on dirty working copy or case-colliding paths.",
         "inputSchema": {
             "type": "object",
             "properties": {

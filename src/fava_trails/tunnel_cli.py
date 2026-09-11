@@ -491,6 +491,10 @@ async def _sync_data_repo_async(config: GatewayConfig) -> dict:
         }
     if result.has_conflicts:
         return {"status": "conflict", "message": result.summary}
+    if getattr(result, "missing_remote", False):
+        return {"status": "not_configured", "message": result.summary}
+    if not result.success:
+        return {"status": "error", "message": result.summary}
     return {"status": "ok", "message": result.summary}
 
 
