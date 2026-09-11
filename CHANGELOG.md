@@ -4,6 +4,9 @@ All notable changes to FAVA Trails are documented here.
 
 ## Unreleased
 
+### Added
+- `FAVA_TRAILS_MCP_SURFACE=compact` advertises shorter initialize instructions and tool descriptions and omits list-time `outputSchema`, with `get_usage_guide` as on-demand protocol. Default remains `full`. `fava-trails measure-mcp-context` records tokenizer-labeled session-init size. See [docs/mcp-context-overhead.md](docs/mcp-context-overhead.md). Addresses #104.
+
 ### Changed
 - Support MCP SDK 2.2 with explicit low-level handlers, preserving tool schemas, annotations, input/output validation, structured results, and Markdown usage guidance over stdio and Streamable HTTP. Adds installed-wheel protocol tests for legacy initialization and current SDK clients. Resolves #83.
 

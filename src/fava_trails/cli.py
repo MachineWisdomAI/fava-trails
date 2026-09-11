@@ -1876,7 +1876,32 @@ def build_parser() -> argparse.ArgumentParser:
     actions.add_argument("--rollback", action="store_true", help="Restore exact before images only if post-migration state still matches")
     p_duplicates.set_defaults(func=cmd_duplicates)
 
+    p_measure = subparsers.add_parser(
+        "measure-mcp-context",
+        help="Measure serialized MCP instructions and tools/list for full and compact surfaces",
+    )
+    p_measure.add_argument(
+        "--surface",
+        choices=("full", "compact", "both"),
+        default="both",
+        help="Which advertised surface to measure (default: both)",
+    )
+    p_measure.set_defaults(func=cmd_measure_mcp_context)
+
     return parser
+
+
+def cmd_measure_mcp_context(args: argparse.Namespace) -> int:
+    """Print a tokenizer-labeled measurement of MCP session-init payload size."""
+    import json
+
+    from .mcp_context import compare_surfaces, measure_mcp_context
+
+    if args.surface == "both":
+        print(json.dumps(compare_surfaces(), indent=2))
+        return 0
+    print(json.dumps(measure_mcp_context(args.surface), indent=2))
+    return 0
 
 
 def cmd_duplicates(args: argparse.Namespace) -> int:

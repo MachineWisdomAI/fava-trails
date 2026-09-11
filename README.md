@@ -316,6 +316,7 @@ Environment variables:
 | `FAVA_TRAILS_DATA_REPO` | Server | Root directory for trail data (monorepo root) | `~/.fava-trails` |
 | `FAVA_TRAILS_DIR` | Server | Override trails directory location (absolute path) | `$FAVA_TRAILS_DATA_REPO/trails` |
 | `FAVA_TRAILS_SCOPE_HINT` | Server | Broad scope hint baked into tool descriptions | *(none)* |
+| `FAVA_TRAILS_MCP_SURFACE` | Server | `full` (default) or `compact` advertised instructions/tool text | `full` |
 | `FAVA_TRAILS_SCOPE` | Agent | Project-specific scope from `.env` file | *(none)* |
 | `OPENROUTER_API_KEY` | Server | Default Trust Gate API key env (OpenRouter). Override the env var *name* via `trust_gate_api_key_env` / legacy `openrouter_api_key_env` in `config.yaml`. | *(none — required for `propose_truth` when using llm-oneshot)* |
 
@@ -455,6 +456,7 @@ uv run pytest --cov       # with coverage
 - [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) — Data repo setup, config reference, trust gate prompts, lifecycle hooks
 - [protocols/secom/README.md](src/fava_trails/protocols/secom/README.md) — SECOM compression protocol: config, models, WORM architecture
 - [docs/fava_trails_faq.md](docs/fava_trails_faq.md) — Detailed FAQ for framework authors and ML engineers
+- [docs/mcp-context-overhead.md](docs/mcp-context-overhead.md) — Measured MCP session-init overhead, compact surface, enforcement vs prompt
 
 ## Contributing
 
