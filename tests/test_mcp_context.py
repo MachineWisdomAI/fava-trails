@@ -300,7 +300,17 @@ async def test_recall_save_promote_is_executed_on_both_surfaces(tmp_fava_home, t
         assert missing["selected_scope"] == side["work_scope"]
         assert missing["selected_scope"] in missing["returned_paths"]
         assert missing["retry_status"] == "ok"
+        assert missing["retry_count"] == 1
         assert missing["evidence"] == "selected_returned_scope_and_retried"
+        failed_args = missing["failed_recall_arguments"]
+        retry_args = missing["retry_recall_arguments"]
+        assert set(failed_args) == set(retry_args)
+        assert failed_args["trail_name"] != retry_args["trail_name"]
+        assert retry_args["trail_name"] == missing["selected_scope"]
+        assert {k: v for k, v in failed_args.items() if k != "trail_name"} == {
+            k: v for k, v in retry_args.items() if k != "trail_name"
+        }
+        assert "query" not in retry_args
     assert "session_start_recall" not in payload["full"]["prompt_coverage"]["gaps"]
     assert "session_start_recall" in payload["compact"]["prompt_coverage"]["gaps"]
     assert "propose_truth" not in payload["compact"]["prompt_coverage"]["gaps"]
@@ -339,14 +349,23 @@ def test_missing_scope_recovery_requires_selected_path_and_retry():
     )
     assert listed_only["recovered"] is False
     assert listed_only["evidence"] == "discovery_attempted"
+    empty_ok = missing_scope_recovery_evidence(
+        paths=["synthetic/mcp-context-full"],
+        selected_scope="synthetic/mcp-context-full",
+        retry_status={"failed": False, "status": "ok", "count": 0},
+    )
+    assert empty_ok["recovered"] is False
+    assert empty_ok["evidence"] == "discovery_attempted"
+    assert empty_ok["retry_count"] == 0
     retried = missing_scope_recovery_evidence(
         paths=["synthetic/mcp-context-full"],
         selected_scope="synthetic/mcp-context-full",
-        retry_status={"failed": False, "status": "ok"},
+        retry_status={"failed": False, "status": "ok", "count": 1},
     )
     assert retried["recovered"] is True
     assert retried["evidence"] == "selected_returned_scope_and_retried"
     assert retried["selected_scope"] == "synthetic/mcp-context-full"
+    assert retried["retry_count"] == 1
 
 
 def test_tested_release_is_frozen_and_not_relabeled(monkeypatch):

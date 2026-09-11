@@ -119,7 +119,7 @@ not labeled as `called` or `skipped` client behavior. Results:
 | Executed save_thought | ok | ok |
 | Executed authoring recall after save | count 1 | count 1 |
 | Executed propose_truth | ok | ok |
-| Error recovery: missing scope | status error, then list_scopes + retry recall on returned path | same |
+| Error recovery: missing scope | status error, then list_scopes + retry recall on returned path (same arguments except `trail_name`; count 1) | same |
 | Error recovery: save without content | failed, then retry ok | failed, then retry ok |
 | Session-start recall trio in initialize text | yes | no; in `get_usage_guide` |
 | `propose_truth` requested in initialize text | yes (mandatory wording) | yes (core loop; no “mandatory”) |

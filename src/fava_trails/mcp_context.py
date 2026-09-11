@@ -284,19 +284,27 @@ def missing_scope_recovery_evidence(
     paths: list[str],
     selected_scope: str | None = None,
     retry_status: dict[str, Any] | None = None,
+    expected_count: int | None = None,
 ) -> dict[str, Any]:
-    """Recovery requires an exact returned path and a retried recall."""
+    """Recovery requires an exact returned path and a retried recall with results."""
     selected = selected_scope if selected_scope in paths else None
+    count = retry_status.get("count") if isinstance(retry_status, dict) else None
+    if expected_count is None:
+        count_ok = isinstance(count, int) and count >= 1
+    else:
+        count_ok = count == expected_count
     retried_ok = bool(
         selected
         and isinstance(retry_status, dict)
         and retry_status.get("failed") is False
         and retry_status.get("status") in (None, "ok")
+        and count_ok
     )
     return {
         "returned_paths": list(paths),
         "selected_scope": selected,
         "retry_status": None if retry_status is None else retry_status.get("status"),
+        "retry_count": count,
         "recovered": retried_ok,
         "evidence": (
             "selected_returned_scope_and_retried" if retried_ok else "discovery_attempted"
@@ -531,21 +539,29 @@ async def _exercise_recall_save_promote(surface: str) -> dict[str, Any]:
         structured = saved.structured_content if isinstance(saved.structured_content, dict) else {}
         thought_id = structured.get("thought", {}).get("thought_id") if isinstance(structured.get("thought"), dict) else None
 
-        missing = await client.call_tool("recall", {"trail_name": f"synthetic/missing-{resolved}"})
+        failed_recall_arguments = {"trail_name": f"synthetic/missing-{resolved}", "mode": "authoring"}
+        missing = await client.call_tool("recall", failed_recall_arguments)
         scripted_steps.append("missing_scope_recall")
         listed_scopes = await client.call_tool("list_scopes", {"prefix": "synthetic"})
         scripted_steps.append("list_scopes")
         paths = _list_scope_paths(listed_scopes)
         selected = scope if scope in paths else (paths[0] if paths else None)
         retry_status: dict[str, Any] | None = None
+        retry_recall_arguments: dict[str, Any] | None = None
         if selected:
-            retried = await client.call_tool("recall", {"trail_name": selected, "query": "status"})
+            retry_recall_arguments = {**failed_recall_arguments, "trail_name": selected}
+            retried = await client.call_tool("recall", retry_recall_arguments)
             scripted_steps.append("retry_recall_on_returned_scope")
             retry_status = _client_result_status(retried)
         recovery_missing = missing_scope_recovery_evidence(
             paths=paths,
             selected_scope=selected,
             retry_status=retry_status,
+            expected_count=1,
+        )
+        recovery_missing["failed_recall_arguments"] = dict(failed_recall_arguments)
+        recovery_missing["retry_recall_arguments"] = (
+            None if retry_recall_arguments is None else dict(retry_recall_arguments)
         )
 
         authoring = await client.call_tool("recall", {"trail_name": scope, "mode": "authoring"})
