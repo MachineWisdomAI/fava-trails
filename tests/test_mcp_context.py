@@ -279,13 +279,19 @@ async def test_recall_save_promote_is_executed_on_both_surfaces(tmp_fava_home, t
         assert side["client_class"] == "mcp.Client"
         assert "scripted_steps" in side
         assert "observed_skips" not in side
+        assert "naive_initialize_only" not in side
+        assert "called" not in side
+        assert "skipped" not in side
         assert "prompt_coverage" in side
         coverage = side["prompt_coverage"]
         assert coverage["kind"] == "deterministic_instruction_scan"
         assert coverage["not_observed_client_choices"] is True
+        assert "called" not in coverage
+        assert "skipped" not in coverage
         assert "invalid_save" in side["scripted_steps"]
         assert "retry_save_with_content" in side["scripted_steps"]
         assert "propose_truth" in side["scripted_steps"]
+        assert "get_usage_guide" not in side["scripted_steps"]
         recovery = side["error_recovery"]
         assert recovery["invalid_save"]["recovered"] is True
         assert recovery["invalid_save"]["retry_status"] == "ok"
@@ -295,18 +301,13 @@ async def test_recall_save_promote_is_executed_on_both_surfaces(tmp_fava_home, t
         assert missing["selected_scope"] in missing["returned_paths"]
         assert missing["retry_status"] == "ok"
         assert missing["evidence"] == "selected_returned_scope_and_retried"
-        naive = side["naive_initialize_only"]
-        assert "skipped" in naive
-        assert "called" in naive
-        assert naive["get_usage_guide_called"] is False
-        assert "propose_truth" not in naive["skipped"]
     assert "session_start_recall" not in payload["full"]["prompt_coverage"]["gaps"]
     assert "session_start_recall" in payload["compact"]["prompt_coverage"]["gaps"]
     assert "propose_truth" not in payload["compact"]["prompt_coverage"]["gaps"]
     assert payload["compact"]["prompt_coverage"]["propose_truth_requested_in_instructions"] is True
     assert payload["compact"]["prompt_coverage"]["promotion_mandate_wording"] is False
-    assert "session_start_recall" in payload["compact"]["naive_initialize_only"]["skipped"]
-    assert "session_start_recall" not in payload["full"]["naive_initialize_only"]["skipped"]
+    assert "session_start_recall" in payload["full"]["scripted_steps"]
+    assert "session_start_recall" not in payload["compact"]["scripted_steps"]
 
 
 def test_prompt_coverage_is_instruction_scan_not_observed_client_choice():
@@ -321,6 +322,9 @@ def test_prompt_coverage_is_instruction_scan_not_observed_client_choice():
     assert compact["promotion_mandate_wording"] is False
     assert full["propose_truth_requested_in_instructions"] is True
     assert full["promotion_mandate_wording"] is True
+    for scan in (full, compact):
+        assert "called" not in scan
+        assert "skipped" not in scan
 
 
 def test_missing_scope_recovery_requires_selected_path_and_retry():

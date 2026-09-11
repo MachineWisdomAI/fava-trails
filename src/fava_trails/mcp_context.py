@@ -517,17 +517,9 @@ async def _exercise_recall_save_promote(surface: str) -> dict[str, Any]:
         instructions = client.instructions or ""
         coverage = prompt_coverage_from_instructions(instructions)
 
-        naive_called = ["initialize", "tools/list"]
-        naive_skipped: list[str] = []
         if coverage["session_start_recall_in_instructions"]:
             await client.call_tool("recall", {"trail_name": scope, "query": "status"})
-            naive_called.append("session_start_recall")
-        else:
-            naive_skipped.append("session_start_recall")
-        if coverage["propose_truth_requested_in_instructions"]:
-            naive_called.append("propose_truth_requested")
-        else:
-            naive_skipped.append("propose_truth")
+            scripted_steps.append("session_start_recall")
 
         invalid = await client.call_tool("save_thought", {"trail_name": scope})
         scripted_steps.append("invalid_save")
@@ -595,11 +587,6 @@ async def _exercise_recall_save_promote(surface: str) -> dict[str, Any]:
             },
             "scripted_steps": scripted_steps,
             "prompt_coverage": coverage,
-            "naive_initialize_only": {
-                "called": naive_called,
-                "skipped": naive_skipped,
-                "get_usage_guide_called": False,
-            },
             "skipped_step_risk": _skipped_step_risk(resolved, instructions),
             "client": _client_info(instantiated=True),
         }

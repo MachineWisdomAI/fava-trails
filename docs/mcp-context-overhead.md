@@ -106,7 +106,8 @@ instructions, follow only those instructions on a naive pass (no `get_usage_guid
 then script invalid save, retry with content, missing-scope recall, `list_scopes`,
 select an exact returned path, retry recall, authoring `recall`, and `propose_truth`
 (Trust Gate review mocked). Scripted executed steps are recorded separately from
-deterministic prompt-coverage scans of initialize text. Results:
+deterministic prompt-coverage scans of initialize text. Instruction scans are
+not labeled as `called` or `skipped` client behavior. Results:
 
 | Check | full | compact |
 | --- | --- | --- |
