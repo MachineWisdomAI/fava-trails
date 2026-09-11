@@ -562,6 +562,94 @@ def test_register_rejects_non_executable_explicit_path(tmp_path, capsys, monkeyp
     assert str(not_exec) not in captured.out
 
 
+def test_register_print_only_may_use_data_repo_placeholder(tmp_path, capsys, monkeypatch):
+    from fava_trails.cli import cmd_register
+
+    monkeypatch.setattr("fava_trails.cli.resolve_server_executable", lambda: "/opt/bin/fava-trails-server")
+    config = tmp_path / "claude.json"
+    with patch("fava_trails.cli.get_data_repo_root", side_effect=OSError("no data repo")):
+        rc = cmd_register(
+            type(
+                "Args",
+                (),
+                {
+                    "write": False,
+                    "config": str(config),
+                    "agent_id": "codex-cli",
+                    "verify": False,
+                    "operator": False,
+                    "client": "claude-code",
+                    "executable": None,
+                },
+            )()
+        )
+    assert rc == 0
+    assert not config.exists()
+    out = capsys.readouterr().out
+    assert "<path-to-fava-trails-data>" in out
+
+
+def test_register_write_fails_without_real_data_repo(tmp_path, capsys, monkeypatch):
+    from fava_trails.cli import cmd_register
+
+    monkeypatch.setattr("fava_trails.cli.resolve_server_executable", lambda: "/opt/bin/fava-trails-server")
+    config = tmp_path / "claude.json"
+    with patch("fava_trails.cli.get_data_repo_root", side_effect=ValueError("no data repo")):
+        rc = cmd_register(
+            type(
+                "Args",
+                (),
+                {
+                    "write": True,
+                    "config": str(config),
+                    "agent_id": "codex-cli",
+                    "verify": False,
+                    "operator": False,
+                    "client": "claude-code",
+                    "executable": None,
+                },
+            )()
+        )
+    assert rc == 1
+    assert not config.exists()
+    captured = capsys.readouterr()
+    assert "data repository" in captured.err.lower()
+
+
+def test_register_verify_fails_without_real_data_repo(tmp_path, capsys, monkeypatch):
+    from fava_trails.cli import cmd_register
+
+    monkeypatch.setattr("fava_trails.cli.resolve_server_executable", lambda: "/opt/bin/fava-trails-server")
+    config = tmp_path / "claude.json"
+    with (
+        patch("fava_trails.cli.get_data_repo_root", side_effect=OSError("no data repo")),
+        patch("fava_trails.cli.verify_direct_mcp_smoke") as direct,
+        patch("fava_trails.cli.verify_native_client_session") as native,
+        patch("fava_trails.cli.inspect_native_registration") as inspect,
+    ):
+        rc = cmd_register(
+            type(
+                "Args",
+                (),
+                {
+                    "write": False,
+                    "config": str(config),
+                    "agent_id": "codex-cli",
+                    "verify": True,
+                    "operator": False,
+                    "client": "claude-code",
+                    "executable": None,
+                },
+            )()
+        )
+    assert rc == 1
+    direct.assert_not_called()
+    native.assert_not_called()
+    inspect.assert_not_called()
+    err = capsys.readouterr().err
+    assert "data repository" in err.lower()
+
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
 

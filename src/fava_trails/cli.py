@@ -757,8 +757,10 @@ def cmd_register(args: argparse.Namespace) -> int:
             return 1
     try:
         data_repo = str(get_data_repo_root())
+        data_repo_resolved = True
     except (OSError, ValueError):
         data_repo = "<path-to-fava-trails-data>"
+        data_repo_resolved = False
     agent_id = getattr(args, "agent_id", None) or "codex-cli"
     print(format_registration_instructions(executable=executable, data_repo=data_repo, agent_id=agent_id))
 
@@ -767,6 +769,14 @@ def cmd_register(args: argparse.Namespace) -> int:
         if getattr(args, "write", False):
             print("Error: --write cannot be combined with --operator.", file=sys.stderr)
             return 1
+
+    if (getattr(args, "write", False) or getattr(args, "verify", False)) and not data_repo_resolved:
+        print(
+            "Error: --write and --verify require a real intended data repository path. "
+            "Print-only guidance may show a placeholder.",
+            file=sys.stderr,
+        )
+        return 1
 
     config_path = Path(args.config).expanduser() if getattr(args, "config", None) else default_client_config_path(
         getattr(args, "client", None) or "claude-code"
