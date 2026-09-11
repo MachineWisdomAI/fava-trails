@@ -9,13 +9,13 @@
 
 ### Why do agents need a dedicated memory system? Can't I just use a vector database?
 
-You can. And you'll hit the same wall everyone else hits at about hour one.
+You can for similarity search. You will still need governance if agents write durable claims.
 
-DoltHub's independent testing measured the phenomenon precisely: raw coding agent sessions max out at approximately one hour before the agent loses coherence. The reason is architectural, not a model limitation. Vector databases optimize for semantic similarity — "find me something *like* this." But production agents need semantic correctness — "find me the *exact* thing we established on Tuesday, including why we changed our mind about it on Wednesday."
+Vector databases optimize for semantic similarity — "find me something *like* this." Production agents often need provenance and currency — "find the *current approved* claim we established on Tuesday, including why we changed our mind on Wednesday."
 
-When your agent writes a flawed hypothesis (Thought A), then corrects it (Thought A'), a vector search for the topic retrieves *both* — because they're semantically identical. This is what we call Contextual Flattening. Your agent now has contradictory beliefs with no mechanism to distinguish which one is current.
+When an agent writes a flawed hypothesis (Thought A), then proposes a correction (Thought A'), a pure similarity index often retrieves *both* because they are close in embedding space. That Contextual Flattening problem is about ranking and currency, not about FAVA inventing a better embedding model.
 
-FAVA Trails solves this with supersession tracking: Thought A gets tombstoned when Thought A' is created. Default retrieval never surfaces superseded thoughts. The agent sees only the current truth unless it explicitly asks for the full lineage.
+FAVA Trails addresses currency with **supersession lineage** and governed visibility: after durable approval of a successor, default governed recall hides the predecessor. That does **not** prove the replacement is true; it records that an approved replacement exists. Today's `recall` matcher itself is **lexical** (lowercased whitespace tokens as substrings with AND semantics) — not semantic similarity. See [retrieval-baseline.md](retrieval-baseline.md). A future search layer is discovery-only in [issue #59](https://github.com/MachineWisdomAI/fava-trails/issues/59); no embeddings product is selected there yet.
 
 ### What is the "Correctness-Congruence Gap"?
 
@@ -25,15 +25,19 @@ Intent alignment (what we call Congruence) asks: "Is this response consistent wi
 
 FAVA Trails bridges this gap by making version history, relationship graphs, and provenance chains queryable. Every memory carries its full lineage: what was believed, when it changed, why it changed, and who approved the change.
 
-### What is "memory poisoning" and how does FAVA Trails prevent it?
+### What is "memory poisoning" and how does FAVA Trails reduce it?
 
-Memory poisoning occurs when an agent's false beliefs — hallucinations, outdated facts, incorrect inferences — enter shared memory and subsequently inform other agents' reasoning. In systems without governance, every agent write immediately becomes "truth." Bad data propagates exponentially.
+Memory poisoning occurs when an agent's false beliefs — hallucinations, outdated facts, incorrect inferences — enter shared memory and subsequently inform other agents' reasoning. In systems without governance, every agent write immediately becomes "truth." Bad data propagates quickly.
 
-FAVA Trails prevents this through the **Trust Gate** — a gated promotion workflow borrowed directly from software engineering's pull request model. Agents work in isolated draft branches. Their drafts are invisible to other agents. When an agent wants to promote a belief to shared truth, it submits a proposal that passes through a validation gate (a Critic Agent, a human reviewer, or both) before it becomes visible to the broader system.
+FAVA Trails **reduces blast radius** with a gated promotion workflow (the **Trust Gate**), modeled on review-before-merge. Unapproved drafts stay out of default governed recall. Own drafts are visible only via explicit `mode="authoring"` on a server-configured identity. A shared MCP endpoint or shared data directory is still one trust boundary — not cryptographic isolation between concurrent callers on the same process.
 
-If the Trust Gate rejects the proposal, the hallucination stays contained in draft. It never enters shared memory. No cleanup required. No downstream contamination.
+When promotion is requested, an LLM critic and/or explicit human approval can reject or accept under a configured rubric. **Rubric-based review is not independent verification of project facts.** It does not know your agent's system prompt, safety policy, or private environment. A misconfigured gate or a convincing false claim can still be approved. Supersession after the fact records lineage; it does not establish that the replacement is true.
 
-This is not post-hoc rollback — it is **containment at the source**. The hallucination never becomes shared "truth" in the first place. Note: the Trust Gate reduces blast radius; it does not eliminate hallucinations entirely. A misconfigured gate or a sufficiently convincing hallucination can still pass review. Defense-in-depth (multiple reviewers, policy-based strictness per namespace, human override for high-stakes domains) is the correct mitigation.
+A Trust Gate reject does **not** mean the content was never stored or transmitted: `save_thought` already wrote a draft (and JJ/Git history), and under `llm-oneshot` `propose_truth` sends the thought body to the reviewer before a verdict exists. Rejection metadata may be written back onto that draft. A fake-password reject is a gate verdict, not proof of non-persistence or non-egress.
+
+A separate [bounded obvious-secret preflight](secret-preflight.md) refuses a small set of high-confidence credential shapes *before* normal write and promotion paths persist or transmit them, without echoing the match. It does not erase legacy drafts, rewrite history, or provide complete DLP. Generic passwords and novel token formats are out of scope.
+
+Rejected proposals remain drafts with feedback. Defense-in-depth (human approval on high-stakes namespaces, separate operator endpoints, caller-side verification of recalled claims) remains required.
 
 ### How does FAVA Trails relate to Context Engineering protocols like SECOM or ACE?
 
@@ -41,7 +45,7 @@ Academic protocols like SECOM (Segmentation and Compression; Tsinghua University
 
 FAVA Trails provides the versioned substrate and the **Event-Action Pipeline** (lifecycle hooks) to run these protocols safely. Hooks fire at key lifecycle points (`before_propose`, `before_save`, `on_recall`, etc.) and return typed actions (`Mutate`, `Advise`, `RecallSelect`) that the pipeline executes atomically.
 
-For example, the built-in [SECOM protocol](../src/fava_trails/protocols/secom/README.md) uses a Write-Once, Read-Many (WORM) optimization: the `before_propose` hook compresses content inline via LLMLingua-2 (extractive token-level compression — only original tokens survive) before the thought is committed to its permanent namespace. This avoids read-path latency entirely, amortizes compression cost from O(recalls × thoughts) to O(promotes), and preserves the original verbose draft in the Jujutsu commit history. If compression fails, `fail_mode: open` lets the thought through unchanged — the operation never blocks.
+For example, the built-in [SECOM protocol](../src/fava_trails/protocols/secom/README.md) uses a Write-Once, Read-Many (WORM) optimization: the `before_propose` hook compresses content inline via LLMLingua-2 (extractive token-level compression — only original tokens survive) before the thought is committed to its permanent namespace. This avoids read-path latency entirely, amortizes compression cost from O(recalls × thoughts) to O(promotes), and preserves the original verbose draft in the Jujutsu commit history. Hooks are **awaited** through completion or their configured timeout on the promote path. With SECOM's default `fail_mode: open`, hook errors or timeouts do **not** fail promotion (the thought proceeds uncompressed); they still consume wall-clock time up to the hook timeout. `fail_mode: closed` is different and will fail the operation.
 
 Install with `pip install fava-trails[secom]` and add a `hooks:` entry to your data repo's `config.yaml`. See the [Protocols section](../README.md#protocols) for quick start.
 
@@ -58,7 +62,7 @@ fava-trails rlm setup --write      # RLM MapReduce hooks
 
 ### Why does the first `propose_truth` take several minutes with SECOM enabled?
 
-SECOM uses LLMLingua-2 (a ~700MB BERT-based token classifier from HuggingFace Hub) for extractive compression. The first call triggers a model download that can take 2–5 minutes depending on connection speed — subsequent calls use the cached model and complete in milliseconds.
+SECOM uses LLMLingua-2 (a ~700MB BERT-based token classifier from HuggingFace Hub) for extractive compression. The first call can trigger a model download that takes several minutes depending on connection speed. Later calls reuse the local HuggingFace cache and avoid that download, but compression still runs on the promote path and has **no published millisecond latency guarantee** — wall time depends on hardware, model load, content length, and hook timeout settings.
 
 To pre-download the model before agents encounter it:
 
@@ -76,7 +80,7 @@ This downloads the model, runs a test compression, and reports the HuggingFace c
 
 Three critical differences.
 
-**Crash-proof by design.** Git maintains a "dirty working copy" between explicit commits. If your agent crashes, that uncommitted work is lost. FAVA Trails's architecture requires automatic persistence — every state change is durably written before the operation returns. There is no concept of unsaved work.
+**Durable by design (not crash-atomic).** Git can leave a dirty working copy between explicit commits. FAVA Trails aims to persist each successful tool operation before return: the thought file is written and the JJ commit path is awaited. That is stronger than leaving work only in an editor buffer, but it is **not** a guarantee that every multi-step write is a single atomic transaction or that interruption never leaves recoverable dirty/incomplete state — file write still precedes several awaited JJ operations.
 
 **Conflict-tolerant storage.** Git blocks operations when conflicts occur. An agent cannot stop to resolve merge conflicts. FAVA Trails requires that contradictory beliefs be storable as structured data — the system records the conflict as a first-class artifact for later resolution rather than halting the agent's workflow.
 
@@ -84,36 +88,41 @@ Three critical differences.
 
 ### What is the Trust Gate, concretely?
 
-The Trust Gate is a configurable validation pipeline that evaluates proposed memories before they enter shared truth. In its simplest form, it's an LLM-based Critic Agent that checks for factual consistency, schema compliance, and alignment with existing shared knowledge.
+The Trust Gate is a configurable validation step that can run before a draft is promoted into shared records. In the shipped default, it is a **synchronous** LLM (or explicit human) rubric review of the **current proposed record only**: the configured prompt plus that record's content and selected redacted metadata. It does **not** load the shared corpus, does **not** independently verify project facts, and is **not** a guarantee that hallucinations never enter shared truth.
 
-The key design properties:
+The key design properties today:
 
-- **Async by default.** The proposing agent continues working in draft while the Trust Gate evaluates. It is not a blocking operation.
-- **Policy-configurable.** Different namespaces can have different strictness levels. Client-facing facts might require human approval; internal observations might auto-approve if the Critic Agent gives a confidence score above threshold.
-- **Rejection is non-destructive.** A rejected proposal stays in draft with reviewer feedback attached. The agent can revise and resubmit.
-- **Auditable.** Every Trust Gate decision (accept, reject, revision request) is logged with rationale.
+- **Synchronous on `propose_truth`.** With the shipped `llm-oneshot` policy, `handle_propose_truth` awaits the single-record review (subject to `trust_gate_timeout_secs`) before promotion and return. The caller blocks on that tool call; there is no background async queue in the current tree.
+- **Limited context.** The LLM request is the configured Trust Gate prompt plus the thought under review — not a retrieval over existing shared knowledge.
+- **Operator-configured LLM settings.** Provider, model, timeouts, prompts, and local OpenAI-compatible endpoints are operator-configured under the shipped `llm-oneshot` policy. Config does **not** yet expose a working “disable LLM / human-only policy” switch (`trust_gate: human` remains unimplemented). The real non-LLM path is per-call explicit human approval: on an operator endpoint (`FAVA_TRAILS_OPERATOR=1` with a configured `FAVA_TRAILS_AGENT_ID`), call `propose_truth(..., approval="human")`. Provider selection is a data-egress choice; `fava-trails doctor` and `propose_truth` responses disclose destination/model and which candidate fields are sent (no secrets). Local-only setups fail closed with no cloud fallback (issue #101).
+- **Rejection is non-destructive.** A rejected proposal stays in draft with reviewer feedback attached. The agent can revise and resubmit. That draft was already persisted before review.
+- **Auditable.** Trust Gate verdicts and reasoning are returned on the tool response and can be logged by operators. Reviewer payloads include the thought body; do not treat the gate as a secret-egress control.
+- **Obvious-secret preflight is separate.** High-confidence credential shapes are refused locally before persist or transmit. See [secret-preflight.md](secret-preflight.md).
 
 ### What is the Pull Daemon?
 
-The Pull Daemon is a planned sidecar process (design goal, not yet deployed) that will continuously synchronize each agent's working context with shared truth. It will run a periodic sync loop (default: every 30 seconds) that rebases the agent's draft branch on top of the latest accepted shared truth.
+The Pull Daemon is a **planned** sidecar process (design goal, not shipped). Today agents call the `sync` MCP tool manually to fetch/rebase against shared truth. A future daemon would automate that loop (design target ~30 seconds).
 
-In the current release, agents call the `sync` MCP tool manually to pull latest shared truth. The Pull Daemon will automate this — when Agent A updates the project budget from "Low" to "High" and that update passes the Trust Gate, Agent B's Pull Daemon will pick up the change and rebase B's draft on top of the new truth. Agent B's reasoning then operates against the updated budget.
+Important bounds for both today and any planned automation:
 
-If the rebase creates a conflict (B was working with assumptions about the old budget), the conflict is surfaced to B as structured data rather than silently swallowed.
+- The MCP server has **one process-configured identity** and a **repo-wide current JJ change**. It does **not** allocate per-agent draft branches, expose branch selection, or orchestrate multi-hypothesis merge/discard.
+- Planned automation must not assume per-agent draft branches. Sync is about updating the working copy against shared truth and surfacing structured conflicts — the same lifecycle/process-identity boundary already documented for drafts and governed reads.
+
+When Agent A promotes a budget change through the Trust Gate, Agent B sees it after `sync` (or a future automated sync). If B's working assumptions conflict, the conflict is returned as structured data rather than silently swallowed.
 
 ### Why version control instead of a database?
 
 Databases optimize for current state. Version control optimizes for state evolution. In agentic workflows, state evolution *is* the product.
 
-The critical capabilities that VCS provides natively but databases require custom engineering for:
+The critical capabilities that a VCS **substrate** provides natively (and that databases usually have to reinvent) — with the MCP surface bounds stated explicitly:
 
-- **Branching** — isolated workspaces that don't pollute shared state until explicitly merged.
-- **Merge gating** — workflow enforcement as a first-class primitive, not an application concern.
-- **History traversal** — "What did we believe about X three days ago?" is a native query, not a schema design exercise.
-- **Atomic bulk discard** — "This entire 50-step investigation was wrong, delete all of it" is a single operation with zero residue.
-- **Diff** — "What changed between Tuesday and today?" without scanning every record.
+- **Change isolation (substrate)** — JJ can isolate work in changes/revisions at the file layer. The MCP server still exposes **one repo-wide current change**; it does **not** allocate per-agent branches or multi-branch workspaces.
+- **Promotion gating (product)** — Trust Gate / per-call operator `approval="human"` on `propose_truth`, not git-style branch-protection rules as the agent API.
+- **History traversal** — "What did we believe about X three days ago?" is recoverable from versioned thought files and operator `mode="history"`, not a custom schema design exercise.
+- **Discard current change** — `forget(trail_name, revision?)` wraps `jj abandon` for the current working change or a specified revision. It is **not** a product API for "delete this entire 50-step investigation graph with zero residue," and it does not merge or discard parallel agent branches.
+- **Diff** — "What changed between Tuesday and today?" without scanning every record by hand (`diff` tool / underlying JJ).
 
-Database-backed systems can be engineered to provide some of these capabilities, but they're fighting the substrate rather than working with it. VCS was *designed* for exactly this class of problem.
+Database-backed systems can be engineered toward some of these substrate properties, but they're fighting the storage model rather than working with it. VCS was *designed* for auditable state evolution; the MCP tools are a deliberate, narrower façade over that substrate.
 
 ---
 
@@ -127,14 +136,15 @@ Core MCP tools:
 
 | Tool | What It Does |
 |------|-------------|
-| `save_thought` | Persist a reasoning artifact to the agent's draft branch |
-| `recall` | Retrieve memories by ID, keyword, semantic similarity, or relationship traversal |
-| `propose_truth` | Submit draft memories for Trust Gate review |
+| `save_thought` | Persist a reasoning artifact to the agent's draft namespace |
+| `recall` | Lexical search: whitespace-separated query tokens must each appear as substrings in content/metadata; optional relationship expansion; governed/authoring/history visibility |
+| `get_thought` | Retrieve one record by ULID |
+| `propose_truth` | Submit draft memories for Trust Gate or explicit human approval |
 | `sync` | Pull latest shared truth into the agent's working context |
-| `forget` | Atomic discard of a reasoning branch |
+| `forget` | Abandon the current (or specified) JJ revision via `jj abandon`; requires `trail_name`, optional `revision` |
 | `learn_preference` | Capture human feedback as a versioned preference |
 
-Agents interact with memories as semantic objects (Markdown with structured frontmatter). They never see VCS commands, file paths, or storage internals.
+Agents interact with memories as Markdown objects with structured frontmatter. They never see VCS commands or raw tree algebra. `recall` is not semantic similarity search; measured behavior is in [retrieval-baseline.md](retrieval-baseline.md).
 
 ### What does integration look like for large-scale autonomous agent systems?
 
@@ -142,28 +152,23 @@ For ML engineering agents running long-horizon tasks (12+ hour Kaggle competitio
 
 1. **Session persistence across context window resets.** When the context window fills and the agent needs to continue, FAVA Trails provides the full history of what was tried, what worked, what didn't, and why — reconstructable from versioned memory rather than lost when the window rolls over.
 
-2. **Experiment branch isolation.** The agent can branch three parallel hypotheses (different model architectures, different feature engineering approaches) without cross-contamination. Each branch carries its own reasoning chain. The winning branch merges to main; the losing branches are atomically discarded.
+2. **Versioned experiment lines, not multi-branch orchestration.** The agent can record multiple hypotheses as versioned thoughts (and start a new JJ change with `start_thought` for a fresh reasoning line). The MCP surface does **not** provide parallel isolated hypothesis branches, winner-merge, or atomic multi-branch loser discard. Discard is `forget` on the current change/revision; competition between claims is lifecycle + supersession after durable approval, not a branch-merge API.
 
-3. **Preventing re-exploration of dead ends.** Supersession tracking means that when a hyperparameter search proves fruitless and is explicitly abandoned, future recall queries will not resurface that abandoned line of reasoning. The agent doesn't waste tokens re-discovering that "learning rate 0.1 diverges" if that was already established and marked as superseded.
+3. **Bounding re-exploration of dead ends.** When a fruitless line is **superseded** and the successor is **durably approved**, default governed `recall` hides the predecessor. Abandoned work that was never approved never entered governed recall. Dead ends can still resurface via operator `mode="history"` / explicit revision archaeology, or if a later approved record still shares tokens — supersession is lineage + default visibility, not a guarantee that “never re-explored.”
 
 ### Can I use FAVA Trails as a drop-in replacement for my current memory backend?
 
-FAVA Trails is designed to support adapter patterns for common memory interfaces. A planned mapping layer will map `search()` to `recall_semantic` + `recall`, `readFile()` to `get_thought`, and `sync()` to `sync`.
-
-For frameworks with custom memory abstractions, the MCP interface is the universal integration point today.
+Not as a semantic-RAG drop-in. Today's MCP `recall` is lexical substring-AND search over governed records, plus exact `get_thought` by ULID. A planned adapter that maps foreign `search()` APIs onto a future semantic index is **unreleased** and must not be assumed present. For frameworks with custom memory abstractions, the MCP interface is the integration point today.
 
 ### What about performance? My agent loop runs at millisecond timescales.
 
-FAVA Trails distinguishes between working memory (draft operations) and shared truth (promotion operations). Phase 1 latency targets, measured against single-agent local-disk workloads:
+FAVA Trails distinguishes draft writes from promotion. The following numbers are **design targets only**, not published benchmarks, and they do **not** include a semantic index:
 
-- **Draft save:** < 50ms target. This is the "inner loop" — it must not block the agent's reasoning.
-- **Draft recall:** < 100ms target. Context assembly is latency-sensitive.
-- **Shared truth recall:** < 500ms p95. Includes semantic query + relationship traversal.
-- **Trust Gate evaluation:** Async. The agent continues working while the gate evaluates.
+- **Draft save:** < 50ms target on local disk for the inner loop.
+- **Lexical recall:** depends on corpus size (full scan of visibility-allowed markdown records in-process today).
+- **Trust Gate evaluation:** uses the configured LLM; treat it as a promotion-path cost, not an inner-loop cost.
 
-These are design targets, not published benchmarks. Current prototype measurements will be published alongside the Phase 1 release with hardware specs, dataset sizes, and concurrency conditions.
-
-The architecture separates the hot path (draft reads/writes) from the governance path (promotion, sync). Your agent loop stays fast.
+Publish hardware specs, dataset sizes, and concurrency conditions before treating any latency figure as a guarantee. The architecture still aims to keep draft writes off the governance path.
 
 ---
 
@@ -176,18 +181,19 @@ ML engineering agents face a specific version of the memory problem: experiments
 FAVA Trails's contribution:
 
 - **Every experiment checkpoint is a versioned thought.** Hyperparameter configurations, training metrics, error traces — all persisted with full lineage. When the agent resumes after a crash or context reset, it can reconstruct exactly where it was.
-- **Branching enables parallel hypothesis testing.** Three model architectures explored simultaneously, each on its own branch, with zero cross-contamination. Results merge back to main only when validated.
-- **Dead-end marking prevents re-exploration.** When the agent discovers that a particular approach diverges, that finding is persisted with supersession semantics. The next agent session (or a different agent) won't waste compute re-discovering the same dead end.
+- **Hypothesis lines are thoughts + lifecycle, not parallel VCS branches.** Record competing architectures as separate thoughts (or sequential changes). There is no MCP API for isolated parallel branches, zero cross-contamination between concurrent local lines, or automatic winner-merge / loser-discard of branches. Shared truth advances only through durable approval and sync.
+- **Supersession bounds default re-surface of replaced claims.** An approved successor hides its predecessor from default governed recall. Operator history mode and explicit revision tools can still retrieve older lines; shared tokens on later records can still match.
 - **Audit trail for reproducibility.** Every decision in the ML pipeline — why this learning rate, why that feature set, why we switched from ResNet to ViT — is traceable through the version history.
 
 ### My agents run in multi-agent swarms. How does FAVA Trails handle coordination?
 
-Each agent gets its own isolated draft workspace. Agents never step on each other's work because drafts are invisible across workspaces. Coordination happens through shared truth:
+Each configured agent identity gets its own authoring view. Default governed `recall`/`get_thought` hide unapproved drafts by lifecycle status plus the process-configured author identity — not by cryptographic isolation between concurrent callers. Agents sharing one MCP endpoint share one identity boundary; direct filesystem access to the data repo remains operator-trusted. Coordination of *approved* work still happens through shared truth:
 
 1. Agent A discovers that Feature X improves accuracy by 3%. It promotes this finding through the Trust Gate.
-2. The `sync` tool (or the planned Pull Daemon) propagates the accepted finding to all other agents.
-3. Agent B, which was about to explore Feature X independently, sees the finding in its synced context and redirects its effort elsewhere.
-4. Agent C, which had already started a conflicting hypothesis, sees the conflict surfaced as structured data and can decide how to resolve it.
+2. Agent A's machine must **publish** those local commits before peers can fetch them (`push_strategy: immediate`, or under `manual` the full protocol `jj bookmark set main -r @-` then `jj git push --bookmark main`). The `sync` tool only pulls.
+3. The `sync` tool (or the planned Pull Daemon) fetches/rebases the published finding onto other agents' machines.
+4. Agent B, which was about to explore Feature X independently, sees the finding in its synced context and redirects its effort elsewhere.
+5. Agent C, which had already started a conflicting hypothesis, sees the conflict surfaced as structured data and can decide how to resolve it.
 
 This is eventual consistency with governance — the same pattern that lets teams of thousands of engineers coordinate through a shared monorepo.
 
@@ -197,13 +203,15 @@ This is eventual consistency with governance — the same pattern that lets team
 
 ### How does FAVA Trails protect my proprietary data and corporate IP?
 
-FAVA Trails follows an **Engine vs. Fuel** architecture that makes this a non-issue by design.
+FAVA Trails follows an **Engine vs. Fuel** architecture that separates process runtime from durable corpus ownership.
 
-The MCP server (`fava-trails`) is a stateless, open-source engine. It contains zero knowledge about your organization. It processes requests, translates them to VCS operations, and returns structured results. It holds no state between calls.
+The MCP server (`fava-trails`) is an open-source **engine process**. It does not embed your organizational corpus in its source tree, but it is **not** request-stateless: for the life of the process it retains trail managers, a VCS backend handle, locks, loaded hooks/prompts, and configuration between calls.
 
-Your actual data — the memory graph, the versioned repository, every thought your agents have ever produced — lives in a separate, isolated, locally controlled directory. This is the Fuel. You host it wherever your security policy requires: a local directory on the developer's machine, a private NFS mount, an air-gapped server, or a privately hosted Git remote for backup.
+Your actual data — the memory graph, the versioned repository, every thought your agents have ever produced — lives in a separate, isolated, locally controlled directory. This is the **Fuel**. You host it wherever your security policy requires: a local directory on the developer's machine, a private NFS mount, an air-gapped server, or a privately hosted Git remote for backup.
 
-The architectural guarantee: **context never leaks into the tool's source code, its dependencies, or any external service.** No telemetry is collected. No cloud dependency exists. The MCP server is a pure function: input in, output out, nothing persisted. Your corporate IP stays on your infrastructure, governed by your access controls, backed up by your retention policies.
+What holds today: the engine does not embed your corpus in its source, does not collect product telemetry, and does not require a FAVA-hosted cloud. **Durable product state** lives only in Fuel under your controls; restarting the engine process does not move that corpus. Treat process-local caches (managers/hooks) as runtime convenience, not as a second source of truth.
+
+What does **not** hold by default: **Trust Gate can egress content.** With the shipped OpenRouter default under `trust_gate: llm-oneshot`, `propose_truth` sends the proposed record content and selected redacted metadata to that provider **before** a verdict exists (rejection by a remote gate still happens after transmission). Run `fava-trails doctor` (or inspect `trust_gate_egress` on the tool response) for the effective destination/model and a plain summary of which fields are sent — API keys are never shown. To avoid remote egress today: point Trust Gate at a local OpenAI-compatible endpoint (fail-closed; no silent cloud fallback), **or** promote on an operator endpoint with `propose_truth(..., approval="human")` (requires `FAVA_TRAILS_OPERATOR=1` and a configured agent identity; no LLM transmission). There is no shipped config flag that disables LLM review globally; `trust_gate: human` is not implemented. Your corporate IP stays on your infrastructure only to the extent your Trust Gate provider, approval path, and hosting choices keep it there.
 
 This separation also means you can update the engine independently of your data. Upgrading FAVA Trails's MCP server does not touch, migrate, or expose your repository.
 
@@ -213,17 +221,17 @@ This is the most common objection from engineers who have worked with MemGPT, Go
 
 FAVA Trails addresses this through a **Semantic Translation Layer** that sits between the agent and the VCS substrate.
 
-What the agent sees: token-optimized, JSON-formatted semantic summaries returned through MCP tool calls. Structured recall results with relationship metadata, confidence scores, and supersession status. Clean, parseable, minimal.
+What the agent sees: token-optimized, JSON-formatted structured tool responses returned through MCP calls. Recall returns a fixed payload shape (content, confidence, lifecycle/supersession fields, relationships when requested, and similar). Some tools intentionally include path-like fields in that JSON — for example `diff.files_changed` and `conflicts[].file` — so agents can resolve concrete records. Clean, parseable, minimal relative to raw VCS dumps.
 
-What the agent never sees: raw `jj log` stdout, commit hashes, tree algebra, conflict markers, file paths, or any VCS-specific syntax. The Semantic Translation Layer intercepts every operation, handles the git-backend overhead locally (sub-second latency on local disk), and returns only the semantic payload.
+What the agent never sees: raw `jj log` / `jj op log` stdout, commit-graph algebra, or unparsed conflict-marker dumps. The Semantic Translation Layer intercepts VCS operations inside the MCP server process and returns fixed structured payloads rather than shell transcripts. There is **no published latency or token-size benchmark** for that path; treat speed and response size as workload-dependent, not as product guarantees.
 
-The performance characteristics:
+The interface characteristics:
 
-- **VCS operations** (commit, branch, rebase) happen at the file-system level, entirely within the MCP server process. They do not consume agent tokens.
-- **Recall results** are pre-formatted as structured JSON with only the fields the agent requested. A typical recall response is 200-500 tokens, not a multi-kilobyte log dump.
-- **The agent's prompt** contains memory summaries, not version history. Full lineage is available on demand (`include_superseded=True`) but is not included by default.
+- **VCS operations** (snapshots, commits, and working-copy updates on the repo-wide current change) happen at the file-system level inside the MCP server process. They do not consume agent tokens. The MCP surface does **not** expose branch create/select/merge APIs to agents.
+- **Recall results** are a fixed structured JSON payload — there is no field-selection parameter on `recall`. Response size scales with hit count and content length; no typical token range is published.
+- **The agent's prompt** contains memory summaries, not version history. Full lineage is available on demand (`include_superseded=True` under history mode) but is not included by default.
 
-The design principle: the VCS is an implementation detail that provides crash-safety, branching, and audit guarantees. The agent interacts with a semantic memory API. The translation layer absorbs the complexity gap between these two interfaces.
+The design principle: the VCS is an implementation detail that provides durable versioned storage, recoverable history, and change isolation at the substrate layer. A successful tool return means the write path finished; interruption can still leave recoverable dirty or incomplete state — not an absolute crash-proof guarantee. The agent interacts with a semantic memory API over one process identity and one current change. The translation layer absorbs the complexity gap between these two interfaces.
 
 ---
 
@@ -231,50 +239,55 @@ The design principle: the VCS is an implementation detail that provides crash-sa
 
 ### What VCS does FAVA Trails use under the hood?
 
-The current implementation uses JJ (Jujutsu) with a colocated Git backend. The PRD is deliberately substrate-agnostic — it defines *capability requirements* (crash-proof persistence, conflict-tolerant storage, persistent identity, atomic operations) rather than prescribing a specific tool.
+The current implementation uses JJ (Jujutsu) with a colocated Git backend. The PRD is deliberately substrate-agnostic — it defines *capability requirements* (durable persistence before successful return, conflict-tolerant storage, persistent identity, commit-backed operations) rather than prescribing a specific tool.
 
-JJ was selected for the MVP because it provides automatic snapshotting (crash-proof), first-class algebraic conflicts (conflict-tolerant), stable Change-IDs (persistent identity), and Git-compatible storage (ecosystem portability). The tradeoffs are documented in the *Architectural Choices* comparison analysis.
+JJ was selected for the MVP because it provides automatic snapshotting (durable working-copy snapshots), first-class algebraic conflicts (conflict-tolerant), stable Change-IDs (persistent identity), and Git-compatible storage (ecosystem portability). The tradeoffs are documented in the *Architectural Choices* comparison analysis.
 
 The MCP abstraction layer is thick enough that the VCS substrate can be swapped without changing the agent-facing API. Agents call `save_thought` and `recall`, not `jj commit` or `git push`.
 
 ### What is the data model?
 
-Memories are called **Thoughts**. Each thought is an immutable Markdown file with structured YAML frontmatter:
+Memories are called **Thoughts**. Each thought is a Markdown file with structured YAML frontmatter. The example below is an **actual** `ThoughtRecord.to_markdown()` serialization (`model_dump(..., exclude_none=True)`): null optional fields are omitted, and nested `metadata.extra` defaults to `{}`.
 
 ```yaml
 ---
-id: "01JMKR3V8GQZX4N7P2WDCB5HYT"    # ULID, stable across all operations
-type: "decision"                         # decision | observation | preference | constraint
-namespace: "client/acme"                 # isolation boundary
-author: "agent-alpha"                    # which agent or human created this
-superseded_by: null                      # links to successor if invalidated
+schema_version: 1
+thought_id: 01JMKR3V8GQZX4N7P2WDCB5HYT
+agent_id: claude-code
+confidence: 0.9
+source_type: decision
+validation_status: approved
+created_at: '2026-02-19T12:00:00Z'
 relationships:
-  - type: "DEPENDS_ON"
-    target_id: "01JMKQ9F4RPBN2M6K8XDYA3GSW"
-  - type: "REVISED_BY"
-    target_id: "01JMKS7Y2HPQW5M8R3XECF6JZV"
-tags: ["architecture", "model-selection"]
-confidence: 0.85
-intent_ref: "01JMKP5T3GNHW7L4J9YBZC2FRX"  # links to the original intent/spec
+- type: DEPENDS_ON
+  target_id: 01JMKQ8W7FNRY3K6P1VDBA4GXS
+metadata:
+  project: my-project
+  branch: main
+  tags:
+  - architecture
+  extra: {}
 ---
-
-# Decision: Use ViT-Large for image classification
-
-After testing ResNet-50 (see 01JMKQ9F4R...), we observed 3% accuracy improvement
-with ViT-Large at acceptable inference latency...
+After evaluating ResNet-50 and ViT-Large on the customer dataset, we selected ViT-Large for production inference.
 ```
 
-Thoughts are append-only (immutable content, one exception: the `superseded_by` backlink). This prevents merge conflicts on content edits. When a thought needs correction, a new thought is created that supersedes the old one.
+Field names match the runtime `ThoughtFrontmatter` / `ThoughtRecord.to_markdown()` schema (`thought_id`, `source_type`, `agent_id`, lifecycle fields, nested `metadata`). The on-disk path namespace (for example `thoughts/decisions/`) is **not** a top-level frontmatter key and is **not** multi-tenant isolation.
+
+Thoughts are **not** globally immutable. Lifecycle behavior:
+
+- **Draft / proposed (authoring):** `update_thought` may replace body content in place (same ULID). Frontmatter identity fields stay; status and path still change on promotion or rejection.
+- **Terminal content freeze:** once `validation_status` is `approved`, `rejected`, or `tombstoned`, or once `superseded_by` is set, **body content** cannot be rewritten via `update_thought`.
+- **Lifecycle metadata still mutates** on durable transitions: promotion/rejection update status and approval provenance and may move the file path; supersession approval installs the predecessor `superseded_by` backlink and related lineage fields. Corrections to a frozen claim create a **new** draft successor via `supersede`, not an in-place body edit.
 
 ### What's on the roadmap?
 
-**Phase 1 (Current):** Versioned thought store with crash-proof persistence, draft isolation, Trust Gate, supersession tracking, MCP integration.
+**Current unreleased tree (0.6.1 release candidate on `main` / this docs branch):** Versioned thought store with durable persistence before successful return (interruptions can still leave recoverable dirty/incomplete state), governed/authoring/history visibility (process-configured identity; #72/#93), Trust Gate LLM review plus per-call operator `approval="human"` provenance, supersession lineage, MCP integration, lexical `recall`, 1-hop relationship expansion, local Rich Views reader. **Not on PyPI yet** — GitHub/PyPI latest remain **0.6.0**. Confirm the loaded runtime with `fava-trails version` (see [runtime-and-upgrade.md](runtime-and-upgrade.md)).
 
-**Phase 2:** Multi-agent synchronization (Pull Daemon), conflict interception, human-in-the-loop feedback capture, 1-hop relationship traversal.
+**Published 0.6.0 (what `pip install fava-trails` still resolves):** Trust Gate provider-neutral LLM config and related runtime fields shipped; **does not** include the later governed-read isolation / MCP registration fixes that identify as 0.6.1 on `main`. Do not assume 0.6.0 draft/authoring behavior matches this FAQ’s governed visibility model.
 
-**Phase 3:** Semantic vector index (derived from versioned store, rebuildable from history), temporal queries, data redaction.
+**In design / discovery (not shipped by this FAQ):** Continuous Pull Daemon automation; a dedicated search/retrieval layer after Lima Discovery ([issue #59](https://github.com/MachineWisdomAI/fava-trails/issues/59)) — candidates may include full-text indexes or, only if discovery proves need, derived semantic indexes. **No embeddings product, vector database, or retrieval architecture is selected in #59's discovery gate.**
 
-**Phase 4:** Temporal Knowledge Graph (entity extraction, property graph projection, episodic summaries), enterprise federation.
+**Later themes (aspirational):** richer temporal queries, redaction workflows, optional graph projections. Treat these as research directions until a commitment-class PRD exists.
 
 ### Is FAVA Trails open source?
 
@@ -292,11 +305,9 @@ The key architectural difference: Beads uses SQL tables (Dolt) while FAVA Trails
 
 ### How does FAVA Trails compare to Goodmem or other vector memory APIs?
 
-Vector memory APIs (Goodmem, Mem0, Zep) provide zero-friction semantic retrieval. They are excellent for simple RAG over static documentation and optimized for the recall path.
+Vector memory APIs (Goodmem, Mem0, Zep) optimize for semantic retrieval over embeddings. They are strong when the job is similarity RAG over relatively static text.
 
-FAVA Trails optimizes for a different surface: governance, provenance, and state evolution. When agents need temporal queries ("what did we believe last Tuesday?"), supersession tracking (hiding invalidated beliefs from default recall), draft isolation (preventing work-in-progress from polluting shared memory), or audit trails (proving provenance for compliance), these capabilities require versioned persistence as a foundational substrate.
-
-Many memory tools optimize for recall speed and simplicity. FAVA Trails adds governance and provenance as first-class primitives alongside recall. These are complementary concerns, not competing ones — FAVA Trails can optionally use a vector store as a *derived index* for semantic queries, but the vector store is never the source of truth. It can be rebuilt from version history at any time.
+FAVA Trails optimizes for a different surface: governance, provenance, and state evolution — gated promotion, supersession lineage, visibility modes, and an auditable markdown+git substrate. Default `recall` today is lexical, not semantic. A derived full-text or vector index may appear later as a **rebuildable projection** if discovery (#59) justifies it; the versioned store remains the source of truth either way. These are complementary concerns, not a claim that FAVA already ships semantic search.
 
 ### How does FAVA Trails compare to Graphiti or other temporal knowledge graphs?
 

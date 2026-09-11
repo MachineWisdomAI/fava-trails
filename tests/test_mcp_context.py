@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from argparse import Namespace
+from pathlib import Path
 
 import pytest
 
@@ -66,6 +67,16 @@ def test_compact_instructions_are_shorter_and_on_demand():
     assert "does not enforce" in compact.lower() or "prompt" in compact.lower()
 
 
+def test_compact_instructions_keep_scope_hint_fallback_before_ask():
+    compact = serialize_initialize_instructions("compact")
+    assert "FAVA_TRAILS_SCOPE_HINT" in compact
+    scope_idx = compact.find("`FAVA_TRAILS_SCOPE`")
+    yaml_idx = compact.find(".fava-trails.yaml")
+    hint_idx = compact.find("FAVA_TRAILS_SCOPE_HINT")
+    ask_idx = compact.lower().rfind("ask")
+    assert 0 <= scope_idx < yaml_idx < hint_idx < ask_idx
+
+
 def test_compact_instructions_do_not_claim_instruction_sharing():
     compact = serialize_initialize_instructions("compact")
     lowered = compact.lower()
@@ -108,7 +119,7 @@ def test_measure_mcp_context_records_method_not_a_universal_figure():
     assert report["lazy_loading"] is False
     assert report["tool_count"] == 17
     assert set(report["enabled_tools"]) == {td["name"] for td in TOOL_DEFINITIONS}
-    assert "mcp_sdk_version" in report
+    assert report["serialization"]["mcp_sdk_version"]
     assert report["recurrence"]["instructions"] == "once per initialize"
     assert "tools/list" in report["recurrence"]["tools_list"]
     assert report["instructions"]["chars"] > 0
@@ -139,25 +150,122 @@ def test_session_init_payload_is_instructions_plus_tools_json():
     assert tools_json in payload
 
 
-def test_recall_save_promote_comparison_records_regressions():
-    comparison = measure_mcp_context(surface="compact")["workflow_comparison"]
-    assert comparison["task"] == "recall/save/promote"
-    assert set(comparison["discoverable_tools"]) >= set(COMMON_WORKFLOW)
-    assert comparison["skipped_step_risk"]["get_usage_guide_optional"] is True
-    assert comparison["error_recovery"]["same_handlers"] is True
-    assert comparison["permissions"]["read_and_authoring_unchanged"] is True
-    assert comparison["server_enforced"]
-    assert comparison["client_or_prompt"]
-    assert "cross-session sharing" in comparison["not_claimed"].lower()
+def test_measure_records_candidate_provenance_not_server_as_client():
+    report = measure_mcp_context(surface="full")
+    dumped = json.dumps(report)
+    assert "fava-trails-server serialization" not in dumped
+    assert report["subject"]["package"] == "fava-trails"
+    assert report["subject"]["version"]
+    assert report["subject"]["git_commit"]
+    assert report["subject"]["role"] == "candidate"
+    assert report["client"]["name"] == "mcp.Client"
+    assert report["client"]["version"]
+    assert report["client"]["name"] != report["subject"]["package"]
+
+
+def test_compare_surfaces_includes_tested_release_and_candidate():
+    from fava_trails import mcp_context
+
+    payload = mcp_context.compare_surfaces()
+    release = payload["tested_release"]
+    assert mcp_context.ISSUE_104_TESTED_RELEASE_COMMIT.startswith("6c5278a")
+    assert release["git_commit"] == mcp_context.ISSUE_104_TESTED_RELEASE_COMMIT
+    assert release["role"] == "release"
+    assert release["package"] == "fava-trails"
+    assert release["session_init"]["tokens"] > 0
+    assert release["tokenizer"]["name"] == DEFAULT_TOKENIZER
+    assert payload["full"]["subject"]["role"] == "candidate"
+    assert payload["compact"]["subject"]["role"] == "candidate"
+    assert payload["full"]["subject"]["git_commit"] != release["git_commit"]
+
+
+def test_docs_usage_guide_and_session_init_match_current_head():
+    doc = (Path(__file__).resolve().parents[1] / "docs" / "mcp-context-overhead.md").read_text()
+    full = measure_mcp_context(surface="full")
+    compact = measure_mcp_context(surface="compact")
+    guide = full["usage_guide_on_demand"]
+    assert str(guide["chars"]) in doc
+    assert str(guide["tokens"]) in doc
+    assert str(full["session_init"]["tokens"]) in doc
+    assert str(compact["session_init"]["tokens"]) in doc
+    assert "6c5278a" in doc
+    assert full["client"]["name"] in doc
+    assert full["subject"]["version"] in doc
 
 
 def test_cmd_measure_mcp_context_prints_json(capsys, monkeypatch):
     from fava_trails.cli import cmd_measure_mcp_context
+    from fava_trails.mcp_context import ISSUE_104_TESTED_RELEASE_COMMIT
 
     monkeypatch.delenv(MCP_SURFACE_ENV, raising=False)
     rc = cmd_measure_mcp_context(Namespace(surface="both"))
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
-    assert set(payload) >= {"full", "compact", "reduction", "budget"}
+    assert set(payload) >= {"full", "compact", "reduction", "budget", "tested_release"}
     assert payload["budget"]["ratio"] == COMPACT_SESSION_INIT_BUDGET_RATIO
     assert payload["reduction"]["session_init_token_ratio"] <= COMPACT_SESSION_INIT_BUDGET_RATIO
+    assert payload["tested_release"]["git_commit"] == ISSUE_104_TESTED_RELEASE_COMMIT
+
+
+@pytest.mark.asyncio
+async def test_recall_save_promote_is_executed_on_both_surfaces(tmp_fava_home, tmp_path, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from fava_trails import server
+    from fava_trails.config import ConfigStore
+    from fava_trails.mcp_context import run_recall_save_promote_comparison
+    from fava_trails.tools import navigation
+    from fava_trails.trust_gate import TrustResult
+
+    monkeypatch.setenv("FAVA_TRAILS_DIR", str(tmp_fava_home / "trails"))
+    monkeypatch.setenv("FAVA_TRAILS_AGENT_ID", "synthetic-mcp-context")
+    monkeypatch.delenv("FAVA_TRAILS_OPERATOR", raising=False)
+    monkeypatch.setenv("FAVA_TRAILS_LOG_DIR", str(tmp_path / "logs"))
+    monkeypatch.setenv("SYNTHETIC_TRUST_GATE_KEY", "test-only-key")
+    (tmp_fava_home / "config.yaml").write_text(
+        "trails_dir: trails\ntrust_gate: llm-oneshot\npush_strategy: manual\n"
+        "trust_gate_api_key_env: SYNTHETIC_TRUST_GATE_KEY\n"
+    )
+    (tmp_fava_home / "trails" / "trust-gate-prompt.md").write_text("Synthetic review policy.\n")
+    (tmp_fava_home / ".gitignore").write_text(".jj/\n")
+
+    def git(*args):
+        import subprocess
+
+        return subprocess.run(
+            ["git", *args], cwd=tmp_fava_home, check=True, capture_output=True, text=True,
+        )
+
+    git("add", ".")
+    git("-c", "user.name=Synthetic MCP Context", "-c", "user.email=synthetic@example.invalid",
+        "commit", "-m", "Synthetic mcp-context fixture")
+    review = AsyncMock(return_value=TrustResult(
+        verdict="approve", reasoning="Synthetic evaluator result", reviewer="synthetic-reviewer",
+    ))
+    monkeypatch.setattr(navigation, "review_thought", review)
+    monkeypatch.setattr(server, "_trail_managers", {})
+    monkeypatch.setattr(server, "_trail_init_lock", None)
+    ConfigStore.reset()
+    server._prompt_cache.load_from_trails_dir(tmp_fava_home / "trails")
+
+    payload = await run_recall_save_promote_comparison()
+    assert payload["task"] == "recall/save/promote"
+    assert payload["executed"] is True
+    for surface in ("full", "compact"):
+        side = payload[surface]
+        assert side["executed"] is True
+        assert set(side["discoverability"]["present"]) >= set(COMMON_WORKFLOW)
+        assert side["session_init"]["tokens"] > 0
+        assert side["save"]["status"] == "ok"
+        assert side["recall_authoring"]["count"] == 1
+        assert side["propose"]["status"] == "ok"
+        assert side["error_recovery"]["missing_scope"]["status"] == "error"
+        assert side["error_recovery"]["invalid_save"]["failed"] is True
+        assert side["permissions"]["read_and_authoring_unchanged"] is True
+    full_skip = payload["full"]["skipped_step_risk"]
+    compact_skip = payload["compact"]["skipped_step_risk"]
+    assert full_skip["session_start_recall_in_instructions"] is True
+    assert compact_skip["session_start_recall_in_instructions"] is False
+    assert "Compact omits" not in full_skip["note"]
+    assert "Compact omits" in compact_skip["note"]
+    assert payload["full"]["propose"]["status"] == payload["compact"]["propose"]["status"]

@@ -16,33 +16,53 @@ The command serializes:
 - initialize `instructions`
 - `tools/list` items as this server advertises them (JSON, compact separators)
 
-It records tokenizer name, MCP SDK version, enabled tool names, `lazy_loading`
-(always `false`: every tool is listed at `tools/list`), and whether the cost
-recurs. Instructions are sent once per `initialize`. `tools/list` is sent once
-per list request; typical clients list once per session and only re-pay the cost
-if they refresh the catalog.
+It records FAVA package version and git commit of the measured checkout
+(candidate), the issue #104 tested release (`6c5278a40a86246014901a88417f3455a46cdfcc`),
+tokenizer name, MCP Python SDK `mcp.Client` version, enabled tool names,
+`lazy_loading` (always `false`: every tool is listed at `tools/list`), and whether
+the cost recurs. Instructions are sent once per `initialize`. `tools/list` is sent
+once per list request; typical clients list once per session and only re-pay the
+cost if they refresh the catalog.
 
 Default tokenizer: `chars/4 heuristic` (`ceil(character_count / 4)`). If
 `tiktoken` is installed, `cl100k_base` is recorded as an optional extra. Neither
 figure is a client invoice.
 
+## Provenance
+
+| Checkout | Role | FAVA version | Git commit | Client |
+| --- | --- | --- | --- | --- |
+| Issue #104 source review baseline | tested release | 0.6.1 | `6c5278a40a86246014901a88417f3455a46cdfcc` | `mcp.Client` 2.2.0 |
+| This branch | candidate | 0.6.1 | current `git rev-parse HEAD` | `mcp.Client` 2.2.0 |
+
+The tested release had no compact surface. Its full-surface payload was measured
+with the same chars/4 serializer applied to that commit's advertised initialize
+instructions and `tools/list` JSON.
+
 ## Recorded baseline
 
-Measured 2026-09-11 in this repository against MCP SDK 2.2.0, all 17 tools
-enabled, no lazy loading, tokenizer `chars/4 heuristic`, no `tiktoken`.
+Tokenizer `chars/4 heuristic`, all 17 tools enabled, no lazy loading, no `tiktoken`.
+
+Tested release (`6c5278a`, full surface only):
+
+| Instructions tokens | tools/list tokens | Session-init tokens | Session-init chars | `get_usage_guide` chars / tokens |
+| ---: | ---: | ---: | ---: | ---: |
+| 961 | 5451 | 6412 | 25647 | 10077 / 2520 |
+
+Candidate (this head, `mcp.Client` 2.2.0):
 
 | Surface | Instructions tokens | tools/list tokens | Session-init tokens | Session-init chars |
 | --- | ---: | ---: | ---: | ---: |
-| full (default) | 961 | 5451 | 6412 | 25647 |
-| compact | 161 | 3166 | 3327 | 13303 |
+| full (default) | 1135 | 5793 | 6928 | 27708 |
+| compact | 187 | 3179 | 3366 | 13458 |
 
-`get_usage_guide` body (on demand, not in session-init): 2520 heuristic tokens
-(10077 chars). An evaluator previously estimated about 6000 tokens of schemas and
-instructions versus about 1600 for a committed agent guide; that estimate was
-client-specific and is not reproduced here as a universal number.
+`get_usage_guide` body on this candidate (on demand, not in session-init): 2871
+heuristic tokens (11481 chars). An evaluator previously estimated about 6000 tokens
+of schemas and instructions versus about 1600 for a committed agent guide; that
+estimate was client-specific and is not reproduced here as a universal number.
 
-Budget, from the full session-init baseline: compact session-init tokens must be
-≤ 70% of full under the same tokenizer. This run: 3327 / 6412 ≈ 0.52. Met.
+Budget, from the candidate full session-init baseline: compact session-init tokens
+must be ≤ 70% of full under the same tokenizer. This run: 3366 / 6928 ≈ 0.49. Met.
 
 Largest full-surface source is advertised `tools/list` JSON (schemas, then
 descriptions), then initialize instructions. Compact therefore:
@@ -76,23 +96,30 @@ Unknown values log as `full` at server start so a typo does not fail the process
 
 ## recall / save / promote comparison
 
-Same task on both surfaces (catalog inspection plus shared handlers):
+Executed on both surfaces via `handle_call_tool` (same handlers) with
+`mcp.Client` 2.2.0 recorded as the client identity. Task: invalid save, missing
+scope recall, `save_thought`, authoring `recall`, `propose_truth` (Trust Gate
+review mocked). Results:
 
 | Check | full | compact |
 | --- | --- | --- |
-| Token usage (session-init, this tokenizer) | 6412 | 3327 |
+| Token usage (session-init, this tokenizer) | 6928 | 3366 |
 | Discoverability of recall, save_thought, propose_truth, get_usage_guide, list_scopes | yes | yes |
 | All 17 tools advertised | yes | yes |
 | Input schemas | full | same |
 | Advertised outputSchema | yes | omitted |
-| Session-start recall trio in initialize/tool text | yes | no; in `get_usage_guide` |
-| Promotion “mandatory” prose on propose_truth/save_thought | yes | no; in `get_usage_guide` |
-| Error recovery (missing scope hint, conflict block, schema errors) | same handlers | same handlers |
+| Executed save_thought | ok | ok |
+| Executed authoring recall after save | count 1 | count 1 |
+| Executed propose_truth | ok | ok |
+| Error recovery: missing scope | status error | status error |
+| Error recovery: save without content | failed | failed |
+| Session-start recall trio in initialize text | yes | no; in `get_usage_guide` |
+| Promotion “mandatory” prose in initialize text | yes | no; in `get_usage_guide` |
 
 Skipped-step risk on compact: if the client never calls `get_usage_guide` and
 does not inject its own guide, it may skip session-start `recall` or
-`propose_truth` after `save_thought`. The server does not invoke those steps on
-either surface.
+`propose_truth` after `save_thought`. Full initialize text still includes those
+prompts; the server does not invoke those steps on either surface.
 
 ## What the server enforces vs prompt/client behavior
 
@@ -110,7 +137,7 @@ Prompt/client behavior (not enforced by listing or instructions):
 - calling `get_usage_guide`
 - session-start recall of status/decisions/gotchas
 - deciding work is “finalized” and calling `propose_truth`
-- writing `FAVA_TRAILS_SCOPE` into `.env`
+- creating `.fava-trails.yaml` (do not write application `.env` files)
 - whether the client shows initialize instructions or re-lists tools
 
 Instructions do not provide reliable cross-session sharing. Sharing requires

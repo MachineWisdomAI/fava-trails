@@ -13,27 +13,61 @@ fava-trails install-jj
 Install FAVA Trails:
 
 ```bash
-# From PyPI (recommended)
+# From PyPI (recommended) — currently resolves published **0.6.0**
 pip install fava-trails
 
-# Or from source (for development)
+# Confirm the loaded runtime (package + module + MCP product version):
+fava-trails version
+
+# Or from source (for development / unreleased 0.6.1 RC on main)
 git clone https://github.com/MachineWisdomAI/fava-trails.git && cd fava-trails && uv sync
 ```
 
+**Version boundary:** PyPI and GitHub Releases still list **0.6.0** as latest.
+Governed identity, `mode="authoring"`, and related isolation behavior described in
+this guide and the usage guide are the **unreleased 0.6.1 release candidate** on
+`main` (this tree). Published **0.6.0** does **not** match that model. After any
+install or upgrade, run `fava-trails version` and restart the MCP client so the
+process loads the intended entrypoint. See
+[docs/runtime-and-upgrade.md](docs/runtime-and-upgrade.md) and the README
+publication note.
+
 ### LLM Configuration (for Trust Gate)
 
-The Trust Gate reviews thoughts before promotion using an LLM. By default, FAVA Trails uses [OpenRouter](https://openrouter.ai/) for unified access to 300–500+ models.
+The Trust Gate reviews thoughts before promotion using an LLM **or** an explicit
+operator approval path. Provider selection is a **data-egress choice**: under the
+shipped `llm-oneshot` policy, candidate thought content (plus selected redacted
+metadata) is transmitted to the configured destination **before** a verdict
+exists. A remote reject still means the content already left this process. There
+is no automatic pass-through/off mode and no silent fallback to another provider.
 
-**OpenRouter (default, recommended):**
+Before the first promotion on a machine, run:
+
+```bash
+fava-trails doctor
+```
+
+Doctor prints the effective policy, provider, model, destination, and a plain
+**Data egress** explanation of which candidate fields will be sent. API keys and
+credential file paths are never printed. The MCP server also logs the same notice
+at startup. Successful LLM or operator `propose_truth` paths (and credential /
+timeout failures after disclosure begins) include a secret-free
+`trust_gate_egress` object (`first_in_process: true` on the first disclosure in
+that process). Early validation failures — missing `thought_id`, missing prompt
+cache, thought not found, or prompt-resolution errors — return before disclosure
+and omit `trust_gate_egress`.
+
+**OpenRouter (default, remote egress):**
 
 1. Create a free account at https://openrouter.ai/
 2. Generate an API key at https://openrouter.ai/keys
 3. Pass it to the MCP server via the `OPENROUTER_API_KEY` environment variable
    (in your MCP client config `env` block, or in your shell profile)
 
-The default model (`google/gemini-2.5-flash`) costs ~$0.001 per review.
+The default model (`google/gemini-2.5-flash`) costs ~$0.001 per review. Missing
+cloud credentials fail closed — candidates are **not** auto-approved.
 
-**Local OpenAI-compatible endpoint (e.g. Unsloth Studio):**
+**Local OpenAI-compatible endpoint (local-only egress, e.g. Unsloth Studio):**
 
 Unsloth Studio (and similar local servers) expose authenticated OpenAI-compatible
 `/v1/chat/completions` endpoints. Point Trust Gate at them on one machine via
@@ -52,14 +86,35 @@ trust_gate_extra_body:
   enable_thinking: false
 ```
 
+Verify with `fava-trails doctor` — destination kind should be `local_endpoint`
+and `api_base` should match your loopback URL. If that endpoint is unavailable
+or misconfigured, promotion fails closed. There is **no automatic fallback** to
+OpenRouter.
+
 The key file must be a regular, non-symlink file owned by the current user with
 no group or other permissions (mode `0600`). It is read for every promotion. If
 the provider returns 401 and the file value changed, FAVA retries exactly once
 with the new value. `trust_gate_api_key_env` remains available as a fallback when
 no key file is configured (see [Unsloth API docs](https://unsloth.ai/docs/basics/api)).
-Do not hardcode host, port, model, or credentials in the engine. There is **no
-automatic fallback** to OpenRouter if the local provider fails — Trust Gate stays
-fail-closed.
+Do not hardcode host, port, model, or credentials in the engine. Do not install a
+model, select a paid provider, or supply credentials on behalf of an evaluator —
+operators choose and provision their own review backend.
+
+**Operator review path (no LLM transmission) — separate from automatic review:**
+
+`trust_gate: human` is **not** implemented as a config policy (it raises). The
+supported non-LLM path is per-call explicit operator approval:
+
+1. Run a dedicated operator-controlled MCP process with `FAVA_TRAILS_OPERATOR=1`
+   and a configured `FAVA_TRAILS_AGENT_ID` (never enable operator mode on a shared
+   authoring endpoint).
+2. Call `propose_truth(..., approval="human")` for each candidate.
+3. Provenance records `metadata.extra.approval.kind="human"`. No candidate text is
+   sent to a remote or local LLM.
+
+This keeps the approval boundary: drafts stay drafts until LLM advisory approval
+or explicit operator approval. There is no automatic pass-through that skips the
+gate.
 
 Per-machine config may contain only Trust Gate runtime fields. Effective
 precedence is machine config, then the data repo's `config.yaml`, then defaults;
@@ -107,6 +162,8 @@ Create exactly **two files** — nothing else:
 ```yaml
 trails_dir: trails
 remote_url: "https://github.com/YOUR-ORG/fava-trails-data.git"
+# bootstrap / CLI default is manual. Use immediate for multi-machine authoring
+# so successful writes auto-publish. sync only fetches/rebases — it does not push.
 push_strategy: immediate
 ```
 
@@ -137,7 +194,7 @@ jj bookmark track main@origin
 
 ### After setup
 
-Register the MCP server (see [README.md](README.md#register-the-mcp-server)), then use MCP tools (`save_thought`, `recall`, etc.) for all trail operations. Do not use `git` commands to manage thought files.
+Register the MCP server with `fava-trails register` (see [README.md](README.md#register-the-mcp-server)), then use MCP tools (`save_thought`, `recall`, etc.) for all trail operations. Do not use `git` commands to manage thought files. Direct stdio testing does not register the server for native sessions.
 
 ## Setting Up a Second Machine
 
@@ -148,7 +205,12 @@ fava-trails clone https://github.com/YOUR-ORG/fava-trails-data.git fava-trails-d
 # 2. Register the MCP server (same config, with local paths)
 ```
 
-Both machines push/pull through the same git remote. Use the `sync` MCP tool to pull latest thoughts.
+Both machines share the same git remote. The writing side must publish before
+peers can fetch: set `push_strategy: immediate`, or under `manual` (bootstrap
+default) run `jj bookmark set main -r @-` then `jj git push --bookmark main`.
+Use the `sync` MCP tool only to **pull** (fetch/rebase) latest shared truth — it
+does not publish local commits. Completed writes sit at `@-`; a bare
+`jj git push` without advancing `main` can miss them.
 
 ## Global Config Reference (`config.yaml`)
 
@@ -156,10 +218,12 @@ Both machines push/pull through the same git remote. Use the `sync` MCP tool to 
 # Required
 trails_dir: trails                        # relative to FAVA_TRAILS_DATA_REPO
 remote_url: "https://github.com/..."      # git remote URL (null if local-only)
-push_strategy: immediate                  # manual | immediate
+push_strategy: manual                     # bootstrap default: local commits only
+# push_strategy: immediate                # recommended multi-machine: auto-push after writes
+                                          # sync MCP tool never pushes — fetch/rebase only
 
-# Trust Gate
-trust_gate: llm-oneshot                   # llm-oneshot | human (future)
+# Trust Gate (shipped policy is llm-oneshot only)
+trust_gate: llm-oneshot                   # only working config policy today
 trust_gate_provider: openrouter           # any-llm provider id (openrouter | openai | ...)
 trust_gate_model: google/gemini-2.5-flash # exact model id for LLM-based review
 trust_gate_api_base: null                 # optional; set for OpenAI-compatible local endpoints
@@ -169,6 +233,11 @@ trust_gate_api_key_env: OPENROUTER_API_KEY # env var name holding the API key
 # trust_gate_extra_body: {}               # provider-specific request body
 trust_gate_timeout_secs: 120              # LLM wait; raise for slow local models (< tool_timeout_secs)
 tool_timeout_secs: 300
+# trust_gate: human  # NOT IMPLEMENTED — raises NotImplementedError at runtime
+
+# Non-LLM promotion (not a config policy): on an operator endpoint
+# (FAVA_TRAILS_OPERATOR=1 + FAVA_TRAILS_AGENT_ID), call
+# propose_truth(..., approval="human") per record.
 
 # Lifecycle hooks (optional, loaded at startup)
 hooks:
@@ -181,7 +250,10 @@ hooks:
 # Per-trail overrides (optional)
 trails:
   mw/eng/sensitive-project:
-    trust_gate_policy: human              # override for this trail
+    # trust_gate_policy inherits global llm-oneshot. Do NOT set
+    # trust_gate_policy: human — that policy is unimplemented and raises.
+    # For human-only promotion of sensitive records, use an operator
+    # endpoint and propose_truth(..., approval="human") per call.
     stale_draft_days: 30                  # tombstone drafts older than 30 days
 ```
 
@@ -189,8 +261,8 @@ trails:
 |-------|------|---------|-------------|
 | `trails_dir` | string | `trails` | Directory for trail data (relative to repo root) |
 | `remote_url` | string | `null` | Git remote URL for sync |
-| `push_strategy` | string | `manual` | `immediate` auto-pushes after writes; `manual` requires explicit sync |
-| `trust_gate` | string | `llm-oneshot` | Global trust gate policy |
+| `push_strategy` | string | `manual` | `immediate` auto-pushes after successful writes (advances `main` to `@-` then pushes); `manual` (bootstrap default) keeps commits local until the operator runs `jj bookmark set main -r @-` then `jj git push --bookmark main`. The `sync` tool only fetches/rebases and never publishes. |
+| `trust_gate` | string | `llm-oneshot` | Global trust gate policy. **Shipped working value: `llm-oneshot` only.** `human` is unimplemented (raises `NotImplementedError`). Non-LLM path is per-call `propose_truth(..., approval="human")` on an operator endpoint, not this config field. |
 | `trust_gate_provider` | string | `openrouter` | any-llm provider id (`openrouter`, `openai`, …) |
 | `trust_gate_model` | string | `google/gemini-2.5-flash` | Exact model id for LLM-based trust review |
 | `trust_gate_api_base` | string | `null` | Optional OpenAI-compatible API base (e.g. Unsloth Studio `http://127.0.0.1:<port>/v1`) |
@@ -208,7 +280,7 @@ Override global settings for specific trails via the `trails` map:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `trust_gate_policy` | string | *(inherits global)* | Override trust gate for this trail |
+| `trust_gate_policy` | string | *(inherits global)* | Override trust gate for this trail. Same constraint as global `trust_gate`: only `llm-oneshot` works today; `human` is unimplemented. Use operator `propose_truth(..., approval="human")` for non-LLM promotion. |
 | `gc_interval_snapshots` | int | `500` | Snapshots between GC runs |
 | `gc_interval_seconds` | int | `3600` | Seconds between GC runs |
 | `stale_draft_days` | int | `0` | Tombstone drafts older than N days (0 = disabled) |
@@ -274,7 +346,7 @@ hooks:
   - path: ./hooks/quality_gate.py
     points: [before_save, before_propose]
     order: 10                     # lower = runs first (default: 50)
-    fail_mode: open               # open (skip on error) | closed (halt on error)
+    fail_mode: open               # gating hooks: open=skip, closed=halt; after_* observers always skip
     config:
       min_confidence: 0.3
 
@@ -357,26 +429,34 @@ Hooks that need to query trail state receive a `TrailContext` via `event.context
 
 - `await event.context.stats()` — thought count by namespace
 - `await event.context.count(namespace=None)` — total or per-namespace count
-- `await event.context.recall(query, namespace, limit)` — search thoughts (max 50)
+- `await event.context.recall(query, namespace, limit)` — lexical substring-AND search over thoughts (max 50)
 
 ### Lifecycle Points
 
 | Point | When | Pipeline type |
 |-------|------|---------------|
 | `before_save` | Before thought is written to disk | Gating (can reject/mutate/redirect) |
-| `after_save` | After thought is committed | Observer (fire-and-forget) |
+| `after_save` | After thought is committed | Observer (awaited sequentially through completion or timeout on the caller's task; adds latency before the tool returns; at-most-once, no retry) |
 | `before_propose` | Before promotion from drafts | Gating (can reject/mutate/redirect) |
-| `after_propose` | After promotion is committed | Observer |
-| `after_supersede` | After supersession is committed | Observer |
+| `after_propose` | After promotion is committed | Observer (awaited sequentially like `after_save`) |
+| `after_supersede` | After supersession is committed | Observer (awaited sequentially like `after_save`) |
 | `on_recall` | During single-trail recall search | Gating (can filter/reorder via RecallSelect) |
 | `on_recall_mix` | After cross-trail `recall_multi` merge | Gating (can filter/reorder via RecallSelect) |
 | `on_startup` | Server startup | Startup (separate contract) |
 
 ### Error Handling
 
-- **`fail_mode: open`** (default): Hook errors/timeouts are logged and skipped — the operation proceeds
-- **`fail_mode: closed`**: Hook errors/timeouts halt the operation with an exception
+`fail_mode` is enforced on **gating** hook paths (`before_save`, `before_propose`,
+`on_recall`, `on_recall_mix`) via `run_pipeline`:
+
+- **`fail_mode: open`** (default): Gating-hook errors/timeouts are logged and skipped — the operation proceeds
+- **`fail_mode: closed`**: Gating-hook errors/timeouts halt the operation with an exception
 - Import errors with `fail_mode: closed` cause `sys.exit(1)` at startup
+
+**After-hook observers** (`after_save`, `after_propose`, `after_supersede`) are
+different: `dispatch_observer` always logs and skips timeouts/errors and does
+**not** consult `fail_mode`. Observer failures never halt the write that already
+committed; they still add sequential await latency up to each hook timeout.
 
 ### Built-in Protocols
 
@@ -458,14 +538,16 @@ hooks:
 - Thought commits live on the detached HEAD chain, not on the `main` git branch
 - `git push origin main` only pushes the git `main` bookmark — it misses all thought commits
 
-**If `push_strategy: immediate` is set** (recommended), the server auto-pushes the main bookmark after every write. No manual action needed.
+**If `push_strategy: immediate` is set** (recommended for multi-machine), the server auto-pushes the main bookmark after every successful write. No separate push step needed; push failures surface as non-fatal warnings.
 
-**If you need to push manually:**
+**If `push_strategy: manual` (bootstrap default) or you need to push manually:**
 ```bash
 # From within fava-trails-data:
 jj bookmark set main -r @-     # advance main bookmark to latest committed change
 jj git push --bookmark main    # push to remote
 ```
+
+Do **not** treat `sync` as publish: it only fetches/rebases remote shared truth.
 
 ## Data Repo Layout
 

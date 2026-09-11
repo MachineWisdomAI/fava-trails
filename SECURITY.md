@@ -6,7 +6,7 @@
 |-----------|--------------------------|
 | FAVA Trails | 0.4.0+ |
 | Python | 3.11+ |
-| JJ (Jujutsu) | 0.28.0+ |
+| JJ (Jujutsu) | 0.28.0+ (install resolves current GitHub stable; see docs/jj-compatibility.md) |
 
 Older versions do not receive security updates. Please upgrade to the latest release.
 
