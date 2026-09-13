@@ -4,13 +4,13 @@ All notable changes to FAVA Trails are documented here.
 
 ## Unreleased
 
-## [0.7.0] — merged on main, not published (candidate)
+## [0.7.0] — 2026-09-13
 
-> **Publication status:** GitHub/PyPI latest remain **0.6.0**. This tree identifies
-> as **0.7.0**. The unpublished **0.6.1** candidate identity is superseded and was
-> never tagged. A normal `pip install fava-trails` still resolves **0.6.0** until
-> an authorized tag-driven release. See
-> [docs/runtime-and-upgrade.md](docs/runtime-and-upgrade.md).
+Published on [GitHub](https://github.com/MachineWisdomAI/fava-trails/releases/tag/v0.7.0)
+and [PyPI](https://pypi.org/project/fava-trails/0.7.0/). The unpublished 0.6.1
+candidate was superseded. The gated release verified the exact wheel and sdist,
+including native MCP and upgrade from 0.6.0, then matched the published PyPI
+hashes to the candidate. See [runtime and upgrade guidance](docs/runtime-and-upgrade.md).
 
 ### Compatibility and migration
 
@@ -58,8 +58,8 @@ All notable changes to FAVA Trails are documented here.
   and release-candidate install/upgrade verification. Wheel/sdist packaging
   tests cover fresh install, upgrade from published 0.6.0, installed-entrypoint
   MCP protocol (#83), and governed recall isolation (#72). Prepares #99
-  ([PR #109](https://github.com/MachineWisdomAI/fava-trails/pull/109)); **0.7.0
-  remains unreleased on PyPI until an authorized tag is published.**
+  ([PR #109](https://github.com/MachineWisdomAI/fava-trails/pull/109)); the 0.7.0
+  publication passed these gates.
 - Issue #99 verification depth: real native MCP client registration via
   `@modelcontextprotocol/inspector` loading Claude-shaped `mcpServers` config
   (distinct from direct stdio probes); two separately configured ordinary server

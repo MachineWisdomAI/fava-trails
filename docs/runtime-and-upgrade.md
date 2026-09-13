@@ -1,11 +1,13 @@
 # Runtime versions, identity, and upgrade behavior
 
-FAVA Trails 0.7.0 (governed recall isolation from #72 / #93, MCP registration
-compatibility from #83 / #94, and later merged work on `main`) is **not yet
-published** to PyPI or a GitHub Release. Live `pip install fava-trails` still
-resolves **0.6.0** until an authorized tag-driven release runs. Treat anything
-newer on `main` as a release candidate until publication is verified. The
-unpublished 0.6.1 candidate identity is superseded by 0.7.0.
+FAVA Trails **0.7.0 was published on September 13, 2026** to
+[PyPI](https://pypi.org/project/fava-trails/0.7.0/) and
+[GitHub](https://github.com/MachineWisdomAI/fava-trails/releases/tag/v0.7.0).
+It includes governed recall isolation from #72 / #93, MCP registration
+compatibility from #83 / #94, and the subsequent feedback fixes. The release
+workflow verified the exact wheel and sdist, native MCP registration, upgrade
+from 0.6.0, and published PyPI hashes. The unpublished 0.6.1 candidate identity
+is superseded by 0.7.0. Later work on `main` is not automatically released.
 
 ## Report the loaded runtime
 
