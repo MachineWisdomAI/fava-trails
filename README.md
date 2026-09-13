@@ -13,7 +13,7 @@ Every thought, decision, and observation is stored as a markdown file with YAML 
 ## Governed recall
 
 > **Release status:** The governed visibility model below describes the **current
-> unreleased 0.6.1 tree** (release candidate on `main`). PyPI and GitHub Releases
+> unreleased 0.7.0 tree** (release candidate on `main`). PyPI and GitHub Releases
 > still list **0.6.0** as latest; that published build does **not** include the
 > later governed-read isolation / MCP registration fixes. Confirm what you loaded
 > with `fava-trails version` — see [docs/runtime-and-upgrade.md](docs/runtime-and-upgrade.md).
@@ -36,7 +36,7 @@ For a long-lived private ChatGPT connection, follow the deployment-neutral
 ## Why
 
 - **Supersession tracking** — a proposed correction leaves the original current; approved replacements make predecessors historical in default recall. Lineage is recorded; supersession does **not** prove the replacement is true.
-- **Draft isolation (0.6.1 RC)** — working thoughts stay in `drafts/`. Default governed `recall`/`get_thought` expose approved current records only; own drafts need explicit `mode="authoring"` on a configured identity. A shared MCP endpoint or shared data filesystem is one boundary, not per-caller crypto isolation. Published **0.6.0** does not match this isolation model — upgrade/check the loaded version before relying on it.
+- **Draft isolation (0.7.0 RC)** — working thoughts stay in `drafts/`. Default governed `recall`/`get_thought` expose approved current records only; own drafts need explicit `mode="authoring"` on a configured identity. A shared MCP endpoint or shared data filesystem is one boundary, not per-caller crypto isolation. Published **0.6.0** does not match this isolation model — upgrade/check the loaded version before relying on it.
 - **Trust Gate** — default policy is `llm-oneshot` (synchronous single-record rubric review). Non-LLM promotion is **not** a config toggle: on an operator endpoint use `propose_truth(..., approval="human")`. Rubric review is process control with limited context — **not** independent verification of project facts, and not a guarantee that hallucinations never enter shared truth. A reject does not mean the draft was never stored or sent for review. A separate [bounded obvious-secret preflight](docs/secret-preflight.md) refuses a small set of high-confidence credential shapes before normal write and promotion paths persist or transmit them. It is not complete DLP and does not erase already-stored records.
 - **Lexical recall** — `recall` matches lowercased whitespace-separated query tokens as substrings across content and selected metadata (AND). It is not semantic similarity search. See [docs/retrieval-baseline.md](docs/retrieval-baseline.md).
 - **Full lineage** — every thought carries who wrote it, when, and why it changed.
@@ -62,8 +62,8 @@ pip install fava-trails
 ```
 
 **Publication note:** PyPI and GitHub Releases still list **0.6.0** as latest.
-Main identifies as **0.6.1** with governed-recall and MCP registration fixes
-**merged but unreleased**. Confirm what you actually loaded with
+Main identifies as **0.7.0** with governed-recall, MCP registration, and later
+fixes **merged but unreleased**. Confirm what you actually loaded with
 `fava-trails version` (see [docs/runtime-and-upgrade.md](docs/runtime-and-upgrade.md)).
 Local `uv run --directory …` or vendor checkout selectors can keep an older tree
 active after a package upgrade — restart the MCP client registration after

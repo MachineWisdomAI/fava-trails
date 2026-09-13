@@ -1,10 +1,11 @@
 # Runtime versions, identity, and upgrade behavior
 
-FAVA Trails 0.6.1 fixes (governed recall isolation from #72 / #93 and MCP
-registration compatibility from #83 / #94) are **merged on `main` but not yet
+FAVA Trails 0.7.0 (governed recall isolation from #72 / #93, MCP registration
+compatibility from #83 / #94, and later merged work on `main`) is **not yet
 published** to PyPI or a GitHub Release. Live `pip install fava-trails` still
 resolves **0.6.0** until an authorized tag-driven release runs. Treat anything
-newer on `main` as a release candidate until publication is verified.
+newer on `main` as a release candidate until publication is verified. The
+unpublished 0.6.1 candidate identity is superseded by 0.7.0.
 
 ## Report the loaded runtime
 
@@ -22,12 +23,12 @@ Example (values vary by install):
 
 ```text
 FAVA Trails product: fava-trails
-Package version:    0.6.1
-Module version:     0.6.1
+Package version:    0.7.0
+Module version:     0.7.0
 Module path:        /…/site-packages/fava_trails/__init__.py
 Source:             installed
 MCP SDK version:    2.2.0
-Handshake product version (serverInfo.version): 0.6.1
+Handshake product version (serverInfo.version): 0.7.0
 ```
 
 | Field | Meaning |
@@ -45,7 +46,7 @@ Handshake product version (serverInfo.version): 0.6.1
 On stdio `initialize`, FAVA advertises:
 
 - `serverInfo.name`: `fava-trails`
-- `serverInfo.version`: **FAVA product version** (for example `0.6.1`)
+- `serverInfo.version`: **FAVA product version** (for example `0.7.0`)
 
 The MCP Python SDK has its own distribution version (for example `2.2.0`). A
 client UI that shows a single "server version" may be reading either product
@@ -178,6 +179,6 @@ unreleased**. After publication, confirm PyPI and GitHub release metadata match
 the tested candidate, then install with:
 
 ```bash
-pip install -U 'fava-trails>=0.6.1'
+pip install -U 'fava-trails>=0.7.0'
 fava-trails version
 ```

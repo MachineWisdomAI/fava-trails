@@ -10,4 +10,4 @@ except ImportError:  # pragma: no cover
 try:
     __version__ = version("fava-trails")
 except PackageNotFoundError:  # pragma: no cover - source tree without install metadata
-    __version__ = "0.6.1"
+    __version__ = "0.7.0"
