@@ -161,7 +161,7 @@ def test_candidate_artifacts_support_fresh_install_and_upgrade_from_0_6_0(tmp_pa
     fresh_py = fresh / ".venv" / "bin" / "python"
     _install_into_venv(uv, fresh_py, wheel)
     fresh_probe = _probe_runtime(fresh_py)
-    assert fresh_probe.split()[0] == "0.6.1"
+    assert fresh_probe.split()[0] == "0.7.0"
     version_cmd = subprocess.run(
         [str(fresh / ".venv" / "bin" / "fava-trails"), "version"],
         capture_output=True,
@@ -170,7 +170,7 @@ def test_candidate_artifacts_support_fresh_install_and_upgrade_from_0_6_0(tmp_pa
     )
     assert version_cmd.returncode == 0, version_cmd.stdout + version_cmd.stderr
     assert "Package version:" in version_cmd.stdout
-    assert "0.6.1" in version_cmd.stdout
+    assert "0.7.0" in version_cmd.stdout
     assert "MCP SDK version:" in version_cmd.stdout
     assert "Source:             installed" in version_cmd.stdout
 
@@ -193,7 +193,7 @@ def test_candidate_artifacts_support_fresh_install_and_upgrade_from_0_6_0(tmp_pa
     assert before == "0.6.0"
     _install_into_venv(uv, upgrade_py, wheel, upgrade=True)
     after = _probe_runtime(upgrade_py)
-    assert after.split()[0] == "0.6.1"
+    assert after.split()[0] == "0.7.0"
 
     # Fresh sdist install of the same candidate sdist bytes
     sdist_env = tmp_path / "fresh-sdist"
@@ -202,4 +202,4 @@ def test_candidate_artifacts_support_fresh_install_and_upgrade_from_0_6_0(tmp_pa
     sdist_py = sdist_env / ".venv" / "bin" / "python"
     _install_into_venv(uv, sdist_py, sdist)
     sdist_probe = _probe_runtime(sdist_py)
-    assert sdist_probe.split()[0] == "0.6.1"
+    assert sdist_probe.split()[0] == "0.7.0"

@@ -19,13 +19,13 @@ pip install fava-trails
 # Confirm the loaded runtime (package + module + MCP product version):
 fava-trails version
 
-# Or from source (for development / unreleased 0.6.1 RC on main)
+# Or from source (for development / unreleased 0.7.0 RC on main)
 git clone https://github.com/MachineWisdomAI/fava-trails.git && cd fava-trails && uv sync
 ```
 
 **Version boundary:** PyPI and GitHub Releases still list **0.6.0** as latest.
 Governed identity, `mode="authoring"`, and related isolation behavior described in
-this guide and the usage guide are the **unreleased 0.6.1 release candidate** on
+this guide and the usage guide are the **unreleased 0.7.0 release candidate** on
 `main` (this tree). Published **0.6.0** does **not** match that model. After any
 install or upgrade, run `fava-trails version` and restart the MCP client so the
 process loads the intended entrypoint. See

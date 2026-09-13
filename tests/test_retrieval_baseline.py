@@ -16,7 +16,7 @@ from fava_trails.governance import Principal, Visibility
 from fava_trails.models import SourceType
 from fava_trails.trust_gate import TrustResult
 
-PRODUCT_VERSION = "0.6.1"
+PRODUCT_VERSION = "0.7.0"
 
 # Stable fixture ids for matrix rows. Stored only in metadata.extra (not searchable).
 FIXTURE_EXACT = "exact-jj"
@@ -145,7 +145,7 @@ async def baseline_corpus(tmp_fava_home, monkeypatch):
 
 
 def test_documented_product_version_matches_package():
-    """Baseline doc pins 0.6.1; fail if package metadata drifts without doc update."""
+    """Baseline doc pins 0.7.0; fail if package metadata drifts without doc update."""
     try:
         installed = version("fava-trails")
     except PackageNotFoundError:

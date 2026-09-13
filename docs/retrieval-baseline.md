@@ -47,7 +47,7 @@ See [governed-recall.md](governed-recall.md).
 
 | Field | Value |
 | --- | --- |
-| Product version | `0.6.1` (`pyproject.toml`) — **unreleased** release candidate on this tree / `main`; PyPI and GitHub Releases latest remain **0.6.0** |
+| Product version | `0.7.0` (`pyproject.toml`) — **unreleased** release candidate on this tree / `main`; PyPI and GitHub Releases latest remain **0.6.0** |
 | Git baseline (matrix authoring) | `54692dbaae7ca4fdcc80a4a8e26018411541207f` (PR #110 repair for review `5161963110` on `automation/fava-trails-100`). Prior SHA rows (`36d6bbb`, `10b937d`, `32b5b82`, `187f523`) are historical only. |
 | Runner | `uv run pytest tests/test_retrieval_baseline.py -v` |
 | Issue | [#100](https://github.com/MachineWisdomAI/fava-trails/issues/100) |
@@ -83,7 +83,7 @@ Legend: **hit** = listed fixture ids present; **miss** = empty fixture-id set;
 "Expected" is the behavior of the current matcher, not a wishlist. Cells list
 **complete** fixture-id sets under the stated mode.
 
-| Case | Query | Mode / filters | Expected (complete fixture ids) | Actual (0.6.1 matcher) | Notes |
+| Case | Query | Mode / filters | Expected (complete fixture ids) | Actual (0.7.0 matcher) | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Exact token | `colocated` | governed | `{exact-jj}` | `{exact-jj}` | Baseline true positive |
 | Multi-token AND | `JJ Git` | governed | `{exact-jj}` | `{exact-jj}` | Non-contiguous tokens OK |

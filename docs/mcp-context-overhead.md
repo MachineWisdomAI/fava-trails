@@ -33,7 +33,7 @@ figure is a client invoice.
 | Checkout | Role | FAVA version | Git commit | Client |
 | --- | --- | --- | --- | --- |
 | Issue #104 source review baseline | tested release (frozen artifact) | 0.6.1 | `6c5278a40a86246014901a88417f3455a46cdfcc` | `mcp.Client` 2.2.0 (frozen) |
-| This branch | candidate | 0.6.1 | current `git rev-parse HEAD` | live `mcp.Client` (currently 2.2.0) |
+| This branch | candidate | 0.7.0 | current `git rev-parse HEAD` | live `mcp.Client` (currently 2.2.0) |
 
 The tested release had no compact surface. Its full-surface payload, enabled tool
 names, lazy-loading flag, recurrence, tokenizer, and client version are stored in
