@@ -49,3 +49,14 @@ jobs:
         run: uv run pytest -v
         env:
           JJ_CONFIG: /dev/null
+
+  required-test:
+    name: test
+    if: ${{ always() }}
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify test matrix
+        env:
+          MATRIX_RESULT: ${{ needs.test.result }}
+        run: test "$MATRIX_RESULT" = success
