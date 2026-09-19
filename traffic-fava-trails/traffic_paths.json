@@ -2,8 +2,8 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 17,
-    "uniques": 9
+    "count": 19,
+    "uniques": 11
   },
   {
     "path": "/MachineWisdomAI/fava-trails/actions",
@@ -14,6 +14,12 @@
   {
     "path": "/MachineWisdomAI/fava-trails/blob/main/docs/fava_trails_faq.md",
     "title": "/blob/main/docs/fava_trails_faq.md",
+    "count": 2,
+    "uniques": 2
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pulls",
+    "title": "/pulls",
     "count": 2,
     "uniques": 2
   },
@@ -50,12 +56,6 @@
   {
     "path": "/MachineWisdomAI/fava-trails/issues/54",
     "title": "/issues/54",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pulls",
-    "title": "/pulls",
     "count": 1,
     "uniques": 1
   }
