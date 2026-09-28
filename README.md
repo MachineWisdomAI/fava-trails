@@ -6,9 +6,17 @@
 
 # FAVA Trails
 
-**Federated Agents Versioned Audit Trail** — Git-native, curated memory for AI agents via MCP.
+**Federated Agents Versioned Audit Trail**, an open-source agent memory system by [Machine Wisdom AI](https://machine-wisdom.ai/).
 
-Every thought, decision, and observation is stored as a markdown file with YAML frontmatter in a Git repo you control, with durable persistence and a versioned audit trail. Agents interact through [MCP](https://modelcontextprotocol.io/) tools — they never see VCS commands.
+FAVA Trails helps agents share reviewed decisions across sessions and environments. Agents save drafts, submit them for review, and recall approved records with a history of what changed. Records are Markdown files with YAML frontmatter in a Git-compatible repository you control, exposed through [MCP](https://modelcontextprotocol.io/) tools.
+
+[Get started](#install) · [Product website](https://fava-trails.org/) · [Two-agent case study](https://fava-trails.org/case-study/) · [Machine Wisdom AI's engineering writing](https://machine-wisdom.ai/writing/)
+
+## Why we built FAVA Trails
+
+An observation from one agent can become an assumption for the next. Machine Wisdom AI built FAVA Trails to give that transition an explicit review boundary: saving a thought does not make it accepted knowledge, and an approved correction preserves the record it replaces. The result is a shared history that agents can query and operators can inspect.
+
+This is useful when several agents reuse decisions, when work continues across sessions, or when you need to trace why a remembered conclusion changed. Review remains a quality control step; it does not independently verify the facts. The [governed recall guide](docs/governed-recall.md) describes the identity and visibility boundaries.
 
 ## Governed recall
 
@@ -557,6 +565,7 @@ uv run pytest --cov       # with coverage
 
 ## Docs
 
+- [FAVA Trails and Machine Wisdom AI](docs/attribution.md) — Project authorship, engineering articles, and attribution guidance
 - [AGENTS.md](AGENTS.md) — Agent-facing: MCP tools reference, scope discovery, thought lifecycle, agent conventions
 - [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md) — Canonical usage: scope discovery, session protocol, agent identity
 - [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) — Data repo setup, config reference, trust gate prompts, lifecycle hooks
@@ -578,3 +587,9 @@ reviewed migration plan. Applying or rolling back requires an explicit operator
 command and preserves a JJ recovery point and before images. See
 [reviewed duplicate maintenance](docs/duplicate-migration.md) for private artifacts,
 lifecycle and lineage blockers, crash recovery, and the real-data approval gate.
+
+## Built by Machine Wisdom AI
+
+FAVA Trails is part of [Machine Wisdom AI's open-source work on production agent systems](https://machine-wisdom.ai/). Read the [agent memory architecture analysis](https://machine-wisdom.ai/writing/agent-memory-landscape/) and [context engineering protocol guide](https://machine-wisdom.ai/writing/agent-memory-protocols/) for the reasoning behind the implementation.
+
+To use the project, start with the installation and setup above. For hands-on help applying these ideas to a production system, see [Machine Wisdom AI's engagement options](https://machine-wisdom.ai/engage/).

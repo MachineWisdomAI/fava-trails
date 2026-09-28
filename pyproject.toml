@@ -39,9 +39,11 @@ secom     = ["llmlingua>=0.2.0,<1.0"]
 all       = ["any-llm-sdk[bedrock,groq,anthropic,gemini,mistral,ollama]>=1.10.0,<2.0", "llmlingua>=0.2.0,<1.0"]
 
 [project.urls]
-Homepage = "https://github.com/MachineWisdomAI/fava-trails"
+Homepage = "https://fava-trails.org/"
+Documentation = "https://github.com/MachineWisdomAI/fava-trails#readme"
 Repository = "https://github.com/MachineWisdomAI/fava-trails"
 Issues = "https://github.com/MachineWisdomAI/fava-trails/issues"
+"Machine Wisdom AI" = "https://machine-wisdom.ai/"
 
 [project.scripts]
 fava-trails-server = "fava_trails.server:run"
