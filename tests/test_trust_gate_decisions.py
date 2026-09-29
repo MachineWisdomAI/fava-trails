@@ -35,7 +35,12 @@ from fava_trails.tools.navigation import handle_propose_truth
 from fava_trails.trust_gate import (
     TrustGateConfigError,
     TrustGatePromptCache,
+    format_trust_gate_egress_notice,
+    reset_trust_gate_egress_disclosure_state,
     review_thought_decisions,
+)
+from fava_trails.trust_gate import (
+    describe_trust_gate_egress as describe_structured_egress,
 )
 
 JEV_MODEL = "typesafe/jev-1.13"
@@ -712,12 +717,6 @@ def test_doctor_decisions_custom_api_base_discloses_configured_destination(
 # disclosure, and secret-free destination redaction shipped for llm-oneshot,
 # and its disclosure enumerates the full scope-resolved Trust Gate prompt, the
 # full candidate body, and the exact selected metadata fields sent.
-
-from fava_trails.trust_gate import (  # noqa: E402
-    describe_trust_gate_egress as describe_structured_egress,
-    format_trust_gate_egress_notice,
-    reset_trust_gate_egress_disclosure_state,
-)
 
 
 def _decisions_global_config(**overrides: Any) -> GlobalConfig:
