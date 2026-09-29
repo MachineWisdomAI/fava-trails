@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
@@ -196,7 +197,7 @@ class TrailConfig(BaseModel):
 
     name: str
     default_namespace: str = DEFAULT_NAMESPACE
-    trust_gate_policy: str = "llm-oneshot"  # llm-oneshot | human (future)
+    trust_gate_policy: str = "llm-oneshot"  # llm-oneshot | decisions | human (future)
     gc_interval_snapshots: int = 500
     gc_interval_seconds: int = 3600
     stale_draft_days: int = 0  # 0 = disabled; >0 = tombstone drafts older than N days
@@ -213,13 +214,58 @@ class TrailConfig(BaseModel):
         return v
 
 
+class TrustGateDecisionsConfig(BaseModel):
+    """Explicit OpenRouter Decisions (Jev) reviewer settings.
+
+    Used only when the Trust Gate policy is ``decisions``. The operator
+    supplies one typed Noul question (a yes/no proposition about the thought
+    under review) and the probability threshold at or above which the review
+    approves. Threshold calibration and default selection belong to a later
+    ticket; the values here are operator-owned configuration, not defaults.
+    """
+
+    trust_gate_noul_question: str = ""
+    trust_gate_noul_threshold: float = 0.5
+
+    @field_validator("trust_gate_noul_question")
+    @classmethod
+    def strip_noul_question(cls, v: str) -> str:
+        if not isinstance(v, str):
+            raise ValueError("trust_gate_noul_question must be a string")
+        return v.strip()
+
+    @field_validator("trust_gate_noul_threshold")
+    @classmethod
+    def validate_noul_threshold(cls, v: float) -> float:
+        if not isinstance(v, (int, float)) or isinstance(v, bool):
+            raise ValueError("trust_gate_noul_threshold must be a number")
+        v = float(v)
+        if not math.isfinite(v):
+            raise ValueError("trust_gate_noul_threshold must be a finite number")
+        if not (0.0 <= v <= 1.0):
+            raise ValueError("trust_gate_noul_threshold must be within [0, 1]")
+        return v
+
+    def validate_for_decisions_policy(self) -> None:
+        """Fail early when the ``decisions`` policy lacks a usable question.
+
+        Threshold shape is always enforced by the field validator; the
+        question may stay empty while the policy is not ``decisions``.
+        """
+        if not self.trust_gate_noul_question:
+            raise ValueError(
+                "trust_gate_decisions_config.trust_gate_noul_question must be a "
+                "non-empty string when trust_gate is 'decisions'"
+            )
+
+
 class GlobalConfig(BaseModel):
     """Global FAVA Trail configuration."""
 
     trails_dir: str = "trails"
     remote_url: str | None = None
     push_strategy: str = "manual"  # manual | immediate
-    trust_gate: str = "llm-oneshot"  # llm-oneshot | human (future)
+    trust_gate: str = "llm-oneshot"  # llm-oneshot | decisions | human (future)
     # Provider-neutral Trust Gate LLM settings (default: OpenRouter).
     trust_gate_provider: str = "openrouter"
     trust_gate_model: str = "google/gemini-2.5-flash"
@@ -241,6 +287,12 @@ class GlobalConfig(BaseModel):
     # to recover from a hung provider before the session times out. 0 = disabled.
     # Slow local quantized models may need a higher value; keep it below tool_timeout_secs.
     trust_gate_timeout_secs: NonNegativeInt = 120
+    # Explicit OpenRouter Decisions (Jev) reviewer settings, used only when
+    # trust_gate == "decisions". Machine config may override the whole block;
+    # the data repo owns durable defaults.
+    trust_gate_decisions_config: TrustGateDecisionsConfig = Field(
+        default_factory=TrustGateDecisionsConfig
+    )
     # Timeout for an entire MCP tool call (outermost guard covering all tools).
     # Catches jj hangs, slow syncs, and any other unanticipated blocking.
     # Should be generous — set 0 to disable.
@@ -313,20 +365,33 @@ class GlobalConfig(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def decisions_policy_requires_noul_question(self) -> GlobalConfig:
+        """Fail closed at config load when 'decisions' lacks a usable question.
+
+        Shared by doctor, server, gateway, and tunnel startup so every entry
+        point rejects the same incomplete configuration before transmission.
+        """
+        if self.trust_gate == "decisions":
+            self.trust_gate_decisions_config.validate_for_decisions_policy()
+        return self
+
     def validate_trust_gate_runtime(self) -> str:
         """Validate Trust Gate provider configuration for startup/preflight.
 
         Returns the resolved API-key environment variable name. Raises
         ``ValueError`` when the typed provider/model/key-env contract is
-        incomplete for ``llm-oneshot``.
+        incomplete for ``llm-oneshot`` or ``decisions``.
 
         ``trust_gate_api_base`` remains optional at this layer: hosted providers
         (OpenRouter, OpenAI, Anthropic, etc.) can omit it and rely on any-llm
         defaults. Local OpenAI-compatible targets (e.g. Unsloth Studio) still
         need operators to set a base URL in config; that is documented, not
-        hard-required for every non-OpenRouter provider.
+        hard-required for every non-OpenRouter provider. For the ``decisions``
+        policy the base URL points at the Decisions API root (default
+        ``https://openrouter.ai/api``).
         """
-        if self.trust_gate != "llm-oneshot":
+        if self.trust_gate not in ("llm-oneshot", "decisions"):
             return self.resolve_trust_gate_api_key_env()
 
         provider = self.trust_gate_provider
@@ -335,6 +400,9 @@ class GlobalConfig(BaseModel):
             raise ValueError("trust_gate_provider must be a non-empty string")
         if not model:
             raise ValueError("trust_gate_model must be a non-empty string")
+
+        if self.trust_gate == "decisions":
+            self.trust_gate_decisions_config.validate_for_decisions_policy()
 
         key_env = self.resolve_trust_gate_api_key_env()
         if not key_env:

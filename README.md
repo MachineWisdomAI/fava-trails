@@ -321,6 +321,19 @@ Environment variables:
 
 **LLM Provider:** FAVA Trails uses [any-llm-sdk](https://github.com/mozilla-ai/any-llm) for unified LLM access. OpenRouter is the default Trust Gate provider. To use a local OpenAI-compatible server (Unsloth Studio, vLLM, etc.) on one machine, put its Trust Gate runtime fields in `$XDG_CONFIG_HOME/fava-trails/config.yaml` (default `~/.config/fava-trails/config.yaml`). A credential file configured with `trust_gate_api_key_file` takes precedence over the environment and must be a regular, non-symlink, owner-only file. Slow local quantized models may need a higher `trust_gate_timeout_secs` (still below `tool_timeout_secs`). There is no automatic fallback between providers.
 
+**Decisions policy (OpenRouter Jev):** Set `trust_gate: decisions` to review promotions through [OpenRouter's Decisions API](https://openrouter.ai/blog/insights/what-is-jev/) instead of a chat completion. The reviewer is TypeSafe's Jev decision model, addressed by its exact supported identifier or alias (`typesafe/jev-1.13` pinned, `~typesafe/jev-latest` tracking). One typed **Noul** question — the probability that a yes/no proposition holds — is submitted per review with the full scope-resolved Trust Gate prompt, full thought body, and the same selected metadata as `llm-oneshot` (`agent_id` and `metadata.extra` excluded). Probabilities at or above `trust_gate_noul_threshold` approve; lower probabilities reject. Jev returns no reasoning, so provenance records the calibrated probability and threshold — never fabricated rationale. Invalid responses, missing answers, out-of-range probabilities, authentication/connection failures, and timeouts fail closed; there is no fallback to another reviewer.
+
+```yaml
+trust_gate: decisions
+trust_gate_provider: openrouter
+trust_gate_model: typesafe/jev-1.13       # exact supported id or ~alias
+trust_gate_decisions_config:
+  trust_gate_noul_question: "Does this thought belong in the permanent institutional record?"
+  trust_gate_noul_threshold: 0.9          # finite, within [0, 1]
+```
+
+The Decisions endpoint defaults to `https://openrouter.ai/api/alpha/decisions`; `trust_gate_api_base` overrides the API root (e.g. for a test double). Credentials reuse `trust_gate_api_key_env` / `trust_gate_api_key_file`. `trust_gate_decisions_config` is a Trust Gate runtime field: the per-machine config may override the whole block, while the data repo owns durable defaults. `llm-oneshot` remains the default policy and stays fully operational; threshold calibration and default selection ship in a later ticket. `fava-trails doctor` and tunnel gateway startup disclose the destination and remote OpenRouter egress without secrets.
+
 The server reads `$FAVA_TRAILS_DATA_REPO/config.yaml` for global settings. Minimal `config.yaml`:
 
 ```yaml

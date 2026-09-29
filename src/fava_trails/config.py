@@ -28,6 +28,7 @@ MACHINE_TRUST_GATE_KEYS = frozenset({
     "trust_gate_api_key_file",
     "trust_gate_timeout_secs",
     "trust_gate_extra_body",
+    "trust_gate_decisions_config",
 })
 
 # Scope path segment: alphanumeric + hyphens/dots/underscores, starts with alphanumeric

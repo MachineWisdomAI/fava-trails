@@ -4,6 +4,9 @@ All notable changes to FAVA Trails are documented here.
 
 ## Unreleased
 
+### Added
+- Explicit `decisions` Trust Gate policy: review and promote thoughts through OpenRouter's Decisions API (TypeSafe Jev) with one typed Noul question and an operator-configured threshold under `trust_gate_decisions_config` (`trust_gate_noul_question`, `trust_gate_noul_threshold`). Approves at-or-above threshold and rejects below through `propose_truth`, persists policy/provider/model/Noul-probability/threshold/timestamp/approval-kind provenance without fabricated reasoning, fails closed on invalid responses, auth/connection failures, and timeouts, and discloses secret-free destination/egress diagnostics in doctor and tunnel gateway startup. `llm-oneshot` remains the default. Implements #124.
+
 ### Changed
 - Support MCP SDK 2.2 with explicit low-level handlers, preserving tool schemas, annotations, input/output validation, structured results, and Markdown usage guidance over stdio and Streamable HTTP. Adds installed-wheel protocol tests for legacy initialization and current SDK clients. Resolves #83.
 

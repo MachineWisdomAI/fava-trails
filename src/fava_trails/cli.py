@@ -601,7 +601,13 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             provider_line += f" api_base={api_base}"
         print(provider_line)
 
-        if trust_gate_policy == "llm-oneshot":
+        if trust_gate_policy == "decisions":
+            from .decisions import decisions_endpoint, describe_trust_gate_egress
+
+            print(f"Destination:  {decisions_endpoint(api_base)}")
+            print(f"  Egress:     {describe_trust_gate_egress(api_base)}")
+
+        if trust_gate_policy in ("llm-oneshot", "decisions"):
             try:
                 load_trust_gate_api_key(global_config)
                 credential_error: ValueError | None = None

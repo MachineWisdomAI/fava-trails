@@ -13,6 +13,7 @@ from __future__ import annotations
 import html
 import json
 import logging
+import math
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -21,6 +22,7 @@ from typing import Literal
 import yaml
 from any_llm.exceptions import AnyLLMError, ProviderError
 
+from .decisions import DecisionsClient, DecisionsError
 from .llm import LLMClient
 from .models import ThoughtRecord
 
@@ -39,7 +41,7 @@ class TrustResult:
 
     verdict: Literal["approve", "reject", "error"]
     reasoning: str
-    reviewer: str  # "llm-oneshot:<model>" or "human:<user_id>"
+    reviewer: str  # "llm-oneshot:<model>", "decisions:<model>", or "human:<user_id>"
     reviewed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     confidence: float | None = None
     # Provider selected for the review (e.g. "openrouter", "openai"). Optional
@@ -48,6 +50,12 @@ class TrustResult:
     # Model identifier returned by the provider (may differ from configured id).
     model: str | None = None
     approval_kind: Literal["llm_advisory", "human"] = "llm_advisory"
+    # Review policy that produced this result ("llm-oneshot", "decisions").
+    policy: str | None = None
+    # Decisions policy provenance: calibrated Jev Noul probability and the
+    # operator-configured threshold it was compared against.
+    noul_probability: float | None = None
+    threshold: float | None = None
 
 
 class TrustGatePromptCache:
@@ -286,8 +294,16 @@ async def review_thought(
             "See Spec 3 for planned approval channels (CLI, PR/GHA, MCP tools)."
         )
 
+    if policy == "decisions":
+        raise TrustGateConfigError(
+            "trust_gate: the 'decisions' policy uses review_thought_decisions(); "
+            "review_thought() implements 'llm-oneshot' only."
+        )
+
     if policy != "llm-oneshot":
-        raise TrustGateConfigError(f"Unknown trust gate policy: {policy!r}. Available: 'llm-oneshot'.")
+        raise TrustGateConfigError(
+            f"Unknown trust gate policy: {policy!r}. Available: 'llm-oneshot', 'decisions'."
+        )
 
     system_msg, user_msg = _build_review_payload(prompt, record, trail_name=trail_name)
     # Keep reviewer shape stable for backward compatibility; provider/model are
@@ -369,4 +385,127 @@ async def review_thought(
         reviewer=reviewer_id,
         provider=provider,
         model=model,
+    )
+
+
+def _validate_decisions_review_inputs(question: str, threshold: float) -> None:
+    """Validate the Noul question and threshold before any transmission.
+
+    Raises TrustGateConfigError so misconfiguration surfaces as an operator
+    error instead of a recorded review outcome.
+    """
+    if not isinstance(question, str) or not question.strip():
+        raise TrustGateConfigError(
+            "trust_gate_decisions_config.trust_gate_noul_question must be a "
+            "non-empty string before a Decisions review can be transmitted"
+        )
+    if (
+        isinstance(threshold, bool)
+        or not isinstance(threshold, (int, float))
+        or not math.isfinite(float(threshold))
+        or not (0.0 <= float(threshold) <= 1.0)
+    ):
+        raise TrustGateConfigError(
+            "trust_gate_decisions_config.trust_gate_noul_threshold must be a "
+            f"finite number within [0, 1]; got {threshold!r}"
+        )
+
+
+def _build_decisions_state(
+    prompt: str,
+    record: ThoughtRecord,
+    *,
+    trail_name: str | None = None,
+) -> dict:
+    """Build the Decisions ``state`` payload.
+
+    Sends the full scope-resolved Trust Gate prompt, the full thought body, and
+    the same selected metadata as ``llm-oneshot`` (agent_id and metadata.extra
+    excluded). The state is structured JSON, so untrusted content is escaped
+    the same way as the chat payload to keep injection surface identical.
+    """
+    redacted_meta = _redact_metadata(record, trail_name=trail_name)
+    return {
+        "review_instructions": prompt,
+        "thought_under_review": html.escape(record.content, quote=False),
+        "thought_metadata": html.escape(
+            yaml.dump(redacted_meta, default_flow_style=False, sort_keys=False),
+            quote=False,
+        ),
+    }
+
+
+async def review_thought_decisions(
+    record: ThoughtRecord,
+    prompt: str,
+    model: str,
+    client: DecisionsClient,
+    *,
+    question: str,
+    threshold: float,
+    trail_name: str | None = None,
+) -> TrustResult:
+    """Review a thought through OpenRouter Decisions (Jev) with one Noul question.
+
+    Approves when the returned Noul probability is at or above ``threshold``;
+    rejects when it is below. Jev returns no reasoning, so the recorded
+    reasoning is a factual statement of the probability and threshold — never
+    fabricated model rationale. Every transport, contract, or range failure
+    fails closed with verdict ``error`` and never contacts another reviewer.
+    """
+    _validate_decisions_review_inputs(question, threshold)
+    threshold = float(threshold)
+
+    reviewer_id = f"decisions:{model}"
+    provider = getattr(client, "provider", None)
+    state = _build_decisions_state(prompt, record, trail_name=trail_name)
+
+    try:
+        answer = await client.ask_noul(model=model, state=state, question=question)
+    except DecisionsError as e:
+        return TrustResult(
+            verdict="error",
+            reasoning=f"Decisions review failed closed: {e}",
+            reviewer=reviewer_id,
+            provider=provider,
+            model=model,
+            policy="decisions",
+            threshold=threshold,
+        )
+    except Exception as e:
+        return TrustResult(
+            verdict="error",
+            reasoning=f"Unexpected error: {type(e).__name__}: {e}",
+            reviewer=reviewer_id,
+            provider=provider,
+            model=model,
+            policy="decisions",
+            threshold=threshold,
+        )
+
+    approved = answer.probability >= threshold
+    if approved:
+        reasoning = (
+            f"Jev Noul probability {answer.probability} is at or above the "
+            f"configured threshold {threshold}. The Decisions response carries "
+            "no reasoning; none is fabricated."
+        )
+    else:
+        reasoning = (
+            f"Jev Noul probability {answer.probability} is below the configured "
+            f"threshold {threshold}. The Decisions response carries no reasoning; "
+            "none is fabricated."
+        )
+
+    return TrustResult(
+        verdict="approve" if approved else "reject",
+        reasoning=reasoning,
+        reviewer=reviewer_id,
+        # Persist the configured reviewer provider (the transmission destination,
+        # e.g. "openrouter"); the served model snapshot records what answered.
+        provider=provider or answer.provider,
+        model=answer.model or model,
+        policy="decisions",
+        noul_probability=answer.probability,
+        threshold=threshold,
     )
