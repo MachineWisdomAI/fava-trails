@@ -327,8 +327,9 @@ def test_global_config_timeout_rejects_negative():
 def test_global_config_trust_gate_provider_defaults():
     """OpenRouter remains the default Trust Gate provider configuration."""
     config = GlobalConfig()
+    assert config.trust_gate == "decisions"
     assert config.trust_gate_provider == "openrouter"
-    assert config.trust_gate_model == "google/gemini-2.5-flash"
+    assert config.trust_gate_model == "~typesafe/jev-latest"
     assert config.trust_gate_api_base is None
     assert config.trust_gate_api_key_env is None
     assert config.openrouter_api_key_env == "OPENROUTER_API_KEY"
@@ -353,6 +354,7 @@ def test_global_config_legacy_openrouter_key_env_still_loads():
 def test_global_config_local_openai_compatible_fields():
     """Unsloth-style local provider config is expressible."""
     config = GlobalConfig(
+        trust_gate="llm-oneshot",
         trust_gate_provider="openai",
         trust_gate_model="my-local-gguf",
         trust_gate_api_base="http://127.0.0.1:8000/v1",

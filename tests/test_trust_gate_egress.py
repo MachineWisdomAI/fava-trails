@@ -54,11 +54,12 @@ def openai_server():
 
 def test_describe_openrouter_default_is_remote_egress_without_secrets():
     notice = describe_trust_gate_egress(GlobalConfig())
-    assert notice["policy"] == "llm-oneshot"
+    assert notice["policy"] == "decisions"
     assert notice["provider"] == "openrouter"
-    assert notice["model"] == "google/gemini-2.5-flash"
+    assert notice["model"] == "~typesafe/jev-latest"
     assert notice["destination_kind"] == "remote_provider"
     assert "openrouter" in notice["destination"].lower()
+    assert "decisions" in notice["destination"].lower()
     assert "candidate thought content" in notice["data_sent_summary"].lower()
     # Regression (issue #125): the disclosure must describe the metadata as
     # selected fields sent in full — never as "redacted metadata".
@@ -87,7 +88,9 @@ def test_describe_metadata_disclosure_never_says_redacted_for_either_policy():
 
     'Redacted' must not describe the transmitted metadata for any policy.
     """
-    llm_notice = describe_trust_gate_egress(GlobalConfig())
+    llm_notice = describe_trust_gate_egress(
+        GlobalConfig(trust_gate="llm-oneshot", trust_gate_model="google/gemini-2.5-flash")
+    )
     decisions_notice = describe_trust_gate_egress(
         GlobalConfig(
             trust_gate="decisions",
@@ -112,6 +115,7 @@ def test_describe_metadata_disclosure_never_says_redacted_for_either_policy():
 def test_describe_local_endpoint_marks_local_destination():
     notice = describe_trust_gate_egress(
         GlobalConfig(
+            trust_gate="llm-oneshot",
             trust_gate_provider="openai",
             trust_gate_model="fixture-local-model",
             trust_gate_api_base="http://127.0.0.1:8888/v1",
@@ -134,6 +138,7 @@ def test_describe_never_includes_key_file_path_or_secret(tmp_path):
     key_file.chmod(0o600)
     notice = describe_trust_gate_egress(
         GlobalConfig(
+            trust_gate="llm-oneshot",
             trust_gate_provider="openai",
             trust_gate_model="local-model",
             trust_gate_api_base="http://127.0.0.1:9/v1",
@@ -164,6 +169,7 @@ def test_redact_api_base_redacts_non_v1_path_segments():
     assert "secret-token" not in clean
     notice = describe_trust_gate_egress(
         GlobalConfig(
+            trust_gate="llm-oneshot",
             trust_gate_provider="openai",
             trust_gate_model="m",
             trust_gate_api_base=dirty,
@@ -185,6 +191,7 @@ def test_describe_redacts_url_embedded_secrets_in_destination_and_text():
     dirty = "http://operator:supersecret@127.0.0.1:8888/v1?token=alsosecret"
     notice = describe_trust_gate_egress(
         GlobalConfig(
+            trust_gate="llm-oneshot",
             trust_gate_provider="openai",
             trust_gate_model="fixture-local-model",
             trust_gate_api_base=dirty,
@@ -203,6 +210,7 @@ def test_describe_redacts_url_embedded_secrets_in_destination_and_text():
 def test_adversarial_127_prefix_hostname_is_not_local_endpoint():
     notice = describe_trust_gate_egress(
         GlobalConfig(
+            trust_gate="llm-oneshot",
             trust_gate_provider="openai",
             trust_gate_model="remote-looking-model",
             trust_gate_api_base="https://127.evil.example/v1",
@@ -228,6 +236,7 @@ def test_adversarial_127_prefix_hostname_is_not_local_endpoint():
 def test_loopback_classification_uses_ip_literals_and_localhost(api_base: str, kind: str):
     notice = describe_trust_gate_egress(
         GlobalConfig(
+            trust_gate="llm-oneshot",
             trust_gate_provider="openai",
             trust_gate_model="m",
             trust_gate_api_base=api_base,
@@ -250,6 +259,7 @@ def test_doctor_redacts_url_secrets_from_api_base_line(tmp_path, monkeypatch, ca
     (data_repo / "trails").mkdir()
     (tmp_path / ".env").write_text("FAVA_TRAILS_SCOPE=mw/eng/test\n")
     cfg = GlobalConfig(
+        trust_gate="llm-oneshot",
         trust_gate_provider="openai",
         trust_gate_model="local-model",
         trust_gate_api_base=dirty,
@@ -294,7 +304,8 @@ def test_doctor_prints_egress_notice_before_promotion_use(tmp_path, monkeypatch,
     out = capsys.readouterr().out
     assert "Data egress:" in out
     assert "provider=openrouter" in out
-    assert "google/gemini-2.5-flash" in out
+    assert "~typesafe/jev-latest" in out
+    assert "alpha/decisions" in out
     assert "test-key-not-a-real-secret" not in out
     assert "candidate" in out.lower()
     assert "after transmission" in out.lower()
@@ -365,7 +376,12 @@ async def test_first_promotion_notice_only_once(trail_manager, tmp_fava_home):
     cache = MagicMock(spec=TrustGatePromptCache)
     cache.resolve_prompt.return_value = "You are a reviewer."
     cfg = ConfigStore.__new__(ConfigStore)
-    cfg.global_config = GlobalConfig(trust_gate_timeout_secs=30, tool_timeout_secs=60)
+    cfg.global_config = GlobalConfig(
+        trust_gate="llm-oneshot",
+        trust_gate_model="google/gemini-2.5-flash",
+        trust_gate_timeout_secs=30,
+        tool_timeout_secs=60,
+    )
     cfg.data_repo_root = tmp_fava_home
     cfg.trails_dir = tmp_fava_home / "trails"
     ConfigStore.override(cfg)
@@ -399,7 +415,12 @@ async def test_startup_disclosure_makes_first_promotion_not_first(trail_manager,
     cache = MagicMock(spec=TrustGatePromptCache)
     cache.resolve_prompt.return_value = "You are a reviewer."
     cfg = ConfigStore.__new__(ConfigStore)
-    cfg.global_config = GlobalConfig(trust_gate_timeout_secs=30, tool_timeout_secs=60)
+    cfg.global_config = GlobalConfig(
+        trust_gate="llm-oneshot",
+        trust_gate_model="google/gemini-2.5-flash",
+        trust_gate_timeout_secs=30,
+        tool_timeout_secs=60,
+    )
     cfg.data_repo_root = tmp_fava_home
     cfg.trails_dir = tmp_fava_home / "trails"
     ConfigStore.override(cfg)
@@ -452,7 +473,12 @@ async def test_missing_cloud_credentials_fail_closed_no_auto_approve(trail_manag
     cache = MagicMock(spec=TrustGatePromptCache)
     cache.resolve_prompt.return_value = "You are a reviewer."
     cfg = ConfigStore.__new__(ConfigStore)
-    cfg.global_config = GlobalConfig(trust_gate_timeout_secs=30, tool_timeout_secs=60)
+    cfg.global_config = GlobalConfig(
+        trust_gate="llm-oneshot",
+        trust_gate_model="google/gemini-2.5-flash",
+        trust_gate_timeout_secs=30,
+        tool_timeout_secs=60,
+    )
     cfg.data_repo_root = tmp_fava_home
     cfg.trails_dir = tmp_fava_home / "trails"
     ConfigStore.override(cfg)
@@ -559,6 +585,7 @@ async def test_local_retry_error_path_stays_on_configured_endpoint(
 
     cfg = ConfigStore.__new__(ConfigStore)
     cfg.global_config = GlobalConfig(
+        trust_gate="llm-oneshot",
         trust_gate_provider="openai",
         trust_gate_model="fixture-local-model",
         trust_gate_api_base=base_url,

@@ -33,13 +33,16 @@ publication note.
 
 ### LLM Configuration (for Trust Gate)
 
-The Trust Gate reviews thoughts before promotion using an LLM **or** an explicit
+The Trust Gate reviews thoughts before promotion using OpenRouter Decisions
+(Jev) by default, an explicit `llm-oneshot` rubric, **or** an explicit
 operator approval path. Provider selection is a **data-egress choice**: under the
-shipped `llm-oneshot` policy, candidate thought content (plus the selected
-metadata fields; `agent_id` and `metadata.extra` are excluded) is transmitted to
-the configured destination **before** a verdict
-exists. A remote reject still means the content already left this process. There
-is no automatic pass-through/off mode and no silent fallback to another provider.
+shipped `decisions` policy, the full scope-resolved Trust Gate prompt, the full
+candidate thought content, the selected metadata fields (`agent_id` and
+`metadata.extra` are excluded), and the configured Noul question are transmitted
+to OpenRouter **before** a verdict exists. A remote reject still means the
+content already left this process. There is no automatic pass-through/off mode
+and no silent fallback to another provider. Jev returns no reasoning; do not
+invent one. Timeouts, auth failures, and invalid answers fail closed.
 
 Before the first promotion on a machine, run:
 
@@ -64,15 +67,19 @@ and omit `trust_gate_egress`.
 3. Pass it to the MCP server via the `OPENROUTER_API_KEY` environment variable
    (in your MCP client config `env` block, or in your shell profile)
 
-The default model (`google/gemini-2.5-flash`) costs ~$0.001 per review. Missing
-cloud credentials fail closed — candidates are **not** auto-approved.
+The default model (`~typesafe/jev-latest`) is OpenRouter Jev via the Decisions
+API. Supply an existing OpenRouter key; you do not have to write a Noul
+question. Missing cloud credentials fail closed — candidates are **not**
+auto-approved. The shipped question and threshold are documented in the
+[ticket 03 calibration report](https://github.com/MachineWisdomAI/fava-trails/issues/126#issuecomment-5894849724);
+the private corpus is available upon request.
 
 **Local OpenAI-compatible endpoint (local-only egress, e.g. Unsloth Studio):**
 
 Unsloth Studio (and similar local servers) expose authenticated OpenAI-compatible
 `/v1/chat/completions` endpoints. Point Trust Gate at them on one machine via
 `$XDG_CONFIG_HOME/fava-trails/config.yaml` (default
-`~/.config/fava-trails/config.yaml`):
+`~/.config/fava-trails/config.yaml`) and select `llm-oneshot`:
 
 ```yaml
 trust_gate: llm-oneshot
@@ -238,17 +245,21 @@ push_strategy: manual                     # bootstrap default: local commits onl
 # push_strategy: immediate                # recommended multi-machine: auto-push after writes
                                           # sync MCP tool never pushes — fetch/rebase only
 
-# Trust Gate (shipped policy is llm-oneshot only)
-trust_gate: llm-oneshot                   # only working config policy today
+# Trust Gate (shipped policy is decisions / OpenRouter Jev)
+trust_gate: decisions                     # decisions | llm-oneshot
 trust_gate_provider: openrouter           # any-llm provider id (openrouter | openai | ...)
-trust_gate_model: google/gemini-2.5-flash # exact model id for LLM-based review
-trust_gate_api_base: null                 # optional; set for OpenAI-compatible local endpoints
+trust_gate_model: ~typesafe/jev-latest    # tracking alias; pin typesafe/jev-1.13 if desired
+trust_gate_api_base: null                 # optional; set for test doubles or local endpoints
 trust_gate_api_key_env: OPENROUTER_API_KEY # env var name holding the API key
 # openrouter_api_key_env: OPENROUTER_API_KEY  # deprecated alias for trust_gate_api_key_env
 # trust_gate_api_key_file: /path/to/key    # owner-only file; takes precedence over env
-# trust_gate_extra_body: {}               # provider-specific request body
-trust_gate_timeout_secs: 120              # LLM wait; raise for slow local models (< tool_timeout_secs)
+# trust_gate_extra_body: {}               # provider-specific request body (llm-oneshot)
+trust_gate_timeout_secs: 120              # reviewer wait; raise for slow local models (< tool_timeout_secs)
 tool_timeout_secs: 300
+trust_gate_decisions_config:
+  trust_gate_noul_question: "Should this candidate be promoted as durable, high-quality institutional memory under the supplied Trust Gate policy?"
+  trust_gate_noul_threshold: 0.45
+# trust_gate: llm-oneshot                 # chat-completions rubric; set a chat model
 # trust_gate: human  # NOT IMPLEMENTED — raises NotImplementedError at runtime
 
 # Non-LLM promotion (not a config policy): on an operator endpoint
@@ -266,7 +277,7 @@ hooks:
 # Per-trail overrides (optional)
 trails:
   mw/eng/sensitive-project:
-    # trust_gate_policy inherits global llm-oneshot. Do NOT set
+    # trust_gate_policy inherits the global policy (default: decisions). Do NOT set
     # trust_gate_policy: human — that policy is unimplemented and raises.
     # For human-only promotion of sensitive records, use an operator
     # endpoint and propose_truth(..., approval="human") per call.
@@ -278,15 +289,17 @@ trails:
 | `trails_dir` | string | `trails` | Directory for trail data (relative to repo root) |
 | `remote_url` | string | `null` | Git remote URL for sync |
 | `push_strategy` | string | `manual` | `immediate` auto-pushes after successful writes (advances `main` to `@-` then pushes); `manual` (bootstrap default) keeps commits local until the operator runs `jj bookmark set main -r @-` then `jj git push --bookmark main`. The `sync` tool only fetches/rebases and never publishes. |
-| `trust_gate` | string | `llm-oneshot` | Global trust gate policy. **Shipped working value: `llm-oneshot` only.** `human` is unimplemented (raises `NotImplementedError`). Non-LLM path is per-call `propose_truth(..., approval="human")` on an operator endpoint, not this config field. |
+| `trust_gate` | string | `decisions` | Global trust gate policy. **Shipped default: `decisions`** (OpenRouter Jev). Explicit `llm-oneshot` remains supported. `human` is unimplemented (raises `NotImplementedError`). Non-LLM path is per-call `propose_truth(..., approval="human")` on an operator endpoint, not this config field. |
 | `trust_gate_provider` | string | `openrouter` | any-llm provider id (`openrouter`, `openai`, …) |
-| `trust_gate_model` | string | `google/gemini-2.5-flash` | Exact model id for LLM-based trust review |
-| `trust_gate_api_base` | string | `null` | Optional OpenAI-compatible API base (e.g. Unsloth Studio `http://127.0.0.1:<port>/v1`) |
+| `trust_gate_model` | string | `~typesafe/jev-latest` | Exact model id or alias. Chat-completions models (e.g. `google/gemini-2.5-flash`) are for explicit `llm-oneshot`. |
+| `trust_gate_api_base` | string | `null` | Optional API root. Decisions default is `https://openrouter.ai/api`; OpenAI-compatible local endpoints use `/v1`. |
 | `trust_gate_api_key_env` | string | `OPENROUTER_API_KEY` (via alias) | Env var name holding the API key |
 | `openrouter_api_key_env` | string | `OPENROUTER_API_KEY` | Deprecated alias for `trust_gate_api_key_env` |
 | `trust_gate_api_key_file` | string | `null` | Owner-only credential file; takes precedence over environment variables and is reread for each promotion |
-| `trust_gate_extra_body` | mapping | `{}` | Provider-specific request body passed through to the chat-completions request |
-| `trust_gate_timeout_secs` | int | `120` | Trust Gate LLM timeout; raise for slow local models, keep below `tool_timeout_secs` |
+| `trust_gate_extra_body` | mapping | `{}` | Provider-specific request body passed through to chat-completions (`llm-oneshot`) |
+| `trust_gate_timeout_secs` | int | `120` | Trust Gate reviewer timeout; raise for slow local models, keep below `tool_timeout_secs` |
+| `trust_gate_decisions_config.trust_gate_noul_question` | string | calibrated durable-memory question | Typed Noul proposition used when `trust_gate` is `decisions`. See [issue #126 calibration report](https://github.com/MachineWisdomAI/fava-trails/issues/126#issuecomment-5894849724). Private corpus available upon request. |
+| `trust_gate_decisions_config.trust_gate_noul_threshold` | float | `0.45` | Approve at or above this probability; reject below. Finite, within `[0, 1]`. |
 | `tool_timeout_secs` | int | `300` | Outer MCP tool timeout |
 | `hooks` | list | `[]` | Lifecycle hook entries (see [Lifecycle Hooks](#lifecycle-hooks)) |
 
@@ -296,7 +309,7 @@ Override global settings for specific trails via the `trails` map:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `trust_gate_policy` | string | *(inherits global)* | Override trust gate for this trail. Same constraint as global `trust_gate`: only `llm-oneshot` works today; `human` is unimplemented. Use operator `propose_truth(..., approval="human")` for non-LLM promotion. |
+| `trust_gate_policy` | string | *(inherits global)* | Override trust gate for this trail. Same values as global `trust_gate` (`decisions`, `llm-oneshot`). `human` is unimplemented. Use operator `propose_truth(..., approval="human")` for non-LLM promotion. |
 | `gc_interval_snapshots` | int | `500` | Snapshots between GC runs |
 | `gc_interval_seconds` | int | `3600` | Seconds between GC runs |
 | `stale_draft_days` | int | `0` | Tombstone drafts older than N days (0 = disabled) |

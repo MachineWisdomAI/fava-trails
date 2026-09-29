@@ -42,7 +42,13 @@ from .mcp_registration import (
     verify_native_client_session,
     write_mcp_json_config,
 )
-from .models import GlobalConfig, HookEntry, ThoughtRecord
+from .models import (
+    DEFAULT_TRUST_GATE_MODEL,
+    DEFAULT_TRUST_GATE_POLICY,
+    GlobalConfig,
+    HookEntry,
+    ThoughtRecord,
+)
 from .runtime_info import format_runtime_report, product_version
 
 # Historical alias: installers resolve GitHub latest unless --version / JJ_VERSION is set.
@@ -645,9 +651,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     # and startup agree on provider/model/key-env (api_base stays optional).
     credential_description = "OPENROUTER_API_KEY"  # noqa: S105 — env var name, not a secret
     provider = "openrouter"
-    model = "google/gemini-2.5-flash"
+    model = DEFAULT_TRUST_GATE_MODEL
     api_base = None
-    trust_gate_policy = "llm-oneshot"
+    trust_gate_policy = DEFAULT_TRUST_GATE_POLICY
     trust_gate_config_ok = True
     global_config = GlobalConfig()
     try:

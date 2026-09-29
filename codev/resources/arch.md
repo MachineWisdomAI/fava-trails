@@ -76,8 +76,9 @@ value; keep it strictly below `tool_timeout_secs`.
 
 | Field | Default | Notes |
 |-------|---------|-------|
+| `trust_gate` | `decisions` | OpenRouter Jev; explicit `llm-oneshot` still supported |
 | `trust_gate_provider` | `openrouter` | any-llm provider id |
-| `trust_gate_model` | `google/gemini-2.5-flash` | Exact model id |
+| `trust_gate_model` | `~typesafe/jev-latest` | Tracking alias; pin `typesafe/jev-1.13` if desired |
 | `trust_gate_api_base` | `null` | OpenAI-compatible base URL |
 | `trust_gate_api_key_env` | `null` | Preferred key env-var name |
 | `openrouter_api_key_env` | `OPENROUTER_API_KEY` | Deprecated alias |
