@@ -14,6 +14,7 @@ import html
 import ipaddress
 import json
 import logging
+import math
 import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -24,6 +25,7 @@ from urllib.parse import urlparse, urlunparse
 import yaml
 from any_llm.exceptions import AnyLLMError, ProviderError
 
+from .decisions import DecisionsClient, DecisionsError
 from .llm import LLMClient
 from .llm.sanitize import sanitize_provider_exception
 from .models import ThoughtRecord
@@ -113,12 +115,17 @@ def describe_trust_gate_egress(
     config: GlobalConfig,
     *,
     approval: str | None = None,
+    policy: str | None = None,
     first_in_process: bool | None = None,
 ) -> dict[str, Any]:
     """Describe where candidate data goes during Trust Gate review.
 
     Never includes API keys, key file paths, or secret values — only destination
     identity, model, and a plain summary of which candidate fields are sent.
+
+    ``policy`` names the effective review policy (trail-level override aware);
+    it defaults to ``config.trust_gate`` so doctor/startup callers that only
+    hold the global config still describe the configured policy accurately.
     """
     from .credentials import trust_gate_credential_description
 
@@ -142,6 +149,66 @@ def describe_trust_gate_egress(
                 "operator-controlled endpoint (FAVA_TRAILS_OPERATOR=1 with a configured "
                 "FAVA_TRAILS_AGENT_ID). Candidate text is not sent to a remote or local "
                 "LLM. This is separate from automatic llm-oneshot review."
+            ),
+        }
+        if first_in_process is not None:
+            notice["first_in_process"] = first_in_process
+        return notice
+
+    effective_policy = policy or config.trust_gate
+    if effective_policy == "decisions":
+        from .decisions import DECISIONS_API_PATH, DEFAULT_DECISIONS_API_BASE
+
+        decisions_provider = config.trust_gate_provider
+        decisions_model = config.trust_gate_model
+        api_base = config.trust_gate_api_base
+        if api_base:
+            disclosed_base = (
+                redact_trust_gate_api_base_for_disclosure(api_base) or "[invalid-api-base]"
+            )
+            destination = f"{disclosed_base}{DECISIONS_API_PATH}"
+            destination_kind: Literal["local_endpoint", "custom_endpoint", "remote_provider"] = (
+                "local_endpoint" if _is_loopback_api_base(api_base) else "custom_endpoint"
+            )
+        else:
+            destination_kind = "remote_provider"
+            destination = (
+                f"{decisions_provider} Decisions API "
+                f"({DEFAULT_DECISIONS_API_BASE}{DECISIONS_API_PATH})"
+            )
+        decisions_data_sent = [
+            "full scope-resolved Trust Gate prompt (state.review_instructions)",
+            "full candidate thought content (markdown body, state.thought_under_review)",
+            "selected metadata fields sent: thought_id, source_type, confidence, validation_status",
+            "optional selected metadata fields sent: trail_name, parent_id, project, branch, tags",
+            "the configured Noul question text (state.questions.trust.instructions)",
+        ]
+        notice = {
+            "policy": "decisions",
+            "provider": decisions_provider,
+            "model": decisions_model,
+            "destination": destination,
+            "destination_kind": destination_kind,
+            "credential_source": trust_gate_credential_description(config),
+            "data_sent": decisions_data_sent,
+            "data_sent_summary": (
+                "The full scope-resolved Trust Gate prompt, the full candidate "
+                "thought content, and the selected redacted metadata (thought_id, "
+                "source_type, confidence, validation_status; optional "
+                "trail_name/parent_id/project/branch/tags) are transmitted as "
+                "structured Decisions state together with the configured Noul "
+                "question. agent_id and metadata.extra are not sent."
+            ),
+            "cloud_fallback": False,
+            "rejection_happens_after_transmission": True,
+            "explanation": (
+                "Provider selection is a data-egress choice: the candidate is "
+                f"transmitted to {destination} using model {decisions_model!r} "
+                "before a verdict exists. One Noul question is asked; the answer "
+                "carries a calibrated probability and no reasoning. A remote reject "
+                "still means the content already left this process. There is no "
+                "automatic pass-through/off mode and no silent fallback to another "
+                "provider if this destination is unavailable or misconfigured."
             ),
         }
         if first_in_process is not None:
@@ -255,7 +322,7 @@ class TrustResult:
 
     verdict: Literal["approve", "reject", "error"]
     reasoning: str
-    reviewer: str  # "llm-oneshot:<model>" or "human:<user_id>"
+    reviewer: str  # "llm-oneshot:<model>", "decisions:<model>", or "human:<user_id>"
     reviewed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     confidence: float | None = None
     # Provider selected for the review (e.g. "openrouter", "openai"). Optional
@@ -264,6 +331,12 @@ class TrustResult:
     # Model identifier returned by the provider (may differ from configured id).
     model: str | None = None
     approval_kind: Literal["llm_advisory", "human"] = "llm_advisory"
+    # Review policy that produced this result ("llm-oneshot", "decisions").
+    policy: str | None = None
+    # Decisions policy provenance: calibrated Jev Noul probability and the
+    # operator-configured threshold it was compared against.
+    noul_probability: float | None = None
+    threshold: float | None = None
 
 
 class TrustGatePromptCache:
@@ -502,8 +575,16 @@ async def review_thought(
             "See Spec 3 for planned approval channels (CLI, PR/GHA, MCP tools)."
         )
 
+    if policy == "decisions":
+        raise TrustGateConfigError(
+            "trust_gate: the 'decisions' policy uses review_thought_decisions(); "
+            "review_thought() implements 'llm-oneshot' only."
+        )
+
     if policy != "llm-oneshot":
-        raise TrustGateConfigError(f"Unknown trust gate policy: {policy!r}. Available: 'llm-oneshot'.")
+        raise TrustGateConfigError(
+            f"Unknown trust gate policy: {policy!r}. Available: 'llm-oneshot', 'decisions'."
+        )
 
     system_msg, user_msg = _build_review_payload(prompt, record, trail_name=trail_name)
     # Keep reviewer shape stable for backward compatibility; provider/model are
@@ -584,4 +665,130 @@ async def review_thought(
         reviewer=reviewer_id,
         provider=provider,
         model=model,
+    )
+
+
+def _validate_decisions_review_inputs(question: str, threshold: float) -> None:
+    """Validate the Noul question and threshold before any transmission.
+
+    Raises TrustGateConfigError so misconfiguration surfaces as an operator
+    error instead of a recorded review outcome.
+    """
+    if not isinstance(question, str) or not question.strip():
+        raise TrustGateConfigError(
+            "trust_gate_decisions_config.trust_gate_noul_question must be a "
+            "non-empty string before a Decisions review can be transmitted"
+        )
+    if (
+        isinstance(threshold, bool)
+        or not isinstance(threshold, (int, float))
+        or not math.isfinite(float(threshold))
+        or not (0.0 <= float(threshold) <= 1.0)
+    ):
+        raise TrustGateConfigError(
+            "trust_gate_decisions_config.trust_gate_noul_threshold must be a "
+            f"finite number within [0, 1]; got {threshold!r}"
+        )
+
+
+def _build_decisions_state(
+    prompt: str,
+    record: ThoughtRecord,
+    *,
+    trail_name: str | None = None,
+) -> dict:
+    """Build the Decisions ``state`` payload.
+
+    Sends the full scope-resolved Trust Gate prompt, the full thought body, and
+    the same selected metadata as ``llm-oneshot`` (agent_id and metadata.extra
+    excluded). The state is structured JSON, so untrusted content is escaped
+    the same way as the chat payload to keep injection surface identical.
+    """
+    redacted_meta = _redact_metadata(record, trail_name=trail_name)
+    return {
+        "review_instructions": prompt,
+        "thought_under_review": html.escape(record.content, quote=False),
+        "thought_metadata": html.escape(
+            yaml.dump(redacted_meta, default_flow_style=False, sort_keys=False),
+            quote=False,
+        ),
+    }
+
+
+async def review_thought_decisions(
+    record: ThoughtRecord,
+    prompt: str,
+    model: str,
+    client: DecisionsClient,
+    *,
+    question: str,
+    threshold: float,
+    trail_name: str | None = None,
+) -> TrustResult:
+    """Review a thought through OpenRouter Decisions (Jev) with one Noul question.
+
+    Approves when the returned Noul probability is at or above ``threshold``;
+    rejects when it is below. Jev returns no reasoning, so the recorded
+    reasoning is a factual statement of the probability and threshold — never
+    fabricated model rationale. Every transport, contract, or range failure
+    fails closed with verdict ``error`` and never contacts another reviewer.
+    """
+    _validate_decisions_review_inputs(question, threshold)
+    threshold = float(threshold)
+
+    reviewer_id = f"decisions:{model}"
+    provider = getattr(client, "provider", None)
+    state = _build_decisions_state(prompt, record, trail_name=trail_name)
+
+    try:
+        answer = await client.ask_noul(model=model, state=state, question=question)
+    except DecisionsError as e:
+        return TrustResult(
+            verdict="error",
+            reasoning=f"Decisions review failed closed: {e}",
+            reviewer=reviewer_id,
+            provider=provider,
+            model=model,
+            policy="decisions",
+            threshold=threshold,
+        )
+    except Exception as e:
+        # Sanitize through the established provider-exception boundary: raw
+        # exception text can embed URLs with userinfo/query/path credentials,
+        # and durable Trust Gate provenance must never repeat it (#124).
+        return TrustResult(
+            verdict="error",
+            reasoning=f"Unexpected error: {sanitize_provider_exception(e)}",
+            reviewer=reviewer_id,
+            provider=provider,
+            model=model,
+            policy="decisions",
+            threshold=threshold,
+        )
+
+    approved = answer.probability >= threshold
+    if approved:
+        reasoning = (
+            f"Jev Noul probability {answer.probability} is at or above the "
+            f"configured threshold {threshold}. The Decisions response carries "
+            "no reasoning; none is fabricated."
+        )
+    else:
+        reasoning = (
+            f"Jev Noul probability {answer.probability} is below the configured "
+            f"threshold {threshold}. The Decisions response carries no reasoning; "
+            "none is fabricated."
+        )
+
+    return TrustResult(
+        verdict="approve" if approved else "reject",
+        reasoning=reasoning,
+        reviewer=reviewer_id,
+        # Persist the configured reviewer provider (the transmission destination,
+        # e.g. "openrouter"); the served model snapshot records what answered.
+        provider=provider or answer.provider,
+        model=answer.model or model,
+        policy="decisions",
+        noul_probability=answer.probability,
+        threshold=threshold,
     )

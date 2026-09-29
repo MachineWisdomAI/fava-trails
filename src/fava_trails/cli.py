@@ -691,7 +691,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             f"destination={egress.get('destination')} kind={egress.get('destination_kind')}"
         )
 
-        if trust_gate_policy == "llm-oneshot":
+        if trust_gate_policy in ("llm-oneshot", "decisions"):
             try:
                 load_trust_gate_api_key(global_config)
                 credential_error: ValueError | None = None

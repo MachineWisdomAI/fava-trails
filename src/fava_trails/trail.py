@@ -580,8 +580,15 @@ class TrailManager:
                     "reasoning": trust_result.reasoning,
                     "kind": trust_result.approval_kind,
                 }
-                for name in ("confidence", "provider", "model"):
-                    value = getattr(trust_result, name)
+                for name in (
+                    "confidence",
+                    "provider",
+                    "model",
+                    "policy",
+                    "noul_probability",
+                    "threshold",
+                ):
+                    value = getattr(trust_result, name, None)
                     if value is not None:
                         record.frontmatter.metadata.extra["trust_gate"][name] = value
                 record.frontmatter.validation_status = {
