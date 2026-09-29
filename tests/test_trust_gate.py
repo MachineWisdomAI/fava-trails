@@ -353,7 +353,7 @@ def test_redaction_omits_trail_name_when_none(sample_thought):
 
 
 def test_build_review_payload_includes_trail_name(sample_thought):
-    """_build_review_payload passes trail_name through to redacted metadata."""
+    """_build_review_payload passes trail_name through to the selected metadata fields."""
     trail = "codev-artifacts/Org/Repo/plans/17-hooks"
     _, user_msg = _build_review_payload("prompt", sample_thought, trail_name=trail)
     assert "trail_name" in user_msg

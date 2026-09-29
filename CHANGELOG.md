@@ -4,6 +4,9 @@ All notable changes to FAVA Trails are documented here.
 
 ## Unreleased
 
+### Fixed
+- Trust Gate data-egress disclosure no longer describes the transmitted metadata as "redacted": doctor, the MCP startup notice, and `trust_gate_egress` now state that the full scope-resolved prompt, the full candidate body, and the complete selected metadata fields are sent, with `agent_id` and `metadata.extra` excluded. Docs updated to match; regression coverage added for both `llm-oneshot` and `decisions` notices. Addresses issue #125.
+
 ### Added
 - Explicit `decisions` Trust Gate policy: review and promote thoughts through OpenRouter's Decisions API (TypeSafe Jev) with one typed Noul question and an operator-configured threshold under `trust_gate_decisions_config` (`trust_gate_noul_question`, `trust_gate_noul_threshold`). Approves at-or-above threshold and rejects below through `propose_truth`, persists policy/provider/model/Noul-probability/threshold/timestamp/approval-kind provenance without fabricated reasoning, fails closed on invalid responses, auth/connection failures, and timeouts, and discloses secret-free destination/egress diagnostics in doctor and tunnel gateway startup. `llm-oneshot` remains the default. Implements #124.
 

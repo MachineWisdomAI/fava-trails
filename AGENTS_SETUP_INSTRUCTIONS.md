@@ -35,8 +35,9 @@ publication note.
 
 The Trust Gate reviews thoughts before promotion using an LLM **or** an explicit
 operator approval path. Provider selection is a **data-egress choice**: under the
-shipped `llm-oneshot` policy, candidate thought content (plus selected redacted
-metadata) is transmitted to the configured destination **before** a verdict
+shipped `llm-oneshot` policy, candidate thought content (plus the selected
+metadata fields; `agent_id` and `metadata.extra` are excluded) is transmitted to
+the configured destination **before** a verdict
 exists. A remote reject still means the content already left this process. There
 is no automatic pass-through/off mode and no silent fallback to another provider.
 

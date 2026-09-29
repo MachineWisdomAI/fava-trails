@@ -753,8 +753,12 @@ def test_decisions_egress_notice_enumerates_prompt_body_metadata_and_question():
     assert "thought_id, source_type, confidence, validation_status" in data_sent
     assert "trail_name, parent_id, project, branch, tags" in data_sent
     assert "Noul question" in data_sent
-    # The summary names the exclusions explicitly.
-    assert "agent_id and metadata.extra are not sent" in notice["data_sent_summary"]
+    # The summary names the exclusions explicitly and describes the metadata
+    # as selected fields sent in full — never as "redacted" (issue #125).
+    summary = notice["data_sent_summary"]
+    assert "agent_id and metadata.extra are excluded and never sent" in summary
+    assert "selected metadata fields" in summary
+    assert "redacted metadata" not in summary.lower()
 
     # Secret-free: credential source is a name only.
     assert notice["credential_source"] == "DECISIONS_API_KEY"
