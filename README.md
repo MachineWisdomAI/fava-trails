@@ -436,7 +436,9 @@ Environment variables:
 
 **LLM Provider:** FAVA Trails uses [any-llm-sdk](https://github.com/mozilla-ai/any-llm) for unified LLM access. OpenRouter is the default Trust Gate provider. To use a local OpenAI-compatible server (Unsloth Studio, vLLM, etc.) on one machine, put its Trust Gate runtime fields in `$XDG_CONFIG_HOME/fava-trails/config.yaml` (default `~/.config/fava-trails/config.yaml`). A credential file configured with `trust_gate_api_key_file` takes precedence over the environment and must be a regular, non-symlink, owner-only file. Slow local quantized models may need a higher `trust_gate_timeout_secs` (still below `tool_timeout_secs`). There is no automatic fallback between providers — misconfigured or unavailable endpoints fail closed without auto-approving. `fava-trails doctor` prints a secret-free Data egress notice; successful LLM or operator `propose_truth` paths (and credential/timeout failures after disclosure begins) include `trust_gate_egress` describing destination, model, and which candidate fields are sent. Early validation failures omit that field.
 
-**Decisions policy (OpenRouter Jev):** Set `trust_gate: decisions` to review promotions through [OpenRouter's Decisions API](https://openrouter.ai/blog/insights/what-is-jev/) instead of a chat completion. The reviewer is TypeSafe's Jev decision model, addressed by its exact supported identifier or alias (`typesafe/jev-1.13` pinned, `~typesafe/jev-latest` tracking). One typed **Noul** question — the probability that a yes/no proposition holds — is submitted per review with the full scope-resolved Trust Gate prompt, full thought body, and the same selected metadata as `llm-oneshot` (`agent_id` and `metadata.extra` excluded). Probabilities at or above `trust_gate_noul_threshold` approve; lower probabilities reject. Jev returns no reasoning, so provenance records the calibrated probability and threshold — never fabricated rationale. Invalid responses, missing answers, out-of-range probabilities, authentication/connection failures, and timeouts fail closed; there is no fallback to another reviewer.
+**Decisions policy (OpenRouter Jev or local Unsloth Laya):** Set `trust_gate: decisions` to review promotions through a Decision API instead of a chat completion. One typed **Noul** question — the probability that a yes/no proposition holds — is submitted per review with the full scope-resolved Trust Gate prompt, full thought body, and the same selected metadata as `llm-oneshot` (`agent_id` and `metadata.extra` excluded). Probabilities at or above `trust_gate_noul_threshold` approve; lower probabilities reject. The response carries no reasoning, so provenance records the calibrated probability and threshold — never fabricated rationale. Invalid responses, missing answers, out-of-range probabilities, authentication/connection failures, and timeouts fail closed; there is no fallback to another reviewer. Select exactly one backend; FAVA does not probe localhost or switch providers.
+
+Hosted OpenRouter Jev uses [OpenRouter's Decisions API](https://openrouter.ai/blog/insights/what-is-jev/) at `https://openrouter.ai/api/alpha/decisions`. Address TypeSafe's Jev by its exact supported identifier or alias (`typesafe/jev-1.13` pinned, `~typesafe/jev-latest` tracking):
 
 ```yaml
 trust_gate: decisions
@@ -447,7 +449,21 @@ trust_gate_decisions_config:
   trust_gate_noul_threshold: 0.9          # finite, within [0, 1]
 ```
 
-The Decisions endpoint defaults to `https://openrouter.ai/api/alpha/decisions`; `trust_gate_api_base` overrides the API root (e.g. for a test double). Credentials reuse `trust_gate_api_key_env` / `trust_gate_api_key_file`. `trust_gate_decisions_config` is a Trust Gate runtime field: the per-machine config may override the whole block, while the data repo owns durable defaults. `llm-oneshot` remains the default policy and stays fully operational; threshold calibration and default selection ship in a later ticket. `fava-trails doctor` and tunnel gateway startup disclose the destination and remote OpenRouter egress without secrets.
+Local Unsloth Laya is the no-per-request-cost alternative. Reuse the existing local `openai` provider, credential file or env, and timeout used by local `llm-oneshot`. Documentation recommends `laya-typed-decisions`; do not select the generic `laya` alias. Requests go to the configured Unsloth base at `/v1/systemone`:
+
+```yaml
+trust_gate: decisions
+trust_gate_provider: openai
+trust_gate_model: laya-typed-decisions
+trust_gate_api_base: http://127.0.0.1:<unsloth-api-port>/v1
+trust_gate_api_key_file: /path/to/owner-only/runtime/api-key
+trust_gate_timeout_secs: 240
+trust_gate_decisions_config:
+  trust_gate_noul_question: "Does this thought belong in the permanent institutional record?"
+  trust_gate_noul_threshold: 0.9
+```
+
+`trust_gate_api_base` overrides the API root (OpenRouter default `https://openrouter.ai/api`; for local Unsloth, the loopback Decision API). Credentials reuse `trust_gate_api_key_env` / `trust_gate_api_key_file`. `trust_gate_decisions_config` is a Trust Gate runtime field: the per-machine config may override the whole block, while the data repo owns durable defaults. `llm-oneshot` remains the default policy and stays fully operational; threshold calibration and default selection ship in a later ticket. `fava-trails doctor` and tunnel gateway startup disclose the destination (OpenRouter as `remote_provider`, loopback Unsloth as `local_endpoint`) without secrets. Missing OpenRouter credentials for Decisions review also present local Unsloth Laya as an alternative.
 
 The server reads `$FAVA_TRAILS_DATA_REPO/config.yaml` for global settings. Minimal `config.yaml`:
 

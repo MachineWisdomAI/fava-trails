@@ -709,6 +709,10 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                     print(f"  Fix: export {env_var_name}=...")
                 if provider == "openrouter":
                     print("  Get a key: https://openrouter.ai/keys")
+                    if trust_gate_policy == "decisions":
+                        from .credentials import LOCAL_UNSLOTH_LAYA_DECISIONS_HINT
+
+                        print(f"  {LOCAL_UNSLOTH_LAYA_DECISIONS_HINT}")
                 else:
                     print(
                         f"  Configure the API key for provider '{provider}' "

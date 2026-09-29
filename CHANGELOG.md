@@ -9,6 +9,7 @@ All notable changes to FAVA Trails are documented here.
 
 ### Added
 - Explicit `decisions` Trust Gate policy: review and promote thoughts through OpenRouter's Decisions API (TypeSafe Jev) with one typed Noul question and an operator-configured threshold under `trust_gate_decisions_config` (`trust_gate_noul_question`, `trust_gate_noul_threshold`). Approves at-or-above threshold and rejects below through `propose_truth`, persists policy/provider/model/Noul-probability/threshold/timestamp/approval-kind provenance without fabricated reasoning, fails closed on invalid responses, auth/connection failures, and timeouts, and discloses secret-free destination/egress diagnostics in doctor and tunnel gateway startup. `llm-oneshot` remains the default. Implements #124.
+- Local Unsloth Laya for the existing `decisions` policy: explicit `trust_gate_provider: openai` plus `trust_gate_api_base` posts to `/v1/systemone`, forwards the configured model unchanged (docs recommend `laya-typed-decisions`), reuses local `llm-oneshot` credentials and timeout, fails closed without contacting OpenRouter, and presents local Laya whenever OpenRouter Decisions key setup or missing-credential guidance would otherwise send the operator only to OpenRouter. No discovery, fallback, or new provider value. Implements #131.
 
 ## [0.7.0] — 2026-09-13
 

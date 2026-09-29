@@ -64,8 +64,16 @@ and omit `trust_gate_egress`.
 3. Pass it to the MCP server via the `OPENROUTER_API_KEY` environment variable
    (in your MCP client config `env` block, or in your shell profile)
 
-The default model (`google/gemini-2.5-flash`) costs ~$0.001 per review. Missing
-cloud credentials fail closed — candidates are **not** auto-approved.
+The default `llm-oneshot` model (`google/gemini-2.5-flash`) costs ~$0.001 per
+review. Missing cloud credentials fail closed — candidates are **not**
+auto-approved.
+
+For **Decisions** review (`trust_gate: decisions`), OpenRouter Jev is one
+backend. Local Unsloth Laya is the no-per-request-cost alternative: set
+`trust_gate_provider: openai`, `trust_gate_model: laya-typed-decisions` (do
+not use the generic `laya` alias), and `trust_gate_api_base` to your Unsloth
+Decision API (requests go to `/v1/systemone`). FAVA does not probe localhost,
+discover Unsloth, or fall back between providers. Select exactly one backend.
 
 **Local OpenAI-compatible endpoint (local-only egress, e.g. Unsloth Studio):**
 
@@ -99,6 +107,41 @@ no key file is configured (see [Unsloth API docs](https://unsloth.ai/docs/basics
 Do not hardcode host, port, model, or credentials in the engine. Do not install a
 model, select a paid provider, or supply credentials on behalf of an evaluator —
 operators choose and provision their own review backend.
+
+**Decisions policy (OpenRouter Jev or local Unsloth Laya):**
+
+Set `trust_gate: decisions` to review promotions through a Decision API instead
+of a chat completion. The operator selects exactly one backend. There is no
+automatic fallback.
+
+Hosted OpenRouter Jev:
+
+```yaml
+trust_gate: decisions
+trust_gate_provider: openrouter
+trust_gate_model: typesafe/jev-1.13       # exact supported id or ~alias
+trust_gate_decisions_config:
+  trust_gate_noul_question: "Does this thought belong in the permanent institutional record?"
+  trust_gate_noul_threshold: 0.9
+```
+
+Local Unsloth Laya (same credential file / env and timeout as local `llm-oneshot`):
+
+```yaml
+trust_gate: decisions
+trust_gate_provider: openai
+trust_gate_model: laya-typed-decisions    # recommended; do not use the generic laya alias
+trust_gate_api_base: http://127.0.0.1:<unsloth-api-port>/v1
+trust_gate_api_key_file: /path/to/owner-only/runtime/api-key
+trust_gate_timeout_secs: 240
+trust_gate_decisions_config:
+  trust_gate_noul_question: "Does this thought belong in the permanent institutional record?"
+  trust_gate_noul_threshold: 0.9
+```
+
+Local requests POST to the configured Unsloth base at `/v1/systemone`. The
+configured model identifier is forwarded unchanged. Connection, authentication,
+timeout, and response errors fail closed without contacting OpenRouter.
 
 **Operator review path (no LLM transmission) — separate from automatic review:**
 
