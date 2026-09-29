@@ -1081,7 +1081,12 @@ def test_load_gateway_config_decisions_policy_requires_noul_question(tmp_path, m
     data_repo = _make_data_repo(
         tmp_path,
         trust_gate_model="typesafe/jev-1.13",
-        extra_lines=["trust_gate: decisions"],
+        extra_lines=[
+            "trust_gate: decisions",
+            "trust_gate_decisions_config:",
+            '  trust_gate_noul_question: ""',
+            "  trust_gate_noul_threshold: 0.45",
+        ],
     )
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
 

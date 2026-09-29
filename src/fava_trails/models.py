@@ -213,6 +213,16 @@ NAMESPACE_ROUTES: dict[SourceType, str] = {
 # Default namespace for save_thought
 DEFAULT_NAMESPACE = "drafts"
 
+# New-install Trust Gate defaults (ticket 03 calibration; shipped by ticket 04).
+DEFAULT_TRUST_GATE_POLICY = "decisions"
+DEFAULT_TRUST_GATE_PROVIDER = "openrouter"
+DEFAULT_TRUST_GATE_MODEL = "~typesafe/jev-latest"
+DEFAULT_NOUL_QUESTION = (
+    "Should this candidate be promoted as durable, high-quality institutional "
+    "memory under the supplied Trust Gate policy?"
+)
+DEFAULT_NOUL_THRESHOLD = 0.45
+
 
 class TrailConfig(BaseModel):
     """Configuration for a single trail."""
@@ -239,15 +249,15 @@ class TrailConfig(BaseModel):
 class TrustGateDecisionsConfig(BaseModel):
     """Explicit Decisions reviewer settings (OpenRouter Jev or local Unsloth).
 
-    Used only when the Trust Gate policy is ``decisions``. The operator
-    supplies one typed Noul question (a yes/no proposition about the thought
-    under review) and the probability threshold at or above which the review
-    approves. Backend selection is the existing per-machine provider, model,
-    and api_base; this block does not choose a model.
+    Used only when the Trust Gate policy is ``decisions``. New installs ship
+    the calibrated Noul question and threshold from ticket 03; operators may
+    still override either value, including per-machine. Backend selection is
+    the existing per-machine provider, model, and api_base; this block does
+    not choose a model.
     """
 
-    trust_gate_noul_question: str = ""
-    trust_gate_noul_threshold: float = 0.5
+    trust_gate_noul_question: str = DEFAULT_NOUL_QUESTION
+    trust_gate_noul_threshold: float = DEFAULT_NOUL_THRESHOLD
 
     @field_validator("trust_gate_noul_question")
     @classmethod
@@ -287,10 +297,10 @@ class GlobalConfig(BaseModel):
     trails_dir: str = "trails"
     remote_url: str | None = None
     push_strategy: str = "manual"  # manual | immediate
-    trust_gate: str = "llm-oneshot"  # llm-oneshot | decisions | human (future)
-    # Provider-neutral Trust Gate LLM settings (default: OpenRouter).
-    trust_gate_provider: str = "openrouter"
-    trust_gate_model: str = "google/gemini-2.5-flash"
+    trust_gate: str = DEFAULT_TRUST_GATE_POLICY  # llm-oneshot | decisions | human (future)
+    # Provider-neutral Trust Gate LLM settings (default: OpenRouter Jev).
+    trust_gate_provider: str = DEFAULT_TRUST_GATE_PROVIDER
+    trust_gate_model: str = DEFAULT_TRUST_GATE_MODEL
     trust_gate_api_base: str | None = None
     # Preferred env-var name for the Trust Gate API key. When unset, falls back
     # to openrouter_api_key_env for backward compatibility with existing configs.

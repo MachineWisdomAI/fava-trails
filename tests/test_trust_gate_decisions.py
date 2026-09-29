@@ -32,11 +32,23 @@ from fava_trails.decisions import (
     decisions_endpoint,
     describe_trust_gate_egress,
 )
-from fava_trails.models import GlobalConfig, SourceType, ThoughtFrontmatter, ThoughtMetadata, ThoughtRecord
+from fava_trails.models import (
+    DEFAULT_NOUL_QUESTION,
+    DEFAULT_NOUL_THRESHOLD,
+    DEFAULT_TRUST_GATE_MODEL,
+    DEFAULT_TRUST_GATE_POLICY,
+    DEFAULT_TRUST_GATE_PROVIDER,
+    GlobalConfig,
+    SourceType,
+    ThoughtFrontmatter,
+    ThoughtMetadata,
+    ThoughtRecord,
+)
 from fava_trails.tools.navigation import handle_propose_truth
 from fava_trails.trust_gate import (
     TrustGateConfigError,
     TrustGatePromptCache,
+    TrustResult,
     format_trust_gate_egress_notice,
     reset_trust_gate_egress_disclosure_state,
     review_thought_decisions,
@@ -48,7 +60,13 @@ from fava_trails.trust_gate import (
 JEV_MODEL = "typesafe/jev-1.13"
 JEV_SNAPSHOT = "typesafe/jev-1.13-20260917"
 LAYA_MODEL = "laya-typed-decisions"
+JEV_LATEST = "~typesafe/jev-latest"
 NOUL_QUESTION = "Does this thought belong in the permanent institutional record?"
+SHIPPED_NOUL_QUESTION = (
+    "Should this candidate be promoted as durable, high-quality institutional "
+    "memory under the supplied Trust Gate policy?"
+)
+SHIPPED_NOUL_THRESHOLD = 0.45
 
 
 @pytest.fixture
@@ -195,15 +213,43 @@ def decisions_client(decisions_server):
 # ─── Configuration contracts ──────────────────────────────────────────────────
 
 
-def test_default_policy_remains_llm_oneshot():
+def test_new_install_defaults_are_calibrated_decisions():
+    """Ticket 04 ships ticket 03's exact question, threshold, and Jev alias."""
     config = GlobalConfig()
-    assert config.trust_gate == "llm-oneshot"
-    assert config.trust_gate_decisions_config.trust_gate_noul_question == ""
+    assert config.trust_gate == "decisions"
+    assert config.trust_gate == DEFAULT_TRUST_GATE_POLICY
+    assert config.trust_gate_provider == "openrouter"
+    assert config.trust_gate_provider == DEFAULT_TRUST_GATE_PROVIDER
+    assert config.trust_gate_model == JEV_LATEST
+    assert config.trust_gate_model == DEFAULT_TRUST_GATE_MODEL
+    assert (
+        config.trust_gate_decisions_config.trust_gate_noul_question
+        == SHIPPED_NOUL_QUESTION
+    )
+    assert config.trust_gate_decisions_config.trust_gate_noul_question == DEFAULT_NOUL_QUESTION
+    assert config.trust_gate_decisions_config.trust_gate_noul_threshold == SHIPPED_NOUL_THRESHOLD
+    assert config.trust_gate_decisions_config.trust_gate_noul_threshold == DEFAULT_NOUL_THRESHOLD
+    assert config.validate_trust_gate_runtime() == "OPENROUTER_API_KEY"
 
 
 def test_decisions_policy_requires_non_empty_question():
     with pytest.raises(ValidationError, match="trust_gate_noul_question"):
-        GlobalConfig(trust_gate="decisions")
+        GlobalConfig(
+            trust_gate="decisions",
+            trust_gate_decisions_config={
+                "trust_gate_noul_question": "",
+                "trust_gate_noul_threshold": SHIPPED_NOUL_THRESHOLD,
+            },
+        )
+
+
+def test_explicit_llm_oneshot_policy_still_loads():
+    config = GlobalConfig(
+        trust_gate="llm-oneshot",
+        trust_gate_model="google/gemini-2.5-flash",
+    )
+    assert config.trust_gate == "llm-oneshot"
+    assert config.validate_trust_gate_runtime() == "OPENROUTER_API_KEY"
 
 
 def test_decisions_threshold_must_be_finite_and_in_range():
@@ -472,6 +518,208 @@ def _decisions_trust_gate_config(
     cfg.trails_dir = tmp_fava_home / "trails"
     ConfigStore.override(cfg)
     return cfg
+
+
+def _default_path_trust_gate_config(
+    tmp_fava_home: Path,
+    *,
+    api_base: str,
+    timeout_secs: int = 30,
+    tool_timeout_secs: int = 60,
+    **overrides: Any,
+) -> ConfigStore:
+    """Use shipped GlobalConfig defaults; only fixture transport/credentials override."""
+    cfg = ConfigStore.__new__(ConfigStore)
+    cfg.global_config = GlobalConfig(
+        trust_gate_api_base=api_base,
+        trust_gate_api_key_env="DECISIONS_API_KEY",
+        trust_gate_timeout_secs=timeout_secs,
+        tool_timeout_secs=tool_timeout_secs,
+        **overrides,
+    )
+    cfg.data_repo_root = tmp_fava_home
+    cfg.trails_dir = tmp_fava_home / "trails"
+    ConfigStore.override(cfg)
+    return cfg
+
+
+@pytest.mark.asyncio
+async def test_propose_truth_default_path_approve_persists_provenance(
+    trail_manager, tmp_fava_home, decisions_server
+):
+    """Shipped defaults complete propose_truth against the synthetic Decisions fixture."""
+    api_base, handler = decisions_server
+    handler.response_mode = "ok"
+    handler.noul_value = SHIPPED_NOUL_THRESHOLD
+
+    record = await trail_manager.save_thought(
+        content="Default-path Decisions review should approve this observation.",
+        agent_id="test-agent",
+        source_type=SourceType.OBSERVATION,
+    )
+
+    cache = MagicMock(spec=TrustGatePromptCache)
+    cache.resolve_prompt.return_value = "You are the trust gate reviewer."
+
+    store = _default_path_trust_gate_config(tmp_fava_home, api_base=api_base)
+    assert store.global_config.trust_gate == "decisions"
+    assert store.global_config.trust_gate_model == JEV_LATEST
+    assert (
+        store.global_config.trust_gate_decisions_config.trust_gate_noul_question
+        == SHIPPED_NOUL_QUESTION
+    )
+    assert (
+        store.global_config.trust_gate_decisions_config.trust_gate_noul_threshold
+        == SHIPPED_NOUL_THRESHOLD
+    )
+
+    with patch.dict("os.environ", {"DECISIONS_API_KEY": "test-decisions-key"}, clear=False):
+        result = await handle_propose_truth(
+            trail_manager,
+            {"thought_id": record.thought_id},
+            prompt_cache=cache,
+        )
+
+    assert result["status"] == "ok"
+    assert result["trust_gate"]["verdict"] == "approve"
+    assert result["trust_gate"]["policy"] == "decisions"
+    assert result["trust_gate"]["reviewer"] == f"decisions:{JEV_LATEST}"
+    assert result["trust_gate"]["noul_probability"] == SHIPPED_NOUL_THRESHOLD
+    assert result["trust_gate"]["threshold"] == SHIPPED_NOUL_THRESHOLD
+    assert handler.last_body["questions"]["trust"]["instructions"] == SHIPPED_NOUL_QUESTION
+    assert handler.last_body["model"] == JEV_LATEST
+
+    promoted = await trail_manager.get_thought(record.thought_id)
+    meta = promoted.frontmatter.metadata.extra["trust_gate"]
+    assert meta["policy"] == "decisions"
+    assert meta["model"] == JEV_SNAPSHOT
+    assert meta["noul_probability"] == SHIPPED_NOUL_THRESHOLD
+    assert meta["threshold"] == SHIPPED_NOUL_THRESHOLD
+    assert meta["kind"] == "llm_advisory"
+    assert promoted.frontmatter.metadata.extra["approval"]["kind"] == "llm_advisory"
+
+
+@pytest.mark.asyncio
+async def test_propose_truth_default_path_reject_does_not_promote(
+    trail_manager, tmp_fava_home, decisions_server
+):
+    api_base, handler = decisions_server
+    handler.response_mode = "ok"
+    handler.noul_value = 0.44
+
+    record = await trail_manager.save_thought(
+        content="Default-path Decisions review should reject this thought.",
+        agent_id="test-agent",
+        source_type=SourceType.DECISION,
+    )
+
+    cache = MagicMock(spec=TrustGatePromptCache)
+    cache.resolve_prompt.return_value = "You are the trust gate reviewer."
+
+    _default_path_trust_gate_config(tmp_fava_home, api_base=api_base)
+    with patch.dict("os.environ", {"DECISIONS_API_KEY": "test-decisions-key"}, clear=False):
+        result = await handle_propose_truth(
+            trail_manager,
+            {"thought_id": record.thought_id},
+            prompt_cache=cache,
+        )
+
+    assert result["status"] == "rejected"
+    assert result["trust_gate"]["verdict"] == "reject"
+    assert result["trust_gate"]["noul_probability"] == 0.44
+    assert result["trust_gate"]["threshold"] == SHIPPED_NOUL_THRESHOLD
+
+    reviewed = await trail_manager.get_thought(record.thought_id)
+    assert reviewed.frontmatter.validation_status.value == "rejected"
+    assert "approval" not in reviewed.frontmatter.metadata.extra
+
+
+@pytest.mark.asyncio
+async def test_propose_truth_explicit_question_threshold_and_model_overrides(
+    trail_manager, tmp_fava_home, decisions_server
+):
+    api_base, handler = decisions_server
+    handler.response_mode = "ok"
+    handler.noul_value = 0.8
+
+    record = await trail_manager.save_thought(
+        content="Explicit overrides must still drive Decisions review.",
+        agent_id="test-agent",
+        source_type=SourceType.OBSERVATION,
+    )
+
+    cache = MagicMock(spec=TrustGatePromptCache)
+    cache.resolve_prompt.return_value = "You are the trust gate reviewer."
+
+    _default_path_trust_gate_config(
+        tmp_fava_home,
+        api_base=api_base,
+        trust_gate_model=JEV_MODEL,
+        trust_gate_decisions_config={
+            "trust_gate_noul_question": NOUL_QUESTION,
+            "trust_gate_noul_threshold": 0.9,
+        },
+    )
+    with patch.dict("os.environ", {"DECISIONS_API_KEY": "test-decisions-key"}, clear=False):
+        result = await handle_propose_truth(
+            trail_manager,
+            {"thought_id": record.thought_id},
+            prompt_cache=cache,
+        )
+
+    assert result["status"] == "rejected"
+    assert handler.last_body["questions"]["trust"]["instructions"] == NOUL_QUESTION
+    assert handler.last_body["model"] == JEV_MODEL
+    assert result["trust_gate"]["threshold"] == 0.9
+    assert result["trust_gate"]["reviewer"] == f"decisions:{JEV_MODEL}"
+
+
+@pytest.mark.asyncio
+async def test_propose_truth_explicit_llm_oneshot_policy_selection(
+    trail_manager, tmp_fava_home, decisions_server
+):
+    """Selecting llm-oneshot must not call the Decisions endpoint."""
+    api_base, handler = decisions_server
+
+    record = await trail_manager.save_thought(
+        content="Explicit llm-oneshot must stay on the chat-completions path.",
+        agent_id="test-agent",
+        source_type=SourceType.OBSERVATION,
+    )
+
+    cache = MagicMock(spec=TrustGatePromptCache)
+    cache.resolve_prompt.return_value = "You are the trust gate reviewer."
+
+    _default_path_trust_gate_config(
+        tmp_fava_home,
+        api_base=api_base,
+        trust_gate="llm-oneshot",
+        trust_gate_model="google/gemini-2.5-flash",
+    )
+    with patch.dict("os.environ", {"DECISIONS_API_KEY": "test-decisions-key"}, clear=False):
+        with patch(
+            "fava_trails.tools.navigation.review_thought",
+            new=AsyncMock(
+                return_value=TrustResult(
+                    verdict="approve",
+                    reasoning="ok",
+                    reviewer="llm-oneshot:google/gemini-2.5-flash",
+                    policy="llm-oneshot",
+                    provider="openrouter",
+                    model="google/gemini-2.5-flash",
+                )
+            ),
+        ) as mock_review:
+            result = await handle_propose_truth(
+                trail_manager,
+                {"thought_id": record.thought_id},
+                prompt_cache=cache,
+            )
+
+    assert result["status"] == "ok"
+    mock_review.assert_awaited()
+    assert handler.call_count == 0
+    assert result["trust_gate"]["policy"] == "llm-oneshot"
 
 
 @pytest.mark.asyncio

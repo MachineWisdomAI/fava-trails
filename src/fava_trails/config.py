@@ -293,7 +293,8 @@ def ensure_data_repo_root() -> Path:
 def get_trust_gate_policy(trail_name: str) -> str:
     """Resolve the trust gate policy for a given trail.
 
-    Priority: trail-level .fava-trails.yaml > global config.yaml > default ("llm-oneshot").
+    Priority: trail-level override when not the inherit sentinel ``llm-oneshot``,
+    else global config.yaml, else the shipped default (``decisions``).
     """
     trail_config = load_trail_config(trail_name)
     if trail_config.trust_gate_policy != "llm-oneshot":
