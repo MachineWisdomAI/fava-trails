@@ -1,7 +1,7 @@
 """Pipeline execution engine for lifecycle hooks.
 
 - run_pipeline(): synchronous gating pipeline for before_*/on_recall
-- dispatch_observer(): async fire-and-forget for after_* hooks
+- dispatch_observer(): awaited sequential observers for after_* hooks
 """
 
 from __future__ import annotations

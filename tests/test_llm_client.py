@@ -3,7 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from any_llm.exceptions import AuthenticationError, RateLimitError
+from any_llm.exceptions import AuthenticationError, ProviderError, RateLimitError
 from any_llm.types.completion import ChatCompletion
 
 from fava_trails.llm.client import LLMClient, LLMError, LLMResponse
@@ -122,6 +122,65 @@ async def test_retry_on_transient_error(client):
 
     assert result.content == "ok"
     assert mock_acompletion.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_retry_logs_omit_provider_exception_secrets(client, caplog):
+    """Retry/error logs must not echo URL query, userinfo, or path secrets."""
+    secret_url = "https://operator:supersecret@api.example/v1/path-token-xyz?api_key=alsosecret"
+    orig = MagicMock()
+    orig.status_code = 503
+    with patch("fava_trails.llm.client.any_llm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        mock_acompletion.side_effect = ProviderError(
+            f"upstream failed at {secret_url}",
+            original_exception=orig,
+            provider_name="openai",
+        )
+        with patch("fava_trails.llm._retry.asyncio.sleep", new_callable=AsyncMock):
+            with caplog.at_level("WARNING", logger="fava_trails.llm._retry"):
+                with pytest.raises(ProviderError):
+                    await client.chat(
+                        messages=[{"role": "user", "content": "hi"}],
+                        model="google/gemini-2.5-flash",
+                    )
+
+    logged = caplog.text
+    assert "ProviderError" in logged
+    assert "503" in logged
+    for fragment in (
+        "supersecret",
+        "path-token-xyz",
+        "alsosecret",
+        "api.example",
+        "upstream failed at",
+        secret_url,
+    ):
+        assert fragment not in logged
+
+
+@pytest.mark.asyncio
+async def test_retry_logs_omit_secret_string_status_code(client, caplog):
+    """Non-integer status_code on original_exception must not appear in retry logs."""
+    orig = MagicMock()
+    orig.status_code = "401?api_key=sk-secret"
+    with patch("fava_trails.llm.client.any_llm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        mock_acompletion.side_effect = ProviderError(
+            "upstream failed",
+            original_exception=orig,
+            provider_name="openai",
+        )
+        with patch("fava_trails.llm._retry.asyncio.sleep", new_callable=AsyncMock):
+            with caplog.at_level("WARNING", logger="fava_trails.llm._retry"):
+                with pytest.raises(ProviderError):
+                    await client.chat(
+                        messages=[{"role": "user", "content": "hi"}],
+                        model="google/gemini-2.5-flash",
+                    )
+
+    logged = caplog.text
+    assert "ProviderError" in logged
+    for fragment in ("sk-secret", "401?api_key", "api_key=sk-secret", "HTTP 401"):
+        assert fragment not in logged
 
 
 @pytest.mark.asyncio

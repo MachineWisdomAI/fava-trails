@@ -380,6 +380,53 @@ def test_global_config_rejects_invalid_api_base_scheme():
         GlobalConfig(trust_gate_api_base="ftp://localhost/v1")
 
 
+def test_global_config_rejects_malformed_api_base_port():
+    from pydantic import ValidationError
+
+    dirty = "http://localhost:bogus/v1/private-token"
+    with pytest.raises(ValidationError, match="port") as exc_info:
+        GlobalConfig(trust_gate_api_base=dirty)
+    # Pydantic still stores input internally, but our custom message must not.
+    assert "private-token" not in exc_info.value.errors()[0]["msg"]
+    assert "bogus" not in exc_info.value.errors()[0]["msg"]
+    from fava_trails.models import format_validation_error_for_diagnostics
+
+    diagnostic = format_validation_error_for_diagnostics(exc_info.value)
+    assert "port" in diagnostic
+    assert "private-token" not in diagnostic
+    assert dirty not in diagnostic
+    assert "input_value" not in diagnostic
+
+
+def test_load_effective_global_config_malformed_api_base_is_secret_free(tmp_path, monkeypatch):
+    """Doctor/startup load path must not echo secret-bearing api_base values."""
+    from fava_trails.config import load_effective_global_config
+
+    data_repo = tmp_path / "data"
+    data_repo.mkdir()
+    (data_repo / "config.yaml").write_text("trails_dir: trails\n")
+    machine_dir = tmp_path / "config" / "fava-trails"
+    machine_dir.mkdir(parents=True)
+    dirty = "http://localhost:bogus/v1/private-token"
+    (machine_dir / "config.yaml").write_text(f"trust_gate_api_base: {dirty}\n")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+
+    with pytest.raises(ValueError) as exc_info:
+        load_effective_global_config(data_repo)
+    message = str(exc_info.value)
+    assert "port" in message
+    assert "private-token" not in message
+    assert dirty not in message
+    assert "input_value" not in message
+
+
+def test_global_config_rejects_api_base_without_hostname():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="hostname"):
+        GlobalConfig(trust_gate_api_base="http:///v1")
+
+
 def test_global_config_validate_runtime_api_base_optional_for_hosted_providers():
     """Issue #85: api_base is optional; hosted OpenAI/Anthropic need no custom base."""
     config = GlobalConfig(

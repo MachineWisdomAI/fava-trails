@@ -435,6 +435,7 @@ def test_run_syncs_once_on_start_without_recurring_worker(tmp_path, monkeypatch)
         {"status": "blocked", "message": "dirty working copy"},
         {"status": "conflict", "message": "merge conflict"},
         {"status": "error", "message": "sync timed out after 30s"},
+        {"status": "not_configured", "message": "Remote sync is not configured"},
     ],
 )
 def test_run_does_not_expose_after_initial_sync_failure(tmp_path, monkeypatch, sync_state):

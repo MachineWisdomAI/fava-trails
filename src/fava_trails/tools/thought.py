@@ -75,17 +75,20 @@ async def handle_save_thought(trail, arguments: dict) -> dict[str, Any]:
     except ValueError:
         return {"status": "error", "message": f"Invalid source_type: {source_type_str}. Valid: {[s.value for s in SourceType]}"}
 
-    record = await trail.save_thought(
-        content=content,
-        agent_id=arguments.get("agent_id", "unknown"),
-        source_type=source_type,
-        confidence=arguments.get("confidence", 0.5),
-        namespace=arguments.get("namespace"),
-        parent_id=arguments.get("parent_id"),
-        intent_ref=arguments.get("intent_ref"),
-        relationships=arguments.get("relationships"),
-        metadata=arguments.get("metadata"),
-    )
+    try:
+        record = await trail.save_thought(
+            content=content,
+            agent_id=arguments.get("agent_id", "unknown"),
+            source_type=source_type,
+            confidence=arguments.get("confidence", 0.5),
+            namespace=arguments.get("namespace"),
+            parent_id=arguments.get("parent_id"),
+            intent_ref=arguments.get("intent_ref"),
+            relationships=arguments.get("relationships"),
+            metadata=arguments.get("metadata"),
+        )
+    except ValueError as e:
+        return {"status": "error", "message": str(e)}
     return {
         "status": "ok",
         "thought": _serialize_thought(record),

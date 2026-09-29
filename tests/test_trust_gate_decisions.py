@@ -16,7 +16,7 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import yaml
@@ -676,8 +676,12 @@ def test_doctor_decisions_diagnostics_are_secret_free(tmp_path, monkeypatch, cap
     assert rc == 0
     assert "policy=decisions" in out
     assert f"model={JEV_MODEL}" in out
-    assert "Destination:  https://openrouter.ai/api/alpha/decisions" in out
-    assert "remote OpenRouter" in out
+    assert "https://openrouter.ai/api/alpha/decisions" in out
+    assert "remote_provider" in out
+    # Structured egress disclosure enumerates the transmitted data categories.
+    assert "full scope-resolved Trust Gate prompt" in out
+    assert "full candidate thought content" in out
+    assert "thought_id, source_type, confidence, validation_status" in out
     # Secret-free: neither the key value nor a credential path is disclosed.
     assert "test-key" not in out
 
@@ -693,5 +697,299 @@ def test_doctor_decisions_custom_api_base_discloses_configured_destination(
     )
 
     assert rc == 0
-    assert "http://127.0.0.1:9/api/alpha/decisions" in out
-    assert "remote OpenRouter" not in out
+    # Shipped redaction policy: operator-configured path segments are redacted;
+    # only the well-known constant Decisions path suffix is disclosed.
+    assert "http://127.0.0.1:9/[redacted]/alpha/decisions" in out
+    assert "http://127.0.0.1:9/api/alpha/decisions" not in out
+    assert "local_endpoint" in out
+    assert "remote_provider" not in out
+
+
+# ─── Structured egress disclosure for the decisions policy ───────────────────
+#
+# Regression coverage for the current-main structured Trust Gate egress path:
+# the decisions policy reuses the trust_gate_egress object, first-in-process
+# disclosure, and secret-free destination redaction shipped for llm-oneshot,
+# and its disclosure enumerates the full scope-resolved Trust Gate prompt, the
+# full candidate body, and the exact selected metadata fields sent.
+
+from fava_trails.trust_gate import (  # noqa: E402
+    describe_trust_gate_egress as describe_structured_egress,
+    format_trust_gate_egress_notice,
+    reset_trust_gate_egress_disclosure_state,
+)
+
+
+def _decisions_global_config(**overrides: Any) -> GlobalConfig:
+    base: dict[str, Any] = {
+        "trust_gate": "decisions",
+        "trust_gate_provider": "openrouter",
+        "trust_gate_model": JEV_MODEL,
+        "trust_gate_api_key_env": "DECISIONS_API_KEY",
+        "trust_gate_decisions_config": {
+            "trust_gate_noul_question": NOUL_QUESTION,
+            "trust_gate_noul_threshold": 0.9,
+        },
+    }
+    base.update(overrides)
+    return GlobalConfig(**base)
+
+
+def test_decisions_egress_notice_enumerates_prompt_body_metadata_and_question():
+    notice = describe_structured_egress(_decisions_global_config())
+
+    assert notice["policy"] == "decisions"
+    assert notice["provider"] == "openrouter"
+    assert notice["model"] == JEV_MODEL
+    assert notice["destination"] == (
+        "openrouter Decisions API (https://openrouter.ai/api/alpha/decisions)"
+    )
+    assert notice["destination_kind"] == "remote_provider"
+    assert notice["cloud_fallback"] is False
+    assert notice["rejection_happens_after_transmission"] is True
+
+    data_sent = "\n".join(notice["data_sent"])
+    assert "full scope-resolved Trust Gate prompt" in data_sent
+    assert "full candidate thought content" in data_sent
+    assert "thought_id, source_type, confidence, validation_status" in data_sent
+    assert "trail_name, parent_id, project, branch, tags" in data_sent
+    assert "Noul question" in data_sent
+    # The summary names the exclusions explicitly.
+    assert "agent_id and metadata.extra are not sent" in notice["data_sent_summary"]
+
+    # Secret-free: credential source is a name only.
+    assert notice["credential_source"] == "DECISIONS_API_KEY"
+    formatted = format_trust_gate_egress_notice(notice)
+    assert "Trust Gate data egress" in formatted
+    assert "decisions" in formatted
+
+
+def test_decisions_egress_notice_policy_override_wins_over_global_default():
+    """A trail-level 'decisions' override is disclosed even when the global config defaults."""
+    notice = describe_structured_egress(GlobalConfig(), policy="decisions")
+    assert notice["policy"] == "decisions"
+    assert "Decisions API" in notice["destination"]
+
+
+def test_decisions_egress_notice_redacts_custom_api_base_secrets():
+    secret_base = "https://operator:hunter2@gw.example.com:8443/gateway-token"
+    notice = describe_structured_egress(
+        _decisions_global_config(trust_gate_api_base=secret_base)
+    )
+
+    assert notice["destination_kind"] == "custom_endpoint"
+    assert notice["destination"].endswith("/alpha/decisions")
+    assert "hunter2" not in notice["destination"]
+    assert "operator" not in notice["destination"]
+    assert "gateway-token" not in notice["destination"]
+    assert "/[redacted]" in notice["destination"]
+    serialized = json.dumps(notice)
+    assert "hunter2" not in serialized
+    assert "gateway-token" not in serialized
+
+
+def test_decisions_egress_notice_marks_loopback_local_endpoint():
+    notice = describe_structured_egress(
+        _decisions_global_config(trust_gate_api_base="http://127.0.0.1:8080")
+    )
+    assert notice["destination_kind"] == "local_endpoint"
+    assert notice["destination"] == "http://127.0.0.1:8080/alpha/decisions"
+
+
+def test_decisions_egress_notice_carries_first_in_process_flag():
+    notice = describe_structured_egress(_decisions_global_config(), first_in_process=True)
+    assert notice["first_in_process"] is True
+    notice_without = describe_structured_egress(_decisions_global_config())
+    assert "first_in_process" not in notice_without
+
+
+# ─── Secret-bearing unexpected exceptions cannot escape (review finding 2) ───
+
+
+@pytest.mark.asyncio
+async def test_review_thought_decisions_unexpected_exception_secret_cannot_escape(
+    sample_thought,
+):
+    """The catch-all path sanitizes through the provider-exception boundary."""
+    secret = "sk-or-v1-9f3a2c1e7b4d8560abcdef1234567890"
+    client = MagicMock(spec=DecisionsClient)
+    client.provider = "openrouter"
+    client.ask_noul = AsyncMock(
+        side_effect=RuntimeError(
+            f"request to https://user:{secret}@openrouter.ai/api/alpha/decisions"
+            f"?api_key={secret} failed"
+        )
+    )
+
+    result = await review_thought_decisions(
+        record=sample_thought,
+        prompt="You are the trust gate reviewer.",
+        model=JEV_MODEL,
+        client=client,
+        question=NOUL_QUESTION,
+        threshold=0.9,
+    )
+
+    assert result.verdict == "error"
+    assert result.policy == "decisions"
+    assert result.threshold == 0.9
+    # The sanitized diagnostic keeps the exception type but never its text.
+    assert "RuntimeError" in result.reasoning
+    assert secret not in result.reasoning
+    assert "api_key" not in result.reasoning
+    assert "user:" not in result.reasoning
+
+
+@pytest.mark.asyncio
+async def test_propose_truth_decisions_unexpected_exception_provenance_is_secret_free(
+    trail_manager, tmp_fava_home, decisions_server
+):
+    """Durable provenance from the catch-all path carries no exception secrets."""
+    api_base, handler = decisions_server
+    secret = "sk-or-v1-deadbeefcafe4242feedface12345678"
+
+    record = await trail_manager.save_thought(
+        content="A thought whose review hits an unexpected provider failure.",
+        agent_id="test-agent",
+        source_type=SourceType.OBSERVATION,
+    )
+
+    cache = MagicMock(spec=TrustGatePromptCache)
+    cache.resolve_prompt.return_value = "You are the trust gate reviewer."
+
+    _decisions_trust_gate_config(tmp_fava_home, api_base=api_base)
+    boom = RuntimeError(
+        f"connection reset by https://proxy:{secret}@gw.internal:9443"
+    )
+    with patch.dict("os.environ", {"DECISIONS_API_KEY": "test-decisions-key"}, clear=False):
+        with patch(
+            "fava_trails.decisions.DecisionsClient.ask_noul",
+            new=AsyncMock(side_effect=boom),
+        ):
+            result = await handle_propose_truth(
+                trail_manager,
+                {"thought_id": record.thought_id},
+                prompt_cache=cache,
+            )
+
+    assert result["status"] == "error"
+    assert secret not in json.dumps(result)
+
+    reviewed = await trail_manager.get_thought(record.thought_id)
+    meta = reviewed.frontmatter.metadata.extra["trust_gate"]
+    assert meta["verdict"] == "error"
+    assert meta["policy"] == "decisions"
+    assert "RuntimeError" in meta["reasoning"]
+    assert secret not in meta["reasoning"]
+    persisted_blob = json.dumps(reviewed.model_dump(mode="json"))
+    assert secret not in persisted_blob
+    assert handler.call_count <= 1
+
+
+# ─── decisions egress object across success, credential failure, timeout ─────
+
+
+@pytest.mark.asyncio
+async def test_propose_truth_decisions_success_includes_structured_egress_notice(
+    trail_manager, tmp_fava_home, decisions_server
+):
+    api_base, handler = decisions_server
+    handler.response_mode = "ok"
+    handler.noul_value = 0.95
+
+    reset_trust_gate_egress_disclosure_state()
+    record = await trail_manager.save_thought(
+        content="Egress disclosure should ride with a successful decisions review.",
+        agent_id="test-agent",
+        source_type=SourceType.OBSERVATION,
+    )
+
+    cache = MagicMock(spec=TrustGatePromptCache)
+    cache.resolve_prompt.return_value = "You are the trust gate reviewer."
+
+    _decisions_trust_gate_config(tmp_fava_home, api_base=api_base)
+    with patch.dict("os.environ", {"DECISIONS_API_KEY": "test-decisions-key"}, clear=False):
+        result = await handle_propose_truth(
+            trail_manager,
+            {"thought_id": record.thought_id},
+            prompt_cache=cache,
+        )
+
+    assert result["status"] == "ok"
+    egress = result["trust_gate_egress"]
+    assert egress["policy"] == "decisions"
+    assert egress["destination_kind"] == "local_endpoint"
+    assert egress["destination"].endswith("/alpha/decisions")
+    assert egress["first_in_process"] is True
+    data_sent = "\n".join(egress["data_sent"])
+    assert "full scope-resolved Trust Gate prompt" in data_sent
+    assert "full candidate thought content" in data_sent
+    assert "thought_id, source_type, confidence, validation_status" in data_sent
+    assert "test-decisions-key" not in json.dumps(result)
+
+
+@pytest.mark.asyncio
+async def test_propose_truth_decisions_credential_failure_includes_egress_notice(
+    trail_manager, tmp_fava_home, decisions_server
+):
+    api_base, handler = decisions_server
+
+    reset_trust_gate_egress_disclosure_state()
+    record = await trail_manager.save_thought(
+        content="Credential failure must still disclose the egress choice.",
+        agent_id="test-agent",
+        source_type=SourceType.OBSERVATION,
+    )
+
+    cache = MagicMock(spec=TrustGatePromptCache)
+    cache.resolve_prompt.return_value = "You are the trust gate reviewer."
+
+    _decisions_trust_gate_config(tmp_fava_home, api_base=api_base)
+    import os
+
+    os.environ.pop("DECISIONS_API_KEY", None)
+    result = await handle_propose_truth(
+        trail_manager,
+        {"thought_id": record.thought_id},
+        prompt_cache=cache,
+    )
+
+    assert result["status"] == "error"
+    assert "DECISIONS_API_KEY" in result["message"]
+    egress = result["trust_gate_egress"]
+    assert egress["policy"] == "decisions"
+    assert egress["first_in_process"] is True
+    assert handler.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_propose_truth_decisions_timeout_includes_egress_notice(
+    trail_manager, tmp_fava_home, decisions_server
+):
+    api_base, handler = decisions_server
+    handler.response_mode = "ok"
+    handler.delay_secs = 2.0
+
+    reset_trust_gate_egress_disclosure_state()
+    record = await trail_manager.save_thought(
+        content="A timeout must still carry the egress disclosure.",
+        agent_id="test-agent",
+        source_type=SourceType.OBSERVATION,
+    )
+
+    cache = MagicMock(spec=TrustGatePromptCache)
+    cache.resolve_prompt.return_value = "You are the trust gate reviewer."
+
+    _decisions_trust_gate_config(tmp_fava_home, api_base=api_base, timeout_secs=1, tool_timeout_secs=30)
+    with patch.dict("os.environ", {"DECISIONS_API_KEY": "test-decisions-key"}, clear=False):
+        result = await handle_propose_truth(
+            trail_manager,
+            {"thought_id": record.thought_id},
+            prompt_cache=cache,
+        )
+
+    assert result["status"] == "error"
+    assert "timed out" in result["message"].lower()
+    egress = result["trust_gate_egress"]
+    assert egress["policy"] == "decisions"
+    assert egress["destination"].endswith("/alpha/decisions")

@@ -9,6 +9,8 @@ from typing import Any, TypeVar
 
 from any_llm.exceptions import ProviderError, RateLimitError
 
+from .sanitize import sanitize_provider_exception
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
@@ -52,10 +54,14 @@ async def async_retry(
                     attempt + 1,
                     max_attempts,
                     delay,
-                    e,
+                    sanitize_provider_exception(e),
                 )
                 await asyncio.sleep(delay)
             else:
-                logger.error("LLM API call failed after %d attempts: %s", max_attempts, e)
+                logger.error(
+                    "LLM API call failed after %d attempts: %s",
+                    max_attempts,
+                    sanitize_provider_exception(e),
+                )
 
     raise last_exc  # type: ignore[misc]

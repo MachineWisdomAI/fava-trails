@@ -57,17 +57,26 @@ def describe_trust_gate_egress(api_base: str | None) -> str:
     """Secret-free egress disclosure for startup diagnostics.
 
     Identifies remote OpenRouter transmission accurately; a custom api_base is
-    disclosed as the configured destination instead.
+    disclosed as the configured destination instead. Enumerates the data
+    categories transmitted as Decisions state: the full scope-resolved Trust
+    Gate prompt, the full candidate thought body, and the exact selected
+    metadata fields (agent_id and metadata.extra are never sent).
     """
     endpoint = decisions_endpoint(api_base)
+    data_categories = (
+        "the full scope-resolved Trust Gate prompt, the full candidate thought "
+        "body, the selected metadata fields (thought_id, source_type, "
+        "confidence, validation_status, and optional trail_name, parent_id, "
+        "project, branch, tags), and the configured Noul question"
+    )
     if endpoint.startswith(DEFAULT_DECISIONS_API_BASE):
         return (
-            "thought content and selected metadata are transmitted to remote "
-            f"OpenRouter for Decisions review ({endpoint})"
+            f"{data_categories} are transmitted to remote OpenRouter for "
+            f"Decisions review ({endpoint})"
         )
     return (
-        "thought content and selected metadata are transmitted to the "
-        f"configured Decisions endpoint ({endpoint})"
+        f"{data_categories} are transmitted to the configured Decisions "
+        f"endpoint ({endpoint})"
     )
 
 

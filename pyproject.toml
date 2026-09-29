@@ -1,6 +1,6 @@
 [project]
 name = "fava-trails"
-version = "0.6.1"
+version = "0.7.0"
 description = "FAVA Trails 🫛👣 — Federated Agents Versioned Audit Trail. VCS-backed memory for AI agents via MCP."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -39,9 +39,11 @@ secom     = ["llmlingua>=0.2.0,<1.0"]
 all       = ["any-llm-sdk[bedrock,groq,anthropic,gemini,mistral,ollama]>=1.10.0,<2.0", "llmlingua>=0.2.0,<1.0"]
 
 [project.urls]
-Homepage = "https://github.com/MachineWisdomAI/fava-trails"
+Homepage = "https://fava-trails.org/"
+Documentation = "https://github.com/MachineWisdomAI/fava-trails#readme"
 Repository = "https://github.com/MachineWisdomAI/fava-trails"
 Issues = "https://github.com/MachineWisdomAI/fava-trails/issues"
+"Machine Wisdom AI" = "https://machine-wisdom.ai/"
 
 [project.scripts]
 fava-trails-server = "fava_trails.server:run"
@@ -68,6 +70,7 @@ include = [
 
 [tool.hatch.build.targets.wheel.force-include]
 "AGENTS_USAGE_INSTRUCTIONS.md" = "fava_trails/AGENTS_USAGE_INSTRUCTIONS.md"
+"src/fava_trails/issue_104_tested_release.json" = "fava_trails/issue_104_tested_release.json"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
