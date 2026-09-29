@@ -193,11 +193,12 @@ def describe_trust_gate_egress(
             "data_sent": decisions_data_sent,
             "data_sent_summary": (
                 "The full scope-resolved Trust Gate prompt, the full candidate "
-                "thought content, and the selected redacted metadata (thought_id, "
-                "source_type, confidence, validation_status; optional "
-                "trail_name/parent_id/project/branch/tags) are transmitted as "
-                "structured Decisions state together with the configured Noul "
-                "question. agent_id and metadata.extra are not sent."
+                "thought content, and the complete selected metadata fields "
+                "(thought_id, source_type, confidence, validation_status; "
+                "optional trail_name/parent_id/project/branch/tags) are "
+                "transmitted as structured Decisions state together with the "
+                "configured Noul question. agent_id and metadata.extra are "
+                "excluded and never sent."
             ),
             "cloud_fallback": False,
             "rejection_happens_after_transmission": True,
@@ -234,8 +235,8 @@ def describe_trust_gate_egress(
 
     data_sent = [
         "full candidate thought content (markdown body)",
-        "redacted metadata: thought_id, source_type, confidence, validation_status",
-        "optional redacted metadata: trail_name, parent_id, project, branch, tags",
+        "selected metadata fields sent: thought_id, source_type, confidence, validation_status",
+        "optional selected metadata fields sent: trail_name, parent_id, project, branch, tags",
     ]
     notice = {
         "policy": config.trust_gate,
@@ -246,10 +247,10 @@ def describe_trust_gate_egress(
         "credential_source": trust_gate_credential_description(config),
         "data_sent": data_sent,
         "data_sent_summary": (
-            "Candidate thought content plus selected redacted metadata "
-            "(thought_id, source_type, confidence, validation_status; optional "
-            "trail_name/parent_id/project/branch/tags). agent_id and metadata.extra "
-            "are not sent."
+            "Candidate thought content plus the complete selected metadata "
+            "fields (thought_id, source_type, confidence, validation_status; "
+            "optional trail_name/parent_id/project/branch/tags). agent_id and "
+            "metadata.extra are excluded and never sent."
         ),
         "cloud_fallback": False,
         "rejection_happens_after_transmission": True,
@@ -413,9 +414,10 @@ class TrustGatePromptCache:
 
 
 def _redact_metadata(record: ThoughtRecord, *, trail_name: str | None = None) -> dict:
-    """Redact sensitive fields from thought metadata before sending to OpenRouter.
+    """Select the metadata fields transmitted for review.
 
-    Strips: agent_id, metadata.extra, and any fields marked sensitive.
+    The selected fields are sent in full (their values are not redacted);
+    agent_id and metadata.extra are excluded entirely.
     Includes trail_name (scope path) when provided — not sensitive, enables
     scope-based artifact type detection (e.g. /specs/, /plans/, /reviews/).
     """

@@ -60,7 +60,15 @@ def test_describe_openrouter_default_is_remote_egress_without_secrets():
     assert notice["destination_kind"] == "remote_provider"
     assert "openrouter" in notice["destination"].lower()
     assert "candidate thought content" in notice["data_sent_summary"].lower()
-    assert "redacted metadata" in notice["data_sent_summary"].lower()
+    # Regression (issue #125): the disclosure must describe the metadata as
+    # selected fields sent in full — never as "redacted metadata".
+    summary = notice["data_sent_summary"].lower()
+    assert "selected metadata" in summary
+    assert "redacted metadata" not in summary
+    assert "redacted" not in " ".join(notice["data_sent"]).lower()
+    # The exclusion must be stated, not implied by "redacted".
+    assert "agent_id" in summary
+    assert "metadata.extra" in summary
     assert notice["rejection_happens_after_transmission"] is True
     assert notice["cloud_fallback"] is False
     text = format_trust_gate_egress_notice(notice)
@@ -71,6 +79,34 @@ def test_describe_openrouter_default_is_remote_egress_without_secrets():
     blob = json.dumps(notice)
     assert "OPENROUTER_API_KEY" in blob  # env *name* is OK
     assert "sk-" not in blob
+
+
+def test_describe_metadata_disclosure_never_says_redacted_for_either_policy():
+    """Regression (issue #125): full prompt, full body, complete selected
+    metadata fields are sent; agent_id and metadata.extra are excluded.
+
+    'Redacted' must not describe the transmitted metadata for any policy.
+    """
+    llm_notice = describe_trust_gate_egress(GlobalConfig())
+    decisions_notice = describe_trust_gate_egress(
+        GlobalConfig(
+            trust_gate="decisions",
+            trust_gate_decisions_config={
+                "trust_gate_noul_question": "Acceptance probe?",
+                "trust_gate_noul_threshold": 0.5,
+            },
+        )
+    )
+    for notice in (llm_notice, decisions_notice):
+        blob = json.dumps(notice).lower()
+        assert "redacted metadata" not in blob
+        # data_sent lines name the selected fields; none claims redaction.
+        for line in notice["data_sent"]:
+            assert "redacted" not in line.lower()
+        summary = notice["data_sent_summary"].lower()
+        assert "selected metadata" in summary
+        assert "agent_id" in summary
+        assert "metadata.extra" in summary
 
 
 def test_describe_local_endpoint_marks_local_destination():
