@@ -742,6 +742,20 @@ async def test_propose_truth_timeout_returns_error(trail_manager, tmp_fava_home)
     (trails_dir / "trust-gate-prompt.md").write_text("You are a reviewer.")
     cache.load_from_trails_dir(trails_dir)
 
+    from fava_trails.config import ConfigStore
+    from fava_trails.models import GlobalConfig
+
+    cfg = ConfigStore.__new__(ConfigStore)
+    cfg.global_config = GlobalConfig(
+        trust_gate="llm-oneshot",
+        trust_gate_model="google/gemini-2.5-flash",
+        trust_gate_timeout_secs=120,
+        tool_timeout_secs=300,
+    )
+    cfg.data_repo_root = tmp_fava_home
+    cfg.trails_dir = trails_dir
+    ConfigStore.override(cfg)
+
     # Mock review_thought to raise TimeoutError (as asyncio.wait_for would after 120s).
     # Using AsyncMock ensures the coroutine is properly awaited — no "never awaited" warning.
     # Also mock the env key lookup so we reach wait_for rather than early-returning on missing key.
@@ -784,7 +798,12 @@ async def test_propose_truth_timeout_disabled_when_zero(trail_manager, tmp_fava_
 
     # Inject config with trust_gate_timeout=0 (disabled) and tool_timeout=0 (also disabled)
     cfg = ConfigStore.__new__(ConfigStore)
-    cfg.global_config = GlobalConfig(trust_gate_timeout_secs=0, tool_timeout_secs=0)
+    cfg.global_config = GlobalConfig(
+        trust_gate="llm-oneshot",
+        trust_gate_model="google/gemini-2.5-flash",
+        trust_gate_timeout_secs=0,
+        tool_timeout_secs=0,
+    )
     cfg.data_repo_root = tmp_fava_home
     cfg.trails_dir = tmp_fava_home / "trails"
     ConfigStore.override(cfg)
