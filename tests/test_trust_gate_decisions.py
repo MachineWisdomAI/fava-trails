@@ -1,10 +1,11 @@
-"""End-to-end Trust Gate tests for the explicit OpenRouter Decisions policy.
+"""End-to-end Trust Gate tests for the Decisions policy (OpenRouter Jev and local Laya).
 
 Uses synthetic credentials and an in-process Decisions HTTP fixture — no live
-OpenRouter credential, private corpus, or GPU required. Demonstrates draft
-review through ``propose_truth``: approval with durable provenance, rejection
-without promotion, threshold boundaries, metadata selection, credentials,
-configuration precedence, and fail-closed error paths.
+OpenRouter credential, Unsloth process, private corpus, or GPU required.
+Demonstrates draft review through ``propose_truth``: approval with durable
+provenance, rejection without promotion, threshold boundaries, metadata
+selection, credentials, configuration precedence, and fail-closed error paths
+for both hosted Jev and explicitly configured local Unsloth Laya.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 import yaml
 from pydantic import ValidationError
@@ -57,6 +59,7 @@ from fava_trails.trust_gate import (
 
 JEV_MODEL = "typesafe/jev-1.13"
 JEV_SNAPSHOT = "typesafe/jev-1.13-20260917"
+LAYA_MODEL = "laya-typed-decisions"
 JEV_LATEST = "~typesafe/jev-latest"
 NOUL_QUESTION = "Does this thought belong in the permanent institutional record?"
 SHIPPED_NOUL_QUESTION = (
@@ -86,9 +89,12 @@ def sample_thought():
 
 
 class _DecisionsHandler(BaseHTTPRequestHandler):
-    """Minimal authenticated fixture for POST /api/alpha/decisions."""
+    """In-process fixture for OpenRouter Jev and local Unsloth Decision contracts."""
 
     expected_api_key: str = "test-decisions-key"
+    expected_path: str = "/api/alpha/decisions"
+    served_model: str = JEV_SNAPSHOT
+    include_optional_fields: bool = True
     response_mode: str = "ok"  # ok | malformed | missing_answer | wrong_type | out_of_range | nan | unauthorized | slow
     noul_value: float = 0.93
     delay_secs: float = 0.0
@@ -117,7 +123,7 @@ class _DecisionsHandler(BaseHTTPRequestHandler):
             self._json(401, {"error": {"message": "invalid api key"}})
             return
 
-        if self.path != "/api/alpha/decisions":
+        if self.path != self.expected_path:
             self._json(404, {"error": {"message": f"unknown path {self.path}"}})
             return
 
@@ -141,12 +147,13 @@ class _DecisionsHandler(BaseHTTPRequestHandler):
             answers = {"trust": {"type": "noul", "noul": float("nan")}}
 
         payload = {
-            "model": JEV_SNAPSHOT,
+            "model": self.served_model,
             "answers": answers,
             "usage": {"input_tokens": 120, "output_tokens": 20, "cost": 0.000005},
-            "id": "gen-dec-fixture",
-            "provider": "TypeSafe",
         }
+        if self.include_optional_fields:
+            payload["id"] = "gen-dec-fixture"
+            payload["provider"] = "TypeSafe"
         raw_body = json.dumps(payload, allow_nan=True).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -171,6 +178,9 @@ def decisions_server():
     """Start an in-process Decisions HTTP fixture; yield (api_base, handler_cls)."""
     handler = _DecisionsHandler
     handler.expected_api_key = "test-decisions-key"
+    handler.expected_path = "/api/alpha/decisions"
+    handler.served_model = JEV_SNAPSHOT
+    handler.include_optional_fields = True
     handler.response_mode = "ok"
     handler.noul_value = 0.93
     handler.delay_secs = 0.0
@@ -486,14 +496,17 @@ def _decisions_trust_gate_config(
     threshold: float = 0.9,
     timeout_secs: int = 30,
     tool_timeout_secs: int = 60,
+    provider: str = "openrouter",
+    model: str = JEV_MODEL,
+    api_key_env: str = "DECISIONS_API_KEY",
 ) -> ConfigStore:
     cfg = ConfigStore.__new__(ConfigStore)
     cfg.global_config = GlobalConfig(
         trust_gate="decisions",
-        trust_gate_provider="openrouter",
-        trust_gate_model=JEV_MODEL,
+        trust_gate_provider=provider,
+        trust_gate_model=model,
         trust_gate_api_base=api_base,
-        trust_gate_api_key_env="DECISIONS_API_KEY",
+        trust_gate_api_key_env=api_key_env,
         trust_gate_timeout_secs=timeout_secs,
         tool_timeout_secs=tool_timeout_secs,
         trust_gate_decisions_config={
@@ -710,9 +723,7 @@ async def test_propose_truth_explicit_llm_oneshot_policy_selection(
 
 
 @pytest.mark.asyncio
-async def test_propose_truth_decisions_approve_persists_provenance(
-    trail_manager, tmp_fava_home, decisions_server
-):
+async def test_propose_truth_decisions_approve_persists_provenance(trail_manager, tmp_fava_home, decisions_server):
     """Draft review approves through the fixture and persists durable provenance."""
     api_base, handler = decisions_server
     handler.response_mode = "ok"
@@ -762,9 +773,7 @@ async def test_propose_truth_decisions_approve_persists_provenance(
 
 
 @pytest.mark.asyncio
-async def test_propose_truth_decisions_reject_does_not_promote(
-    trail_manager, tmp_fava_home, decisions_server
-):
+async def test_propose_truth_decisions_reject_does_not_promote(trail_manager, tmp_fava_home, decisions_server):
     api_base, handler = decisions_server
     handler.response_mode = "ok"
     handler.noul_value = 0.2
@@ -796,9 +805,7 @@ async def test_propose_truth_decisions_reject_does_not_promote(
 
 
 @pytest.mark.asyncio
-async def test_propose_truth_decisions_error_fails_closed(
-    trail_manager, tmp_fava_home, decisions_server
-):
+async def test_propose_truth_decisions_error_fails_closed(trail_manager, tmp_fava_home, decisions_server):
     api_base, handler = decisions_server
     handler.response_mode = "missing_answer"
 
@@ -854,9 +861,7 @@ async def test_propose_truth_decisions_timeout(trail_manager, tmp_fava_home, dec
 
 
 @pytest.mark.asyncio
-async def test_propose_truth_decisions_missing_key_fails_closed(
-    trail_manager, tmp_fava_home, decisions_server
-):
+async def test_propose_truth_decisions_missing_key_fails_closed(trail_manager, tmp_fava_home, decisions_server):
     api_base, handler = decisions_server
 
     record = await trail_manager.save_thought(
@@ -939,9 +944,7 @@ def test_doctor_decisions_diagnostics_are_secret_free(tmp_path, monkeypatch, cap
     assert "test-key" not in out
 
 
-def test_doctor_decisions_custom_api_base_discloses_configured_destination(
-    tmp_path, monkeypatch, capsys
-):
+def test_doctor_decisions_custom_api_base_discloses_configured_destination(tmp_path, monkeypatch, capsys):
     rc, out = _doctor_run(
         tmp_path,
         monkeypatch,
@@ -988,9 +991,7 @@ def test_decisions_egress_notice_enumerates_prompt_body_metadata_and_question():
     assert notice["policy"] == "decisions"
     assert notice["provider"] == "openrouter"
     assert notice["model"] == JEV_MODEL
-    assert notice["destination"] == (
-        "openrouter Decisions API (https://openrouter.ai/api/alpha/decisions)"
-    )
+    assert notice["destination"] == ("openrouter Decisions API (https://openrouter.ai/api/alpha/decisions)")
     assert notice["destination_kind"] == "remote_provider"
     assert notice["cloud_fallback"] is False
     assert notice["rejection_happens_after_transmission"] is True
@@ -1024,9 +1025,7 @@ def test_decisions_egress_notice_policy_override_wins_over_global_default():
 
 def test_decisions_egress_notice_redacts_custom_api_base_secrets():
     secret_base = "https://operator:hunter2@gw.example.com:8443/gateway-token"
-    notice = describe_structured_egress(
-        _decisions_global_config(trust_gate_api_base=secret_base)
-    )
+    notice = describe_structured_egress(_decisions_global_config(trust_gate_api_base=secret_base))
 
     assert notice["destination_kind"] == "custom_endpoint"
     assert notice["destination"].endswith("/alpha/decisions")
@@ -1040,9 +1039,7 @@ def test_decisions_egress_notice_redacts_custom_api_base_secrets():
 
 
 def test_decisions_egress_notice_marks_loopback_local_endpoint():
-    notice = describe_structured_egress(
-        _decisions_global_config(trust_gate_api_base="http://127.0.0.1:8080")
-    )
+    notice = describe_structured_egress(_decisions_global_config(trust_gate_api_base="http://127.0.0.1:8080"))
     assert notice["destination_kind"] == "local_endpoint"
     assert notice["destination"] == "http://127.0.0.1:8080/alpha/decisions"
 
@@ -1067,8 +1064,7 @@ async def test_review_thought_decisions_unexpected_exception_secret_cannot_escap
     client.provider = "openrouter"
     client.ask_noul = AsyncMock(
         side_effect=RuntimeError(
-            f"request to https://user:{secret}@openrouter.ai/api/alpha/decisions"
-            f"?api_key={secret} failed"
+            f"request to https://user:{secret}@openrouter.ai/api/alpha/decisions?api_key={secret} failed"
         )
     )
 
@@ -1109,9 +1105,7 @@ async def test_propose_truth_decisions_unexpected_exception_provenance_is_secret
     cache.resolve_prompt.return_value = "You are the trust gate reviewer."
 
     _decisions_trust_gate_config(tmp_fava_home, api_base=api_base)
-    boom = RuntimeError(
-        f"connection reset by https://proxy:{secret}@gw.internal:9443"
-    )
+    boom = RuntimeError(f"connection reset by https://proxy:{secret}@gw.internal:9443")
     with patch.dict("os.environ", {"DECISIONS_API_KEY": "test-decisions-key"}, clear=False):
         with patch(
             "fava_trails.decisions.DecisionsClient.ask_noul",
@@ -1214,9 +1208,7 @@ async def test_propose_truth_decisions_credential_failure_includes_egress_notice
 
 
 @pytest.mark.asyncio
-async def test_propose_truth_decisions_timeout_includes_egress_notice(
-    trail_manager, tmp_fava_home, decisions_server
-):
+async def test_propose_truth_decisions_timeout_includes_egress_notice(trail_manager, tmp_fava_home, decisions_server):
     api_base, handler = decisions_server
     handler.response_mode = "ok"
     handler.delay_secs = 2.0
@@ -1244,3 +1236,375 @@ async def test_propose_truth_decisions_timeout_includes_egress_notice(
     egress = result["trust_gate_egress"]
     assert egress["policy"] == "decisions"
     assert egress["destination"].endswith("/alpha/decisions")
+
+
+# ─── Local Unsloth Laya (explicit openai provider + api_base) ────────────────
+
+
+@pytest.fixture
+def laya_server():
+    """In-process Unsloth Decision API at POST /v1/systemone."""
+    handler = _DecisionsHandler
+    handler.expected_api_key = "test-laya-key"
+    handler.expected_path = "/v1/systemone"
+    handler.served_model = LAYA_MODEL
+    handler.include_optional_fields = False
+    handler.response_mode = "ok"
+    handler.noul_value = 0.93
+    handler.delay_secs = 0.0
+    handler.last_auth = None
+    handler.last_body = None
+    handler.last_path = None
+    handler.call_count = 0
+
+    server = HTTPServer(("127.0.0.1", 0), handler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{port}/v1", handler
+    finally:
+        server.shutdown()
+        thread.join(timeout=2)
+
+
+def test_openrouter_endpoint_unchanged_when_provider_is_openrouter():
+    assert decisions_endpoint(None) == "https://openrouter.ai/api/alpha/decisions"
+    assert decisions_endpoint(None, provider="openrouter") == ("https://openrouter.ai/api/alpha/decisions")
+    assert (
+        decisions_endpoint("http://127.0.0.1:9/api/", provider="openrouter") == "http://127.0.0.1:9/api/alpha/decisions"
+    )
+
+
+def test_local_openai_provider_uses_unsloth_systemone_path():
+    assert decisions_endpoint("http://127.0.0.1:8888/v1", provider="openai") == "http://127.0.0.1:8888/v1/systemone"
+    assert decisions_endpoint("http://127.0.0.1:8888", provider="openai") == "http://127.0.0.1:8888/v1/systemone"
+
+
+def test_runtime_does_not_hardcode_laya_or_unsloth_model():
+    from pathlib import Path
+
+    # Transport/config logic must not select a Laya variant; operator docs/guidance may.
+    for path in (
+        Path("src/fava_trails/decisions.py"),
+        Path("src/fava_trails/trust_gate.py"),
+        Path("src/fava_trails/models.py"),
+    ):
+        text = path.read_text()
+        for token in ("laya-typed-decisions", "laya-multilingual", "laya-english"):
+            assert token not in text, f"{path} hardcodes {token}"
+        assert '"laya"' not in text and "'laya'" not in text, f"{path} hardcodes laya alias"
+
+
+def test_local_decisions_egress_identifies_systemone_without_openrouter():
+    notice = describe_structured_egress(
+        GlobalConfig(
+            trust_gate="decisions",
+            trust_gate_provider="openai",
+            trust_gate_model=LAYA_MODEL,
+            trust_gate_api_base="http://127.0.0.1:8888/v1",
+            trust_gate_api_key_env="UNSLOTH_API_KEY",
+            trust_gate_decisions_config={
+                "trust_gate_noul_question": NOUL_QUESTION,
+                "trust_gate_noul_threshold": 0.9,
+            },
+        )
+    )
+    assert notice["provider"] == "openai"
+    assert notice["model"] == LAYA_MODEL
+    assert notice["destination_kind"] == "local_endpoint"
+    assert notice["destination"] == "http://127.0.0.1:8888/v1/systemone"
+    assert "openrouter" not in notice["destination"].lower()
+    assert notice["cloud_fallback"] is False
+
+    prose = describe_trust_gate_egress("http://127.0.0.1:8888/v1", provider="openai")
+    assert "http://127.0.0.1:8888/v1/systemone" in prose
+    assert "remote OpenRouter" not in prose
+    assert "/alpha/decisions" not in prose
+
+
+@pytest.mark.asyncio
+async def test_local_laya_forwards_configured_model_to_systemone(laya_server, sample_thought):
+    api_base, handler = laya_server
+    client = DecisionsClient(
+        api_key="test-laya-key",
+        api_base=api_base,
+        provider="openai",
+    )
+    result = await review_thought_decisions(
+        record=sample_thought,
+        prompt="You are the trust gate reviewer.",
+        model=LAYA_MODEL,
+        client=client,
+        question=NOUL_QUESTION,
+        threshold=0.9,
+        trail_name="mw/eng/fava-trails",
+    )
+    assert handler.call_count == 1
+    assert handler.last_path == "/v1/systemone"
+    assert handler.last_auth == "Bearer test-laya-key"
+    assert handler.last_body is not None
+    assert handler.last_body["model"] == LAYA_MODEL
+    assert handler.last_body["questions"] == {"trust": {"type": "noul", "instructions": NOUL_QUESTION}}
+    assert result.verdict == "approve"
+    assert result.provider == "openai"
+    assert result.model == LAYA_MODEL
+    assert result.noul_probability == 0.93
+
+
+@pytest.mark.asyncio
+async def test_local_laya_optional_provider_and_id_are_not_required(laya_server, sample_thought):
+    api_base, handler = laya_server
+    handler.include_optional_fields = False
+    client = DecisionsClient(
+        api_key="test-laya-key",
+        api_base=api_base,
+        provider="openai",
+    )
+    result = await review_thought_decisions(
+        record=sample_thought,
+        prompt="Reviewer prompt.",
+        model=LAYA_MODEL,
+        client=client,
+        question=NOUL_QUESTION,
+        threshold=0.9,
+    )
+    assert result.verdict == "approve"
+    assert result.provider == "openai"
+    assert result.model == LAYA_MODEL
+
+
+@pytest.mark.asyncio
+async def test_local_laya_failures_fail_closed_without_openrouter(laya_server, sample_thought, monkeypatch):
+    api_base, handler = laya_server
+    posted: list[str] = []
+    original_post = httpx.AsyncClient.post
+
+    async def spy_post(self, url, *args, **kwargs):
+        posted.append(str(url))
+        return await original_post(self, url, *args, **kwargs)
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", spy_post)
+
+    handler.response_mode = "missing_answer"
+    client = DecisionsClient(
+        api_key="test-laya-key",
+        api_base=api_base,
+        provider="openai",
+    )
+    result = await review_thought_decisions(
+        record=sample_thought,
+        prompt="Reviewer prompt.",
+        model=LAYA_MODEL,
+        client=client,
+        question=NOUL_QUESTION,
+        threshold=0.9,
+    )
+    assert result.verdict == "error"
+    assert result.provider == "openai"
+    assert handler.call_count == 1
+    assert posted == [f"{api_base.rstrip('/')}/systemone"]
+    assert all("openrouter.ai" not in url for url in posted)
+
+
+@pytest.mark.asyncio
+async def test_local_connection_failure_does_not_contact_openrouter(sample_thought, monkeypatch):
+    posted: list[str] = []
+    original_post = httpx.AsyncClient.post
+
+    async def spy_post(self, url, *args, **kwargs):
+        posted.append(str(url))
+        return await original_post(self, url, *args, **kwargs)
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", spy_post)
+    client = DecisionsClient(
+        api_key="test-laya-key",
+        api_base="http://127.0.0.1:1/v1",
+        provider="openai",
+    )
+    result = await review_thought_decisions(
+        record=sample_thought,
+        prompt="Reviewer prompt.",
+        model=LAYA_MODEL,
+        client=client,
+        question=NOUL_QUESTION,
+        threshold=0.9,
+    )
+    assert result.verdict == "error"
+    assert result.provider == "openai"
+    assert all("openrouter.ai" not in url for url in posted)
+    assert posted == ["http://127.0.0.1:1/v1/systemone"]
+
+
+@pytest.mark.asyncio
+async def test_propose_truth_local_laya_approve_persists_provenance(
+    trail_manager, tmp_fava_home, laya_server, monkeypatch
+):
+    api_base, handler = laya_server
+    handler.noul_value = 0.93
+    posted: list[str] = []
+    original_post = httpx.AsyncClient.post
+
+    async def spy_post(self, url, *args, **kwargs):
+        posted.append(str(url))
+        return await original_post(self, url, *args, **kwargs)
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", spy_post)
+
+    record = await trail_manager.save_thought(
+        content="Local Laya should approve this observation.",
+        agent_id="test-agent",
+        source_type=SourceType.OBSERVATION,
+    )
+    cache = MagicMock(spec=TrustGatePromptCache)
+    cache.resolve_prompt.return_value = "You are the trust gate reviewer."
+    _decisions_trust_gate_config(
+        tmp_fava_home,
+        api_base=api_base,
+        provider="openai",
+        model=LAYA_MODEL,
+        api_key_env="UNSLOTH_API_KEY",
+    )
+    with patch.dict("os.environ", {"UNSLOTH_API_KEY": "test-laya-key"}, clear=False):
+        result = await handle_propose_truth(
+            trail_manager,
+            {"thought_id": record.thought_id},
+            prompt_cache=cache,
+        )
+
+    assert result["status"] == "ok"
+    assert result["trust_gate"]["verdict"] == "approve"
+    assert result["trust_gate"]["policy"] == "decisions"
+    assert result["trust_gate"]["provider"] == "openai"
+    assert result["trust_gate"]["model"] == LAYA_MODEL
+    assert result["trust_gate"]["reviewer"] == f"decisions:{LAYA_MODEL}"
+    assert result["trust_gate_egress"]["destination"].endswith("/v1/systemone")
+    assert result["trust_gate_egress"]["destination_kind"] == "local_endpoint"
+    assert "test-laya-key" not in json.dumps(result)
+    assert handler.last_path == "/v1/systemone"
+    assert handler.last_body["model"] == LAYA_MODEL
+    assert all("openrouter.ai" not in url for url in posted)
+
+    promoted = await trail_manager.get_thought(record.thought_id)
+    meta = promoted.frontmatter.metadata.extra["trust_gate"]
+    assert meta["provider"] == "openai"
+    assert meta["model"] == LAYA_MODEL
+    assert meta["noul_probability"] == 0.93
+    assert "api_key" not in meta
+    assert "test-laya-key" not in json.dumps(promoted.model_dump(mode="json"))
+
+
+@pytest.mark.asyncio
+async def test_propose_truth_local_laya_reject_does_not_promote(trail_manager, tmp_fava_home, laya_server):
+    api_base, handler = laya_server
+    handler.noul_value = 0.2
+    record = await trail_manager.save_thought(
+        content="Local Laya should reject this thought.",
+        agent_id="test-agent",
+        source_type=SourceType.DECISION,
+    )
+    cache = MagicMock(spec=TrustGatePromptCache)
+    cache.resolve_prompt.return_value = "You are the trust gate reviewer."
+    _decisions_trust_gate_config(
+        tmp_fava_home,
+        api_base=api_base,
+        provider="openai",
+        model=LAYA_MODEL,
+        api_key_env="UNSLOTH_API_KEY",
+    )
+    with patch.dict("os.environ", {"UNSLOTH_API_KEY": "test-laya-key"}, clear=False):
+        result = await handle_propose_truth(
+            trail_manager,
+            {"thought_id": record.thought_id},
+            prompt_cache=cache,
+        )
+    assert result["status"] == "rejected"
+    reviewed = await trail_manager.get_thought(record.thought_id)
+    assert reviewed.frontmatter.validation_status.value == "rejected"
+    assert "approval" not in reviewed.frontmatter.metadata.extra
+
+
+def test_doctor_local_laya_identifies_local_systemone(tmp_path, monkeypatch, capsys):
+    rc, out = _doctor_run(
+        tmp_path,
+        monkeypatch,
+        capsys,
+        cfg_overrides={
+            "trust_gate_provider": "openai",
+            "trust_gate_model": LAYA_MODEL,
+            "trust_gate_api_base": "http://127.0.0.1:8888/v1",
+        },
+    )
+    assert rc == 0
+    assert "policy=decisions" in out
+    assert f"model={LAYA_MODEL}" in out
+    assert "local_endpoint" in out
+    assert "/v1/systemone" in out
+    assert "remote_provider" not in out
+    assert "openrouter.ai/api/alpha/decisions" not in out
+    assert "test-key" not in out
+
+
+def test_doctor_missing_openrouter_key_for_decisions_mentions_laya(tmp_path, monkeypatch, capsys):
+    from argparse import Namespace
+
+    from fava_trails.cli import cmd_doctor
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    data_repo = tmp_path / "data-repo"
+    data_repo.mkdir()
+    (data_repo / "config.yaml").write_text("trails_dir: trails\n")
+    (data_repo / "trails").mkdir()
+    (tmp_path / ".env").write_text("FAVA_TRAILS_SCOPE=mw/eng/test\n")
+    jj_mock = MagicMock()
+    jj_mock.returncode = 0
+    jj_mock.stdout = "jj 0.25.0\n"
+    jj_mock.stderr = ""
+
+    with patch("fava_trails.cli.get_data_repo_root", return_value=data_repo):
+        with patch("fava_trails.cli.load_global_config") as mock_config:
+            cfg = mock_config.return_value
+            cfg.validate_trust_gate_runtime.return_value = "OPENROUTER_API_KEY"
+            cfg.resolve_trust_gate_api_key_env.return_value = "OPENROUTER_API_KEY"
+            cfg.trust_gate_provider = "openrouter"
+            cfg.trust_gate_model = JEV_MODEL
+            cfg.trust_gate_api_base = None
+            cfg.trust_gate_api_key_file = None
+            cfg.trust_gate = "decisions"
+            with patch("shutil.which", return_value="/usr/bin/jj"):
+                with patch("subprocess.run", return_value=jj_mock):
+                    rc = cmd_doctor(Namespace())
+
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "openrouter.ai/keys" in out
+    assert "Unsloth" in out
+    assert "laya-typed-decisions" in out
+    assert "laya-multilingual" not in out
+
+
+@pytest.mark.asyncio
+async def test_propose_truth_missing_openrouter_key_mentions_local_laya(trail_manager, tmp_fava_home, decisions_server):
+    api_base, handler = decisions_server
+    record = await trail_manager.save_thought(
+        content="Missing OpenRouter key should mention local Laya.",
+        agent_id="test-agent",
+        source_type=SourceType.OBSERVATION,
+    )
+    cache = MagicMock(spec=TrustGatePromptCache)
+    cache.resolve_prompt.return_value = "You are the trust gate reviewer."
+    _decisions_trust_gate_config(tmp_fava_home, api_base=api_base)
+    import os
+
+    os.environ.pop("DECISIONS_API_KEY", None)
+    result = await handle_propose_truth(
+        trail_manager,
+        {"thought_id": record.thought_id},
+        prompt_cache=cache,
+    )
+    assert result["status"] == "error"
+    assert "DECISIONS_API_KEY" in result["message"]
+    assert "Unsloth" in result["message"]
+    assert "laya-typed-decisions" in result["message"]
+    assert handler.call_count == 0

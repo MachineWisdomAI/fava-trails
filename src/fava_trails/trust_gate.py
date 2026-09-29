@@ -157,7 +157,12 @@ def describe_trust_gate_egress(
 
     effective_policy = policy or config.trust_gate
     if effective_policy == "decisions":
-        from .decisions import DECISIONS_API_PATH, DEFAULT_DECISIONS_API_BASE
+        from .decisions import (
+            DECISIONS_API_PATH,
+            DEFAULT_DECISIONS_API_BASE,
+            decisions_endpoint,
+            uses_local_decisions_backend,
+        )
 
         decisions_provider = config.trust_gate_provider
         decisions_model = config.trust_gate_model
@@ -166,10 +171,17 @@ def describe_trust_gate_egress(
             disclosed_base = (
                 redact_trust_gate_api_base_for_disclosure(api_base) or "[invalid-api-base]"
             )
-            destination = f"{disclosed_base}{DECISIONS_API_PATH}"
+            destination = (
+                decisions_endpoint(disclosed_base, provider=decisions_provider)
+                if disclosed_base != "[invalid-api-base]"
+                else disclosed_base
+            )
             destination_kind: Literal["local_endpoint", "custom_endpoint", "remote_provider"] = (
                 "local_endpoint" if _is_loopback_api_base(api_base) else "custom_endpoint"
             )
+        elif uses_local_decisions_backend(decisions_provider):
+            destination_kind = "local_endpoint"
+            destination = decisions_endpoint(None, provider=decisions_provider)
         else:
             destination_kind = "remote_provider"
             destination = (
@@ -727,13 +739,14 @@ async def review_thought_decisions(
     threshold: float,
     trail_name: str | None = None,
 ) -> TrustResult:
-    """Review a thought through OpenRouter Decisions (Jev) with one Noul question.
+    """Review a thought through the Decisions policy with one Noul question.
 
     Approves when the returned Noul probability is at or above ``threshold``;
-    rejects when it is below. Jev returns no reasoning, so the recorded
-    reasoning is a factual statement of the probability and threshold — never
-    fabricated model rationale. Every transport, contract, or range failure
-    fails closed with verdict ``error`` and never contacts another reviewer.
+    rejects when it is below. The Decisions response carries no reasoning, so
+    the recorded reasoning is a factual statement of the probability and
+    threshold — never fabricated model rationale. Every transport, contract, or
+    range failure fails closed with verdict ``error`` and never contacts
+    another reviewer.
     """
     _validate_decisions_review_inputs(question, threshold)
     threshold = float(threshold)
@@ -771,13 +784,13 @@ async def review_thought_decisions(
     approved = answer.probability >= threshold
     if approved:
         reasoning = (
-            f"Jev Noul probability {answer.probability} is at or above the "
+            f"Noul probability {answer.probability} is at or above the "
             f"configured threshold {threshold}. The Decisions response carries "
             "no reasoning; none is fabricated."
         )
     else:
         reasoning = (
-            f"Jev Noul probability {answer.probability} is below the configured "
+            f"Noul probability {answer.probability} is below the configured "
             f"threshold {threshold}. The Decisions response carries no reasoning; "
             "none is fabricated."
         )

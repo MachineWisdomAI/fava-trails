@@ -204,7 +204,10 @@ def _load_gateway_config(args: argparse.Namespace, *, require_tunnel_client: boo
     if global_config.trust_gate == "decisions":
         from .decisions import describe_trust_gate_egress
 
-        trust_gate_egress = describe_trust_gate_egress(global_config.trust_gate_api_base)
+        trust_gate_egress = describe_trust_gate_egress(
+            global_config.trust_gate_api_base,
+            provider=global_config.trust_gate_provider,
+        )
 
     return GatewayConfig(
         data_repo=data_repo,

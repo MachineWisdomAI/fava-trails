@@ -191,9 +191,17 @@ async def handle_propose_truth(
             try:
                 load_trust_gate_api_key(global_config)
             except ValueError as exc:
+                message = str(exc)
+                if (
+                    policy == "decisions"
+                    and global_config.trust_gate_provider == "openrouter"
+                ):
+                    from ..credentials import LOCAL_UNSLOTH_LAYA_DECISIONS_HINT
+
+                    message = f"{message} {LOCAL_UNSLOTH_LAYA_DECISIONS_HINT}"
                 return {
                     "status": "error",
-                    "message": str(exc),
+                    "message": message,
                     "trust_gate_egress": egress_notice,
                 }
 

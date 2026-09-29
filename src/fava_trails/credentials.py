@@ -8,6 +8,13 @@ from pathlib import Path
 
 from .models import GlobalConfig
 
+LOCAL_UNSLOTH_LAYA_DECISIONS_HINT = (
+    "Alternatively, configure local Unsloth Laya for Decisions review "
+    "(trust_gate_provider openai, trust_gate_model laya-typed-decisions, "
+    "trust_gate_api_base at your Unsloth Decision API). FAVA does not probe "
+    "localhost or fall back between providers."
+)
+
 
 def _load_owner_only_key_file(configured_path: str) -> str:
     path = Path(configured_path).expanduser()

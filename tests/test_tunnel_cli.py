@@ -1048,6 +1048,35 @@ def test_load_gateway_config_decisions_policy_discloses_egress(tmp_path, monkeyp
     assert "test-key" not in config.trust_gate_egress
 
 
+def test_load_gateway_config_local_laya_discloses_systemone(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(
+        tmp_path,
+        openrouter_env=None,
+        trust_gate_api_key_env="UNSLOTH_API_KEY",
+        trust_gate_provider="openai",
+        trust_gate_model="laya-typed-decisions",
+        trust_gate_api_base="http://127.0.0.1:8888/v1",
+        extra_lines=[
+            "trust_gate: decisions",
+            "trust_gate_decisions_config:",
+            "  trust_gate_noul_question: Does this thought belong in the record?",
+            "  trust_gate_noul_threshold: 0.9",
+        ],
+    )
+    monkeypatch.setenv("UNSLOTH_API_KEY", "test-laya-key")
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            config = _load_gateway_config(_args(data_repo=str(data_repo)))
+
+    assert config.trust_gate_credential == "UNSLOTH_API_KEY"
+    assert config.trust_gate_egress is not None
+    assert "local Unsloth" in config.trust_gate_egress
+    assert "http://127.0.0.1:8888/v1/systemone" in config.trust_gate_egress
+    assert "remote OpenRouter" not in config.trust_gate_egress
+    assert "test-laya-key" not in config.trust_gate_egress
+
+
 def test_load_gateway_config_decisions_policy_requires_noul_question(tmp_path, monkeypatch):
     data_repo = _make_data_repo(
         tmp_path,

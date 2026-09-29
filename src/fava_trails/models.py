@@ -247,11 +247,13 @@ class TrailConfig(BaseModel):
 
 
 class TrustGateDecisionsConfig(BaseModel):
-    """Explicit OpenRouter Decisions (Jev) reviewer settings.
+    """Explicit Decisions reviewer settings (OpenRouter Jev or local Unsloth).
 
     Used only when the Trust Gate policy is ``decisions``. New installs ship
     the calibrated Noul question and threshold from ticket 03; operators may
-    still override either value, including per-machine.
+    still override either value, including per-machine. Backend selection is
+    the existing per-machine provider, model, and api_base; this block does
+    not choose a model.
     """
 
     trust_gate_noul_question: str = DEFAULT_NOUL_QUESTION
@@ -433,7 +435,9 @@ class GlobalConfig(BaseModel):
         need operators to set a base URL in config; that is documented, not
         hard-required for every non-OpenRouter provider. For the ``decisions``
         policy the base URL points at the Decisions API root (default
-        ``https://openrouter.ai/api``).
+        ``https://openrouter.ai/api``). Local Unsloth Decisions reuse the
+        existing ``openai`` provider value and post to ``/v1/systemone`` on the
+        configured ``trust_gate_api_base``.
         """
         if self.trust_gate not in ("llm-oneshot", "decisions"):
             return self.resolve_trust_gate_api_key_env()
