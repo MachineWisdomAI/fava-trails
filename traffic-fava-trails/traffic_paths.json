@@ -2,13 +2,19 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 18,
-    "uniques": 12
+    "count": 21,
+    "uniques": 13
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/actions",
-    "title": "/actions",
-    "count": 7,
+    "path": "/MachineWisdomAI/fava-trails/issues/129",
+    "title": "/issues/129",
+    "count": 4,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/issues/new",
+    "title": "/issues/new",
+    "count": 4,
     "uniques": 1
   },
   {
@@ -18,44 +24,38 @@
     "uniques": 3
   },
   {
+    "path": "/MachineWisdomAI/fava-trails/issues/123",
+    "title": "/issues/123",
+    "count": 3,
+    "uniques": 2
+  },
+  {
     "path": "/MachineWisdomAI/fava-trails/blob/main/AGENTS_USAGE_INSTRUCTIONS.md",
     "title": "/blob/main/AGENTS_USAGE_INSTRUCTIONS.md",
     "count": 2,
     "uniques": 2
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/pulls",
-    "title": "/pulls",
+    "path": "/MachineWisdomAI/fava-trails/issues",
+    "title": "/issues",
     "count": 2,
     "uniques": 2
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/actions/workflows/test.yml",
-    "title": "/actions/workflows/test.yml",
-    "count": 1,
+    "path": "/MachineWisdomAI/fava-trails/issues/131",
+    "title": "/issues/131",
+    "count": 2,
     "uniques": 1
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/docs/fava_trails_faq.md",
-    "title": "/blob/main/docs/fava_trails_faq.md",
-    "count": 1,
+    "path": "/MachineWisdomAI/fava-trails/issues/133",
+    "title": "/issues/133",
+    "count": 2,
     "uniques": 1
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/src/fava_trails/protocols/secom/README.md",
-    "title": "/blob/main/src/fava_trails/protocols/secom/README.md",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/issues",
-    "title": "/issues",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/issues/5",
-    "title": "/issues/5",
+    "path": "/MachineWisdomAI/fava-trails/blob/main/LICENSE",
+    "title": "/blob/main/LICENSE",
     "count": 1,
     "uniques": 1
   }
