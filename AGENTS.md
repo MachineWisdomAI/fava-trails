@@ -339,3 +339,7 @@ uv run pytest tests/test_tools.py -v
 # Run with coverage
 uv run pytest --cov=fava_trails
 ```
+
+## Version updates
+
+For a versioned change PR, follow [the version policy](docs/version-policy.md) and run the repository-local updater before review and after updating the branch from main. Keep commit and PR titles in Conventional Commits format.

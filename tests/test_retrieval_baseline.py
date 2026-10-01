@@ -8,7 +8,7 @@ stamp a Git SHA, and does not select a future retrieval architecture (see #59).
 from __future__ import annotations
 
 import itertools
-from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 
 import pytest
 
@@ -144,17 +144,11 @@ async def baseline_corpus(tmp_fava_home, monkeypatch):
     }
 
 
-def test_documented_product_version_matches_package():
-    """Baseline doc pins 0.7.0; fail if package metadata drifts without doc update."""
-    try:
-        installed = version("fava-trails")
-    except PackageNotFoundError:
-        import tomllib
-        from pathlib import Path
-
-        pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
-        installed = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]["version"]
-    assert installed == PRODUCT_VERSION
+def test_documented_baseline_retains_tested_version():
+    """Historical benchmark provenance stays fixed when the package advances."""
+    doc = (Path(__file__).resolve().parents[1] / "docs/retrieval-baseline.md").read_text()
+    assert f"`{PRODUCT_VERSION}` (`pyproject.toml`)" in doc
+    assert "878b265ff570a1b950dd248810772b14959d341e" in doc
 
 
 @pytest.mark.asyncio

@@ -192,7 +192,7 @@ def test_docs_usage_guide_and_session_init_match_current_head():
     assert str(compact["session_init"]["tokens"]) in doc
     assert "6c5278a" in doc
     assert full["client"]["name"] in doc
-    assert full["subject"]["version"] in doc
+    assert "| This branch | candidate | read `pyproject.toml` |" in doc
 
 
 def test_cmd_measure_mcp_context_prints_json(capsys, monkeypatch):
