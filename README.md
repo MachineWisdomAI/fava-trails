@@ -12,6 +12,23 @@ FAVA Trails helps agents share reviewed decisions across sessions and environmen
 
 [Get started](#install) · [Product website](https://fava-trails.org/) · [Two-agent case study](https://fava-trails.org/case-study/) · [Machine Wisdom AI's engineering writing](https://machine-wisdom.ai/writing/)
 
+## New in 0.8: Jev at the memory boundary
+
+An agent can write a plausible conclusion in seconds. Deciding whether the next
+agent should inherit it deserves a separate step. FAVA Trails 0.8 uses
+[TypeSafe Jev through OpenRouter Decisions](https://openrouter.ai/blog/insights/what-is-jev/)
+as its default Trust Gate for new installs: one typed question, an explicit
+approval threshold, and a review record you can inspect.
+
+Jev scores the candidate against the supplied memory policy. FAVA applies the
+threshold, records the returned model and probability, and makes approved
+records available through governed recall. Failed reviews stop promotion.
+Your records remain versioned Markdown in your own repository.
+
+[Read the 0.8.0 release notes](docs/releases/v0.8.0.md) for the calibration
+results, existing-install configuration, and data-egress details. Review is a
+quality control step; it does not establish that a claim is true.
+
 ## Why we built FAVA Trails
 
 An observation from one agent can become an assumption for the next. Machine Wisdom AI built FAVA Trails to give that transition an explicit review boundary: saving a thought does not make it accepted knowledge, and an approved correction preserves the record it replaces. The result is a shared history that agents can query and operators can inspect.
