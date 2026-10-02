@@ -4,6 +4,31 @@ All notable changes to FAVA Trails are documented here.
 
 ## Unreleased
 
+## [0.8.0] — 2026-10-02
+
+**Jev at the boundary between agent output and shared memory.** FAVA Trails
+now uses TypeSafe Jev through OpenRouter Decisions by default for new installs.
+A typed yes/no question produces a probability; the configured policy decides
+whether a draft becomes an approved record. The model, score, threshold, and
+review time stay with the record so operators can inspect the decision later.
+
+The shipped `0.45` threshold was selected on a 53-case private replay: 23 of
+30 approval-labeled cases accepted, all 23 rejection-labeled cases rejected,
+and seven approval-labeled cases rejected. These are reference-label results,
+not a guarantee of factual accuracy. See the [calibration report](https://github.com/MachineWisdomAI/fava-trails/issues/126#issuecomment-5894849724)
+and [0.8.0 release notes](docs/releases/v0.8.0.md).
+
+### Upgrade
+
+- Existing data repositories and explicit machine settings retain their
+  selected policy. Set `trust_gate: decisions`, `trust_gate_provider: openrouter`,
+  and `trust_gate_model: "~typesafe/jev-latest"` to opt an existing installation
+  into Jev; see [configuration and upgrade guidance](docs/releases/v0.8.0.md#upgrade).
+- Jev failures stop promotion; there is no automatic provider fallback.
+  `llm-oneshot` and explicit operator human approval remain available.
+- Each authoring MCP process still needs its own `FAVA_TRAILS_AGENT_ID`.
+  Identity isolation shipped in 0.7.0 and is not new in this release.
+
 ### Fixed
 - Trust Gate data-egress disclosure no longer describes the transmitted metadata as "redacted": doctor, the MCP startup notice, and `trust_gate_egress` now state that the full scope-resolved prompt, the full candidate body, and the complete selected metadata fields are sent, with `agent_id` and `metadata.extra` excluded. Docs updated to match; regression coverage added for both `llm-oneshot` and `decisions` notices. Addresses issue #125.
 
