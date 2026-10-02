@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "units": [
+    {
+      "name": "repo",
+      "paths": [
+        "**"
+      ],
+      "files": [
+        {
+          "path": "pyproject.toml",
+          "kind": "toml",
+          "format": "pep440"
+        },
+        {
+          "path": "uv.lock",
+          "kind": "uv-lock",
+          "format": "pep440",
+          "name": "fava-trails"
+        },
+        {
+          "path": "src/fava_trails/__init__.py",
+          "kind": "python",
+          "format": "pep440"
+        }
+      ]
+    }
+  ]
+}
