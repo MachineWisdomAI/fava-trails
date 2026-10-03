@@ -2,8 +2,8 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 21,
-    "uniques": 12
+    "count": 24,
+    "uniques": 15
   },
   {
     "path": "/MachineWisdomAI/fava-trails/issues/123",
@@ -36,26 +36,26 @@
     "uniques": 2
   },
   {
+    "path": "/MachineWisdomAI/fava-trails/issues/126",
+    "title": "/issues/126",
+    "count": 3,
+    "uniques": 2
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/releases/tag/v0.8.0",
+    "title": "/releases/tag/v0.8.0",
+    "count": 3,
+    "uniques": 1
+  },
+  {
     "path": "/MachineWisdomAI/fava-trails/blob/main/AGENTS_USAGE_INSTRUCTIONS.md",
     "title": "/blob/main/AGENTS_USAGE_INSTRUCTIONS.md",
     "count": 2,
     "uniques": 2
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/issues/126",
-    "title": "/issues/126",
-    "count": 2,
-    "uniques": 1
-  },
-  {
     "path": "/MachineWisdomAI/fava-trails/issues/131",
     "title": "/issues/131",
-    "count": 2,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/issues/133",
-    "title": "/issues/133",
     "count": 2,
     "uniques": 1
   }
