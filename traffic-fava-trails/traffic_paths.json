@@ -42,12 +42,6 @@
     "uniques": 3
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/AGENTS_USAGE_INSTRUCTIONS.md",
-    "title": "/blob/main/AGENTS_USAGE_INSTRUCTIONS.md",
-    "count": 2,
-    "uniques": 2
-  },
-  {
     "path": "/MachineWisdomAI/fava-trails/issues",
     "title": "/issues",
     "count": 2,
@@ -56,6 +50,12 @@
   {
     "path": "/MachineWisdomAI/fava-trails/issues/131",
     "title": "/issues/131",
+    "count": 2,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/issues/133",
+    "title": "/issues/133",
     "count": 2,
     "uniques": 1
   }
