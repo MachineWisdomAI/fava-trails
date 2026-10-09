@@ -1,9 +1,24 @@
 """Tests for JjBackend VCS operations."""
 
+import asyncio
+import os
+import shutil
 import subprocess
+import sys
+import textwrap
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+
+
+def _jj_bin() -> str:
+    jj = shutil.which("jj")
+    if jj:
+        return jj
+    fallback = Path.home() / ".local" / "bin" / "jj"
+    assert fallback.is_file(), "jj binary not found — install via: fava-trails install-jj"
+    return str(fallback)
 
 
 @pytest.mark.asyncio
@@ -632,3 +647,89 @@ async def test_init_monorepo_sets_default_description(tmp_path):
         cwd=str(repo), capture_output=True, text=True,
     )
     assert proc.stdout.strip() == "(auto-described)"
+
+
+# A real worker process for concurrent-init coverage. It signals readiness,
+# waits for a shared release file, then initializes the monorepo — so both
+# processes reach init_monorepo together instead of being scheduled serially.
+_CONCURRENT_INIT_WORKER = textwrap.dedent(
+    '''
+    import asyncio
+    import sys
+    from pathlib import Path
+
+    from fava_trails.vcs.jj_backend import JjBackend
+
+
+    async def main():
+        repo = Path(sys.argv[1])
+        barrier = Path(sys.argv[2])
+        (barrier / f"ready-{sys.argv[3]}").write_text("ready")
+        go = barrier / "go"
+        for _ in range(2000):
+            if go.exists():
+                break
+            await asyncio.sleep(0.01)
+        trail = repo / "trails" / "process-isolation"
+        backend = JjBackend(repo_root=repo, trail_path=trail)
+        await backend.init_monorepo()
+        await backend.init_trail()
+
+
+    asyncio.run(main())
+    '''
+)
+
+
+@pytest.mark.asyncio
+async def test_concurrent_init_monorepo_is_serialized(tmp_path):
+    """Issue #142: two processes initializing one shared data repo must not race.
+
+    Real two-process coverage — not a simulator. Two OS processes each run
+    ``JjBackend.init_monorepo()`` on the same fresh repository, released
+    together from a shared start barrier. Before the fix one process aborted on
+    jj's "target repo already exists" from the unsynchronized
+    ``jj git init --colocate``, and the four ``jj config set --repo`` calls
+    rewrote the shared repository config without serialization.
+    """
+    repo = tmp_path / "shared-repo"
+    repo.mkdir()
+    xdg = tmp_path / "xdg-config"
+    xdg.mkdir()
+    barrier = tmp_path / "barrier"
+    barrier.mkdir()
+    worker = tmp_path / "init_worker.py"
+    worker.write_text(_CONCURRENT_INIT_WORKER)
+
+    env = {key: value for key, value in os.environ.items() if not key.startswith("FAVA_TRAILS_")}
+    env["XDG_CONFIG_HOME"] = str(xdg)
+    env["PATH"] = os.pathsep.join(
+        [str(Path(sys.executable).parent), str(Path(_jj_bin()).parent), os.environ.get("PATH", "")]
+    )
+
+    procs = [
+        await asyncio.create_subprocess_exec(
+            sys.executable, str(worker), str(repo), str(barrier), str(i),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env,
+        )
+        for i in range(2)
+    ]
+    for _ in range(2000):
+        if len(list(barrier.glob("ready-*"))) == 2:
+            break
+        await asyncio.sleep(0.01)
+    assert len(list(barrier.glob("ready-*"))) == 2, "init workers did not reach the start barrier"
+    (barrier / "go").write_text("go")
+
+    results = [await proc.communicate() for proc in procs]
+    assert all(proc.returncode == 0 for proc in procs), [stderr.decode() for _, stderr in results]
+
+    assert (repo / ".jj").exists()
+    assert (repo / ".git").exists()
+    check = subprocess.run(
+        ["jj", "config", "list", "--repo"],
+        cwd=str(repo), env=env, capture_output=True, text=True,
+    )
+    assert check.returncode == 0, check.stderr

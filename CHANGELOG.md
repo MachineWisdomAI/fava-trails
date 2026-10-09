@@ -4,6 +4,9 @@ All notable changes to FAVA Trails are documented here.
 
 ## Unreleased
 
+### Fixed
+- Serialize monorepo initialization across processes so two MCP server processes sharing one data repository can start together. Concurrent `jj git init --colocate` racing could abort one server with `target repo already exists`, and unsynchronized `jj config set --repo` writers could leave the shared repository config file unparseable (`Configuration cannot be parsed as TOML document`), failing server startup. `JjBackend.init_monorepo` now takes a blocking cross-process lock on the repository directory for the whole init. Addresses issue #142.
+
 ## [0.8.0] — 2026-10-02
 
 **Jev at the boundary between agent output and shared memory.** FAVA Trails

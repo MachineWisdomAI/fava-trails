@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import shutil
+from contextlib import contextmanager
 from pathlib import Path
 
 from .base import (
@@ -79,6 +80,55 @@ def classify_remote_fetch_error(message: str) -> str:
     if any(marker in text for marker in _UNREACHABLE_MARKERS):
         return "unreachable"
     return "unreachable"
+
+
+@contextmanager
+def _repo_init_lock(repo_root: Path):
+    """Blocking cross-process exclusive lock serializing monorepo initialization.
+
+    Server processes that share a data repository run ``init_monorepo`` at
+    startup. On a fresh repository they race on ``jj git init --colocate`` (jj
+    refuses the second creator), and on every startup they rewrite the shared
+    repository config through four ``jj config set --repo`` calls. Two
+    unsynchronized writers can leave that config file unparseable, which aborts
+    the second server before it can serve any request (issue #142).
+
+    The lock is taken on the repository directory itself so it is available
+    before ``.jj`` exists — jj refuses to initialize a repository whose ``.jj``
+    directory was pre-created, so a lock file inside ``.jj`` cannot guard the
+    fresh-init case. Platforms without directory locking fall back to a lock
+    file beside jj's metadata once that metadata exists.
+    """
+    if os.name == "nt" or not hasattr(os, "O_DIRECTORY"):
+        lock_file = repo_root / ".jj" / "fava-init.lock"
+        if not lock_file.parent.is_dir():
+            yield
+            return
+        import msvcrt
+
+        with lock_file.open("a+b") as stream:
+            stream.write(b"0")
+            stream.flush()
+            stream.seek(0)
+            msvcrt.locking(stream.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                stream.seek(0)
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+        return
+
+    import fcntl
+
+    fd = os.open(repo_root, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
 
 
 class JjError(Exception):
@@ -292,13 +342,23 @@ class JjBackend(VcsBackend):
     async def init_monorepo(self) -> str:
         """Initialize the monorepo at repo_root with four-case detection.
 
+        Serialized across processes (see ``_repo_init_lock``): concurrent server
+        startup on one shared data repository must not race the JJ init or the
+        shared repository config writes.
+        """
+        self.repo_root.mkdir(parents=True, exist_ok=True)
+        with _repo_init_lock(self.repo_root):
+            return await self._init_monorepo_locked()
+
+    async def _init_monorepo_locked(self) -> str:
+        """Init body; caller holds the cross-process repository init lock.
+
         Cases:
         1. .git only (no .jj) → colocate JJ on top of existing git repo
         2. Both .jj and .git exist → already initialized, configure and skip
         3. .jj only (no .git) → non-colocated repo, raise error with fix instructions
         4. Neither exists → fresh init with jj git init --colocate
         """
-        self.repo_root.mkdir(parents=True, exist_ok=True)
         jj_dir = self.repo_root / ".jj"
         git_dir = self.repo_root / ".git"
 
