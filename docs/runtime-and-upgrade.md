@@ -147,6 +147,12 @@ Publication is **owner-gated** via `.github/workflows/release.yml`
    inherited by later steps; it is not re-mapped through the empty workflow
    expression `env` context.
 
+Tags are either stable `vX.Y.Z` or a PEP 440 release candidate `vX.Y.ZrcN`; the
+tag must equal the package version exactly, and `scripts/release-tag.py` derives
+the channel. A candidate GitHub Release is created and undrafted as a
+prerelease and never marked latest; stable Releases are marked latest. PyPI
+treats `rcN` versions as pre-releases, so default installs stay on stable.
+
 Validation therefore runs **before** any public GitHub Release or PyPI upload
 exists. The workflow no longer triggers on `release: published`.
 

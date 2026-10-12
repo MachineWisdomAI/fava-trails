@@ -66,9 +66,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          # 1) Strict tag grammar (vMAJOR.MINOR.PATCH only).
-          if ! [[ "$TAG_INPUT" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Tag must match ^v[0-9]+.[0-9]+.[0-9]+$ (got: $TAG_INPUT)"
+          # 1) Strict tag grammar: stable vMAJOR.MINOR.PATCH or PEP 440 release
+          #    candidate vMAJOR.MINOR.PATCHrcN. Anything else is refused.
+          #    Matching against the package version happens in step 7.
+          if ! [[ "$TAG_INPUT" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(rc[1-9][0-9]*)?$ ]]; then
+            echo "::error::Tag must be vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCHrcN (got: $TAG_INPUT)"
             exit 1
           fi
 
@@ -140,12 +142,20 @@ jobs:
           fi
 
           # 7) Package version must match the tag (strip leading v).
+          #    release-tag.py also derives the channel (stable|rc) from the tag; the
+          #    tag and metadata must agree. No version is ever bumped here.
           PKG="$(grep '^version' pyproject.toml | head -1 | cut -d'"' -f2)"
           EXPECTED="${TAG_INPUT#v}"
           if [ "$EXPECTED" != "$PKG" ]; then
             echo "::error::Tag ${TAG_INPUT} does not match pyproject.toml version ${PKG}"
             exit 1
           fi
+          CHANNEL="$(python3 scripts/release-tag.py "$TAG_INPUT")"
+          case "$CHANNEL" in
+            stable) RELEASE_FLAGS="--latest" ;;
+            rc) RELEASE_FLAGS="--prerelease --latest=false" ;;
+            *) echo "::error::Unexpected channel ${CHANNEL}"; exit 1 ;;
+          esac
 
           # Provenance comes from the verified checkout HEAD — not workflow GITHUB_SHA
           # (which names the ref that *started* workflow_dispatch and can differ).
@@ -155,6 +165,8 @@ jobs:
             echo "CANDIDATE_COMMIT=${HEAD_COMMIT}"
             echo "CANDIDATE_TAG=${TAG_INPUT}"
             echo "CANDIDATE_VERSION=${EXPECTED}"
+            echo "CANDIDATE_CHANNEL=${CHANNEL}"
+            echo "RELEASE_FLAGS=${RELEASE_FLAGS}"
             echo "CANDIDATE_MAIN=${MAIN_COMMIT}"
             echo "CANDIDATE_MAIN_RELATION=${MAIN_RELATION}"
             echo "RESUME_DRAFT=${RESUME_DRAFT}"
@@ -189,10 +201,18 @@ jobs:
 
           uv build
           ls -la dist
+          # Built metadata must carry the exact tag version (no stable/RC mislabel).
+          for f in dist/*.whl dist/*.tar.gz; do
+            case "$(basename "$f")" in
+              fava_trails-"${CANDIDATE_VERSION}"-*.whl|fava_trails-"${CANDIDATE_VERSION}".tar.gz) ;;
+              *) echo "::error::Artifact $f does not carry version ${CANDIDATE_VERSION}"; exit 1 ;;
+            esac
+          done
           {
             sha256sum dist/*.whl dist/*.tar.gz
             echo "CANDIDATE_COMMIT=${CANDIDATE_COMMIT}"
             echo "CANDIDATE_TAG=${CANDIDATE_TAG}"
+            echo "CANDIDATE_CHANNEL=${CANDIDATE_CHANNEL}"
             echo "CANDIDATE_MAIN=${CANDIDATE_MAIN}"
             echo "CANDIDATE_MAIN_RELATION=${CANDIDATE_MAIN_RELATION}"
             echo "CANDIDATE_REF=$(git rev-parse HEAD)"
@@ -331,7 +351,8 @@ jobs:
               --draft \
               --title "$TAG" \
               --notes-file "${NOTES_FILE}" \
-              --target "$COMMIT"
+              --target "$COMMIT" \
+              ${RELEASE_FLAGS}
 
             # Re-read and require target/title/tag match after edit.
             META="$(gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" \
@@ -368,6 +389,7 @@ jobs:
               --notes-file "${NOTES_FILE}" \
               --verify-tag \
               --target "$COMMIT" \
+              ${RELEASE_FLAGS} \
               dist/*.whl \
               dist/*.tar.gz \
               "${RUNNER_TEMP}/candidate-SHA256SUMS"
@@ -535,7 +557,8 @@ jobs:
           if [ "$IS_DRAFT" = "true" ]; then
             gh release edit "$TAG" \
               --repo "${GITHUB_REPOSITORY}" \
-              --draft=false
+              --draft=false \
+              ${RELEASE_FLAGS}
             echo "Published GitHub Release ${TAG} (undrafted after PyPI hash proof)"
           else
             echo "Release ${TAG} already public (idempotent undraft)"

@@ -110,6 +110,13 @@ but unreleased**.
 
 Once dog-fooding confirms the changes work:
 
+Release candidates use the same flow with a PEP 440 tag `vX.Y.ZrcN` that equals
+the `pyproject.toml` version (for example `v0.8.4rc1`). The Release workflow
+publishes it as a GitHub prerelease (never `latest`); installers get it only with
+`pip install --pre` or an exact pin. The version is set in the source PR by
+`scripts/mw-version.py` (see `docs/version-policy.md`), never at tag time.
+Promotion to stable uses the `chore(release): promote version` PR.
+
 1. Bump version in `pyproject.toml`
 2. Push the version bump via PR, merge to `main`
 3. Create and push an immutable tag on the reviewed commit:

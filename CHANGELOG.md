@@ -4,6 +4,9 @@ All notable changes to FAVA Trails are documented here.
 
 ## Unreleased
 
+### Added
+- Release-candidate publication route (#144): the existing `Release` workflow now accepts PEP 440 `vMAJOR.MINOR.PATCHrcN` tags alongside stable tags. The tag must equal the package version; RC GitHub Releases are marked prerelease and never `latest`. The updater enters the rc channel from a stable baseline only via a `Release-Channel: rc` PR-body line (0.8.3 -> 0.8.4rc1) and keeps suffix-only promotion.
+
 ### Fixed
 - Serialize monorepo initialization across processes so two MCP server processes sharing one data repository can start together. Concurrent `jj git init --colocate` racing could abort one server with `target repo already exists`, and unsynchronized `jj config set --repo` writers could leave the shared repository config file unparseable (`Configuration cannot be parsed as TOML document`), failing server startup. `JjBackend.init_monorepo` now takes a blocking cross-process lock on the repository directory for the whole init. Addresses issue #142.
 
