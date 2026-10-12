@@ -86,12 +86,23 @@ and changes only configured version values: `0.1.1-rc.1` becomes `0.1.1`, withou
 another base increment. Existing release review and publication authority still
 apply. The updater never creates a tag, release, publication, or deployment.
 
+A stable baseline enters the release-candidate channel only when the PR body has
+a line exactly `Release-Channel: rc`: `0.8.3` becomes `0.8.4-rc.1` (`0.8.4rc1`
+in Python metadata) for a patch, using the normal largest-increment rule. The
+marker is rejected on a baseline that is already a prerelease, which keeps its
+channel (`0.8.4-rc.1` becomes `0.8.5-rc.1`) and is promoted only by the exact
+promotion title above. Release tags must equal `v` plus the PEP 440 package
+version (`v0.8.4rc1`, `v0.8.4`); the Release workflow rejects any mismatch.
+
 For a new versioned component, run the toolkit bootstrap again or run
 `python3 scripts/mw-version.py enroll --repo PATH --unit COMPONENT_PATH` from an
 installed copy. Review the generated configuration and add any runtime/plugin
 mirrors. Captured templates and vendored packages are not owned version units.
 '''
 POINTER = "\n## Version updates\n\nFor a versioned change PR, follow [the version policy](docs/version-policy.md) and run the repository-local updater before review and after updating the branch from main. Keep commit and PR titles in Conventional Commits format.\n"
+
+
+START_RC_MARKER = re.compile(r"^Release-Channel: rc[ \t]*$", re.MULTILINE)
 
 
 class PolicyError(ValueError):
@@ -170,8 +181,10 @@ def date_pre(pre: str | None) -> dt.date | None:
     return None
 
 
-def advance(version: tuple, level: int, date: dt.date) -> tuple:
+def advance(version: tuple, level: int, date: dt.date, start_rc: bool = False) -> tuple:
     major, minor, patch, pre, _ = version
+    if start_rc and pre:
+        raise PolicyError("starting the rc channel requires a stable baseline; the prerelease channel is already set")
     if level == 3 and major == 0:
         level = 2
     if level == 3:
@@ -182,6 +195,8 @@ def advance(version: tuple, level: int, date: dt.date) -> tuple:
         patch += 1
     if date_pre(pre):
         pre = f"{date.year}.{date.month}.{date.day}"
+    elif start_rc:
+        pre = "rc.1"
     elif pre:
         if not re.fullmatch(r"[A-Za-z][A-Za-z0-9-]*(?:\.\d+)?", pre):
             raise PolicyError(f"unsupported prerelease channel: {pre}")
@@ -289,6 +304,7 @@ def evaluate(root: Path, args) -> list[tuple[Path, str]]:
     commits = git(root, "log", "--format=%B%x00", base + "..HEAD").split("\0")
     level = intent(title, body, [c.strip() for c in commits if c.strip()])
     promote = title == "chore(release): promote version"
+    start_rc = bool(START_RC_MARKER.search(body)) and not promote
     raw_changes = set(git(root, "diff", "--name-only", "--no-renames", base).splitlines())
     raw_changes.update(git(root, "ls-files", "--others", "--exclude-standard").splitlines())
     changes = {p for p in raw_changes if not any(fnmatch.fnmatchcase(p, pat) for pat in config.get("exclude_paths", []))}
@@ -348,7 +364,7 @@ def evaluate(root: Path, args) -> list[tuple[Path, str]]:
                                 raise PolicyError("date prerelease channel must be retained")
                         if not old_date <= bump_date <= today:
                             raise PolicyError("date prerelease must be between its previous date and today")
-                    target = advance(baseline, level, bump_date)
+                    target = advance(baseline, level, bump_date, start_rc)
         for path, content, spec in contents:
             expected = serialize(target, spec.get("format", "semver"))
             values = read_values(content, spec)
