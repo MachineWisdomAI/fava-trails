@@ -5,6 +5,7 @@ All notable changes to FAVA Trails are documented here.
 ## Unreleased
 
 ### Changed
+- Trimmed MCP server instructions to provenance, authority, and safe-operation boundaries; removed the unconditional session-start recall ritual (status/decisions/gotcha) from the instructions, `AGENTS.md`, and the usage guide. Detailed retrieval procedures stay on demand via `get_usage_guide`; no tool capabilities changed. Resolves #146.
 - Support MCP SDK 2.2 with explicit low-level handlers, preserving tool schemas, annotations, input/output validation, structured results, and Markdown usage guidance over stdio and Streamable HTTP. Adds installed-wheel protocol tests for legacy initialization and current SDK clients. Resolves #83.
 
 ## [0.6.1] — 2026-08-01

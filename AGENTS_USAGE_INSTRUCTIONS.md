@@ -59,10 +59,12 @@ scope. When that ULID exists uniquely in another scope, `get_thought` returns
 the thought and includes `source_trail`; use that `source_trail` for follow-up
 `recall`, `get_thought`, `supersede`, or `change_scope` calls.
 
-## At Session Start
+## Retrieving Context (On Demand)
+
+There is no mandatory session-start recall. Retrieve explicitly when the task needs prior decisions, observations, or history, and only for the scopes that matter.
 
 1. **Determine your trail_name** — follow the three-layer resolution above
-2. **Check FAVA Trails first** — use `recall`:
+2. **Recall what the task needs** — use `recall`, for example:
    ```
    recall(trail_name="<scope>", query="status", scope={"project": "<project-name>"})
    recall(trail_name="<scope>", query="decisions", scope={"project": "<project-name>"})

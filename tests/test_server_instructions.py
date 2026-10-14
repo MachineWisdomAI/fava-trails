@@ -39,11 +39,20 @@ class TestServerInstructions:
         assert "FAVA_TRAILS_SCOPE" in instructions
         assert ".fava-trails.yaml" in instructions
 
-    def test_instructions_contain_session_protocol(self):
-        """Instructions must cover session start protocol."""
+    def test_instructions_have_no_unconditional_startup_recall(self):
+        """Instructions must not prescribe a session-start recall ritual."""
         instructions = _build_server_instructions()
-        assert "recall" in instructions
-        assert "Session Start" in instructions
+        assert "Session Start Protocol" not in instructions
+        assert 'query="status"' not in instructions
+        assert "do not run a recall routine at session start" in instructions
+        assert len(instructions) < 3500
+
+    async def test_usage_guide_has_on_demand_retrieval(self):
+        """Detailed recall procedures remain in the usage guide, as on-demand."""
+        guide = _load_usage_guide()
+        assert "## At Session Start" not in guide
+        assert "Retrieving Context (On Demand)" in guide
+        assert "recall(" in guide
 
     def test_instructions_contain_promotion_mandate(self):
         """Instructions must emphasize mandatory promotion."""
@@ -250,7 +259,7 @@ class TestGetUsageGuide:
         """Usage guide must contain expected sections."""
         content = _load_usage_guide()
         assert "Scope Discovery" in content
-        assert "Session Start" in content or "At Session Start" in content
+        assert "Retrieving Context (On Demand)" in content
         assert "Task Completion" in content or "On Task Completion" in content
         assert "Trust Calibration" in content or "Handling Recalled Thoughts" in content
 
