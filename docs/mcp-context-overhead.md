@@ -56,7 +56,7 @@ Candidate (this head, live `mcp.Client`):
 
 | Surface | Instructions tokens | tools/list tokens | Session-init tokens | Session-init chars |
 | --- | ---: | ---: | ---: | ---: |
-| full (default) | 1165 | 5867 | 7032 | 28124 |
+| full (default) | 591 | 5867 | 6458 | 25827 |
 | compact | 209 | 3186 | 3395 | 13578 |
 
 `get_usage_guide` body on this candidate (on demand, not in session-init): 2945
@@ -65,7 +65,7 @@ of schemas and instructions versus about 1600 for a committed agent guide; that
 estimate was client-specific and is not reproduced here as a universal number.
 
 Budget, from the candidate full session-init baseline: compact session-init tokens
-must be ≤ 70% of full under the same tokenizer. This run: 3395 / 7032 ≈ 0.48. Met.
+must be ≤ 70% of full under the same tokenizer. This run: 3395 / 6458 ≈ 0.53. Met.
 
 Largest full-surface source is advertised `tools/list` JSON (schemas, then
 descriptions), then initialize instructions. Compact therefore:
@@ -111,7 +111,7 @@ not labeled as `called` or `skipped` client behavior. Results:
 
 | Check | full | compact |
 | --- | --- | --- |
-| Token usage (session-init, this tokenizer) | 7032 | 3395 |
+| Token usage (session-init, this tokenizer) | 6458 | 3395 |
 | Discoverability of recall, save_thought, propose_truth, get_usage_guide, list_scopes | yes | yes |
 | All 17 tools advertised | yes | yes |
 | Input schemas | full | same |

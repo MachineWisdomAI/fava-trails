@@ -141,8 +141,40 @@ class TestToolDescriptionEnhancements:
         instructions = _build_server_instructions()
         assert "push_strategy: immediate" in instructions
         assert "does not push local commits" in instructions
-        assert "bookmark set main" in instructions
         assert "call `sync` to push to remote" not in instructions
+        # Manual VCS publication commands live in the usage guide, not at startup.
+        assert "bookmark set main" not in instructions
+        assert "jj git push" not in instructions
+        guide = _load_usage_guide()
+        assert "jj bookmark set main -r @-" in guide
+        assert "jj git push --bookmark main" in guide
+
+    def test_startup_instructions_are_concise_and_defer_detail(self):
+        """Default full and compact startup text keep essentials; procedures live in the guide."""
+        from fava_trails.mcp_context import serialize_initialize_instructions
+
+        full = serialize_initialize_instructions("full")
+        compact = serialize_initialize_instructions("compact")
+        assert len(full) <= 3000  # was 4734 chars on main before #146
+        assert len(compact) < len(full)
+        guide = _load_usage_guide()
+        for text in (full, compact):
+            assert "get_usage_guide" in text
+            assert "propose_truth" in text
+            assert "FAVA_TRAILS_SCOPE" in text
+        for detail in (
+            "### During Work",
+            "jj bookmark set main",
+            'source_type="observation"',
+            '"builder-42"',
+            "tokens as a substring",
+        ):
+            assert detail not in full
+        assert "Governed Visibility" in full
+        assert "Agent Identity" in full
+        assert "Trust Gate" in full
+        assert "jj bookmark set main -r @-" in guide
+        assert "builder-42" in guide
 
     def test_sync_tool_does_not_claim_push(self):
         """sync description must state fetch/rebase only, not publish."""
