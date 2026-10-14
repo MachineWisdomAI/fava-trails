@@ -266,8 +266,8 @@ async def test_recall_save_promote_is_executed_on_both_surfaces(tmp_fava_home, t
         assert side["permissions"]["read_and_authoring_unchanged"] is True
     full_skip = payload["full"]["skipped_step_risk"]
     compact_skip = payload["compact"]["skipped_step_risk"]
-    assert full_skip["session_start_recall_in_instructions"] is True
-    assert compact_skip["session_start_recall_in_instructions"] is False
+    assert full_skip["on_demand_retrieval_in_instructions"] is True
+    assert compact_skip["on_demand_retrieval_in_instructions"] is True
     assert "Compact omits" not in full_skip["note"]
     assert "Compact omits" in compact_skip["note"]
     assert payload["full"]["propose"]["status"] == payload["compact"]["propose"]["status"]
@@ -311,13 +311,13 @@ async def test_recall_save_promote_is_executed_on_both_surfaces(tmp_fava_home, t
             k: v for k, v in retry_args.items() if k != "trail_name"
         }
         assert "query" not in retry_args
-    assert "session_start_recall" not in payload["full"]["prompt_coverage"]["gaps"]
-    assert "session_start_recall" in payload["compact"]["prompt_coverage"]["gaps"]
+    assert payload["full"]["prompt_coverage"]["gaps"] == []
+    assert payload["compact"]["prompt_coverage"]["gaps"] == []
     assert "propose_truth" not in payload["compact"]["prompt_coverage"]["gaps"]
     assert payload["compact"]["prompt_coverage"]["propose_truth_requested_in_instructions"] is True
     assert payload["compact"]["prompt_coverage"]["promotion_mandate_wording"] is False
-    assert "session_start_recall" in payload["full"]["scripted_steps"]
-    assert "session_start_recall" not in payload["compact"]["scripted_steps"]
+    for surface in ("full", "compact"):
+        assert "session_start_recall" not in payload[surface]["scripted_steps"]
 
 
 def test_prompt_coverage_is_instruction_scan_not_observed_client_choice():
@@ -325,8 +325,7 @@ def test_prompt_coverage_is_instruction_scan_not_observed_client_choice():
     compact = prompt_coverage_from_instructions(serialize_initialize_instructions("compact"))
     assert full["kind"] == compact["kind"] == "deterministic_instruction_scan"
     assert compact["not_observed_client_choices"] is True
-    assert "session_start_recall" in compact["gaps"]
-    assert "session_start_recall" not in full["gaps"]
+    assert compact["gaps"] == full["gaps"] == []
     assert "propose_truth" not in compact["gaps"]
     assert compact["propose_truth_requested_in_instructions"] is True
     assert compact["promotion_mandate_wording"] is False
@@ -395,17 +394,27 @@ def test_tested_release_is_frozen_and_not_relabeled(monkeypatch):
     assert compared["full"]["client"]["version"] == "99.99.99"
 
 
-def test_full_instructions_include_canonical_session_start_recalls():
+def test_exposed_instructions_have_no_startup_recall_ritual():
+    """Full and compact initialize text must not prescribe session-start recall."""
+    for surface in ("full", "compact"):
+        text = serialize_initialize_instructions(surface)
+        assert 'query="status"' not in text
+        assert 'query="decisions"' not in text
+        assert "Session Start Protocol" not in text
+        assert "recall" in text.lower()
+        assert "session start" in text.lower() or "session-start" in text.lower()
+    full = serialize_initialize_instructions("full")
+    assert "Retrieving Context (On Demand)" in full
+    assert "Do not run a recall routine at session start" in full
+    compact = serialize_initialize_instructions("compact")
+    assert "not as a session-start routine" in compact
+
+
+def test_canonical_guide_keeps_on_demand_recall_examples():
     canonical = (Path(__file__).resolve().parents[1] / "AGENTS_USAGE_INSTRUCTIONS.md").read_text()
-    runtime = serialize_initialize_instructions("full")
-    lines = (
-        'recall(trail_name="<scope>", query="status", scope={"project": "<project-name>"})',
-        'recall(trail_name="<scope>", query="decisions", scope={"project": "<project-name>"})',
-        'recall(trail_name="<scope>", query="gotcha", scope={"tags": ["gotcha"]})',
-    )
-    for line in lines:
-        assert line in canonical
-        assert line in runtime
+    assert "## At Session Start" not in canonical
+    assert "Retrieving Context (On Demand)" in canonical
+    assert 'recall(trail_name="<scope>", query="status"' in canonical
 
 
 def test_canonical_guide_states_subset_not_verbatim_inject():

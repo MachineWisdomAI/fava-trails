@@ -495,7 +495,7 @@ wheels = [
 
 [[package]]
 name = "fava-trails"
-version = "0.8.4rc1"
+version = "0.8.5rc1"
 source = { editable = "." }
 dependencies = [
     { name = "any-llm-sdk" },

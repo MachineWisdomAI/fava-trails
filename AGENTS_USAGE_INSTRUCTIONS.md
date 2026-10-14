@@ -2,7 +2,7 @@
 
 Canonical usage instructions for AI agents using FAVA Trails MCP tools. Other docs reference this file — keep it up to date.
 
-> **Session-init subset:** On the default `full` MCP surface, the server `instructions` field is a maintained subset of this file, not a verbatim inject. Session-start recall examples in that subset must match the fenced examples below. `FAVA_TRAILS_MCP_SURFACE=compact` sends a short pointer instead. This file is the canonical source and is returned verbatim by `get_usage_guide`. Compact does not make instructions a shared memory store.
+> **Session-init subset:** On the default `full` MCP surface, the server `instructions` field is a maintained subset of this file, not a verbatim inject. The subset states that retrieval is on demand (no session-start recall routine); the recall examples below are for explicit use. `FAVA_TRAILS_MCP_SURFACE=compact` sends a short pointer instead. This file is the canonical source and is returned verbatim by `get_usage_guide`. Compact does not make instructions a shared memory store.
 
 ## Governed recall
 
@@ -63,10 +63,12 @@ scope. When that ULID exists uniquely in another scope, `get_thought` returns
 the thought and includes `source_trail`; use that `source_trail` for follow-up
 `recall`, `get_thought`, `supersede`, or `change_scope` calls.
 
-## At Session Start
+## Retrieving Context (On Demand)
+
+There is no mandatory session-start recall. Retrieve explicitly when the task needs prior decisions, observations, or history, and only for the scopes that matter.
 
 1. **Determine your trail_name** — follow the three-layer resolution above
-2. **Check FAVA Trails first** — use `recall`:
+2. **Recall what the task needs** — use `recall`, for example:
    ```
    recall(trail_name="<scope>", query="status", scope={"project": "<project-name>"})
    recall(trail_name="<scope>", query="decisions", scope={"project": "<project-name>"})
