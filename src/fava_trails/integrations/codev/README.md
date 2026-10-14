@@ -91,4 +91,4 @@ The trust gate reviewer detects artifact type from the scope path:
 - `/plans/` in scope → plan checks
 - `/reviews/` in scope → review checks
 
-This requires `trail_name` in the redacted metadata (added in fava-trails v0.5.4+).
+This requires `trail_name` in the selected metadata fields (added in fava-trails v0.5.4+).

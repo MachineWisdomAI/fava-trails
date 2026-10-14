@@ -4,14 +4,132 @@ All notable changes to FAVA Trails are documented here.
 
 ## Unreleased
 
-### Changed
-- Trimmed MCP server instructions to provenance, authority, and safe-operation boundaries; removed the unconditional session-start recall ritual (status/decisions/gotcha) from the instructions, `AGENTS.md`, and the usage guide. Detailed retrieval procedures stay on demand via `get_usage_guide`; no tool capabilities changed. Resolves #146.
-- Support MCP SDK 2.2 with explicit low-level handlers, preserving tool schemas, annotations, input/output validation, structured results, and Markdown usage guidance over stdio and Streamable HTTP. Adds installed-wheel protocol tests for legacy initialization and current SDK clients. Resolves #83.
+### Added
+- Release-candidate publication route (#144): the existing `Release` workflow now accepts PEP 440 `vMAJOR.MINOR.PATCHrcN` tags alongside stable tags. The tag must equal the package version; RC GitHub Releases are marked prerelease and never `latest`. The updater enters the rc channel from a stable baseline only via a `Release-Channel: rc` PR-body line (0.8.3 -> 0.8.4rc1) and keeps suffix-only promotion.
 
-## [0.6.1] — 2026-08-01
+### Changed
+- Trimmed MCP server instructions to provenance, authority, and safe-operation boundaries; removed the unconditional session-start recall ritual (status/decisions/gotcha) from the full and compact initialize instructions, the `recall` tool description, `AGENTS.md`, and the usage guide. Detailed retrieval procedures stay on demand via `get_usage_guide`; no tool capabilities changed. Resolves #146.
 
 ### Fixed
-- Raised direct MCP (`>=1.28.1`) and Starlette (`>=1.3.1`) floors and refreshed the lockfile to clear open Dependabot advisories (including high-severity transitive updates such as NLTK and Transformers). Supersedes #81.
+- Serialize monorepo initialization across processes so two MCP server processes sharing one data repository can start together. Concurrent `jj git init --colocate` racing could abort one server with `target repo already exists`, and unsynchronized `jj config set --repo` writers could leave the shared repository config file unparseable (`Configuration cannot be parsed as TOML document`), failing server startup. `JjBackend.init_monorepo` now takes a blocking cross-process lock on the repository directory for the whole init. Addresses issue #142.
+
+## [0.8.0] — 2026-10-02
+
+**Jev at the boundary between agent output and shared memory.** FAVA Trails
+now uses TypeSafe Jev through OpenRouter Decisions by default for new installs.
+A typed yes/no question produces a probability; the configured policy decides
+whether a draft becomes an approved record. The model, score, threshold, and
+review time stay with the record so operators can inspect the decision later.
+
+The shipped `0.45` threshold was selected on a 53-case private replay: 23 of
+30 approval-labeled cases accepted, all 23 rejection-labeled cases rejected,
+and seven approval-labeled cases rejected. These are reference-label results,
+not a guarantee of factual accuracy. See the [calibration report](https://github.com/MachineWisdomAI/fava-trails/issues/126#issuecomment-5894849724)
+and [0.8.0 release notes](docs/releases/v0.8.0.md).
+
+### Upgrade
+
+- Existing data repositories and explicit machine settings retain their
+  selected policy. Set `trust_gate: decisions`, `trust_gate_provider: openrouter`,
+  and `trust_gate_model: "~typesafe/jev-latest"` to opt an existing installation
+  into Jev; see [configuration and upgrade guidance](docs/releases/v0.8.0.md#upgrade).
+- Jev failures stop promotion; there is no automatic provider fallback.
+  `llm-oneshot` and explicit operator human approval remain available.
+- Each authoring MCP process still needs its own `FAVA_TRAILS_AGENT_ID`.
+  Identity isolation shipped in 0.7.0 and is not new in this release.
+
+### Fixed
+- Trust Gate data-egress disclosure no longer describes the transmitted metadata as "redacted": doctor, the MCP startup notice, and `trust_gate_egress` now state that the full scope-resolved prompt, the full candidate body, and the complete selected metadata fields are sent, with `agent_id` and `metadata.extra` excluded. Docs updated to match; regression coverage added for both `llm-oneshot` and `decisions` notices. Addresses issue #125.
+
+### Added
+- New-install Trust Gate defaults are the calibrated OpenRouter Decisions path: policy `decisions`, provider OpenRouter, model `~typesafe/jev-latest`, and ticket 03's exact Noul question plus threshold `0.45` under `trust_gate_decisions_config`. Default configuration passes doctor/startup validation and completes `propose_truth` against the synthetic Decisions fixture with durable provenance. Explicit question, threshold, model, and machine overrides still work; explicit `llm-oneshot` and operator `approval="human"` remain supported. Setup guidance links the [aggregate calibration report](https://github.com/MachineWisdomAI/fava-trails/issues/126#issuecomment-5894849724) and states that the private corpus is available upon request. Implements #127.
+- Explicit `decisions` Trust Gate policy: review and promote thoughts through OpenRouter's Decisions API (TypeSafe Jev) with one typed Noul question and an operator-configured threshold under `trust_gate_decisions_config` (`trust_gate_noul_question`, `trust_gate_noul_threshold`). Approves at-or-above threshold and rejects below through `propose_truth`, persists policy/provider/model/Noul-probability/threshold/timestamp/approval-kind provenance without fabricated reasoning, fails closed on invalid responses, auth/connection failures, and timeouts, and discloses secret-free destination/egress diagnostics in doctor and tunnel gateway startup. Implements #124.
+- Local Unsloth Laya for the existing `decisions` policy: explicit `trust_gate_provider: openai` plus `trust_gate_api_base` posts to `/v1/systemone`, forwards the configured model unchanged (docs recommend `laya-typed-decisions`), reuses local `llm-oneshot` credentials and timeout, fails closed without contacting OpenRouter, and presents local Laya whenever OpenRouter Decisions key setup or missing-credential guidance would otherwise send the operator only to OpenRouter. No discovery, fallback, or new provider value. Implements #131.
+
+## [0.7.0] — 2026-09-13
+
+Published on [GitHub](https://github.com/MachineWisdomAI/fava-trails/releases/tag/v0.7.0)
+and [PyPI](https://pypi.org/project/fava-trails/0.7.0/). The unpublished 0.6.1
+candidate was superseded. The gated release verified the exact wheel and sdist,
+including native MCP and upgrade from 0.6.0, then matched the published PyPI
+hashes to the candidate. See [runtime and upgrade guidance](docs/runtime-and-upgrade.md).
+
+### Compatibility and migration
+
+- **Identity:** Governed read/draft isolation is process-scoped. Set
+  `FAVA_TRAILS_AGENT_ID` on each ordinary authoring MCP process; caller
+  `agent_id` must match. A shared endpoint or shared data filesystem is one
+  identity boundary, not per-caller crypto isolation. Enable
+  `FAVA_TRAILS_OPERATOR=1` only on a separate operator-controlled endpoint.
+  Published **0.6.0** does not implement this model — confirm the loaded runtime
+  with `fava-trails version` after install or upgrade.
+- **MCP:** Runtime requires MCP SDK 2.2.x (`mcp>=2.2.0,<3.0`). Handshake
+  `serverInfo.version` is the FAVA product version, not the SDK version.
+- **JJ:** `install-jj` reuses any JJ `>= 0.28.0` and does not silently downgrade
+  or overwrite a user-managed binary.
+- **Not claimed:** Trust Gate is rubric process control, not independent truth
+  verification. Secret preflight is not complete DLP and does not erase stored
+  records. `recall` is lexical whitespace-token substring AND, not semantic
+  search. This release does not report measured user adoption. Local Rich Views
+  remain a local reader; five real-session acceptance was waived and is not
+  claimed.
+
+### Added
+- **Governed read / draft isolation (#72, #93; [PR #93](https://github.com/MachineWisdomAI/fava-trails/pull/93)):** default `recall` / `get_thought` expose approved current records only. Explicit `mode="authoring"` retrieves only the server-configured agent's draft/proposed records; operator-only `mode="history"` selects lifecycle statuses and superseded records. Neither a namespace nor a supplied `agent_id` grants access.
+- **Local Rich Views after 0.6.0 ([PR #92](https://github.com/MachineWisdomAI/fava-trails/pull/92), [PR #97](https://github.com/MachineWisdomAI/fava-trails/pull/97)):** reader generate/serve lifecycle and Astro managed-background startup for the existing local loopback reader. This is not a claim of five real production sessions.
+- `FAVA_TRAILS_MCP_SURFACE=compact` advertises shorter initialize instructions and tool descriptions and omits list-time `outputSchema`, with `get_usage_guide` as on-demand protocol. Default remains `full`. `fava-trails measure-mcp-context` records tokenizer-labeled session-init size, loads a frozen issue #104 tested-release artifact (not relabeled from the current SDK), and the same-task comparison runs through `mcp.Client` sessions. Prompt-coverage gaps are instruction scans, not observed client skips, and the comparison payload does not label those scans as `called`/`skipped`; missing-scope recovery selects an exact returned path and retries recall with the original arguments except `trail_name`, requiring a non-empty result. Full initialize instructions are a maintained subset of `AGENTS_USAGE_INSTRUCTIONS.md`, not a verbatim inject. See [docs/mcp-context-overhead.md](docs/mcp-context-overhead.md). Addresses #104 ([PR #115](https://github.com/MachineWisdomAI/fava-trails/pull/115)).
+- `fava-trails register` prints native MCP registration using an ordinary `FAVA_TRAILS_AGENT_ID`, the resolved executable, and the intended data repository. Unresolved executables fail unless `--executable` names an existing executable file. `--write` is an explicit client-config opt-in (atomic write, `.bak` backup, files opened with the final mode before content is written, modes capped at `0600` while stricter existing modes are kept, new files `0600`, non-writable existing configs refused). `--verify` labels a direct MCP smoke test, client-config inspection, and MCP Inspector config-load (`inspector_config_load`). It does not claim Claude Code/Desktop loaded the registration. Failures stay distinct (`inspector_unavailable`, `inspector_invocation_failed`, `config_load_failed`, `server_spawn_failed`, `server_initialize_failed`, `inspector_failed`, stale runtime path, registration not loaded). Native-session evidence that a client loaded Claude-shaped `mcpServers` config is `test_native_client_registration_loads_and_initializes`.
+- Bounded obvious-secret preflight before save, update, supersede, and promotion persist or transmit. Supported high-confidence patterns are refused with a safe explanation, including nested caller-controlled metadata and relationships after hook mutation, and the complete MCP request (tool name plus arguments) before schema validation, logging, lookup, auto-initialization, or JJ operations. Assembled Trust Gate result metadata is scanned before governance persist. Nested walks deeper than 32 fail closed. Block logs use a fixed message without pattern ids. Legacy matching drafts are left unchanged and are not sent for review. Documents data flow and detection limits; does not claim complete DLP. Fixes #102 ([PR #112](https://github.com/MachineWisdomAI/fava-trails/pull/112)).
+- **Trust Gate data-egress disclosure (issue #101; [PR #111](https://github.com/MachineWisdomAI/fava-trails/pull/111)):** `describe_trust_gate_egress`
+  + `fava-trails doctor` **Data egress** section and MCP startup log show the
+  effective review destination/model and which candidate fields are sent before
+  promotion. Successful LLM or operator `propose_truth` paths (and credential /
+  timeout failures after disclosure begins) include a secret-free
+  `trust_gate_egress` object (`first_in_process` on the first disclosure in
+  that process). Early validation failures — missing `thought_id`, missing
+  prompt cache, thought not found, or prompt-resolution errors — return before
+  disclosure and omit `trust_gate_egress`. Local-only OpenAI-compatible setups
+  remain fail-closed with no cloud fallback; missing cloud credentials never
+  auto-approve. Docs separate the operator `approval="human"` path from
+  automatic LLM review.
+- `fava-trails version` (and a matching preamble on `fava-trails doctor`) reports
+  the loaded product package/module version, module path/source kind, and the
+  MCP SDK distribution version separately, without credentials. MCP
+  `serverInfo.version` now carries the FAVA product version. Documents identity
+  configuration, local runtime selectors that can keep an old checkout active,
+  and release-candidate install/upgrade verification. Wheel/sdist packaging
+  tests cover fresh install, upgrade from published 0.6.0, installed-entrypoint
+  MCP protocol (#83), and governed recall isolation (#72). Prepares #99
+  ([PR #109](https://github.com/MachineWisdomAI/fava-trails/pull/109)); the 0.7.0
+  publication passed these gates.
+- Issue #99 verification depth: real native MCP client registration via
+  `@modelcontextprotocol/inspector` loading Claude-shaped `mcpServers` config
+  (distinct from direct stdio probes); two separately configured ordinary server
+  processes for authoring isolation + spoof rejection on the installed wheel;
+  packaged verifier binds to `FAVA_CANDIDATE_WHEEL`/`FAVA_CANDIDATE_SDIST` for
+  fresh wheel install, sdist install, and 0.6.0→candidate upgrade; `release.yml`
+  is a pre-publication `workflow_dispatch` on an existing tag under the
+  `fava-release` environment that resolves draft-resume before the main check
+  (first publish: tag peel == protected `origin/main`; draft resume: tag peel is
+  an ancestor of `origin/main`), peels to verified `HEAD` (env-passed tag input;
+  provenance via `$GITHUB_ENV` inheritance, not dispatch `GITHUB_SHA` or empty
+  expression-context remaps), validates exact artifacts, stages or normalizes a
+  **draft** GitHub Release (title/notes/target bound to the candidate), publishes
+  the same `dist/` to PyPI, requires published PyPI SHA-256 to match
+  `candidate-SHA256SUMS` before undraft (still owner-gated; no automatic
+  publication from this changelog).
+- **Local-only sync (#105; [PR #116](https://github.com/MachineWisdomAI/fava-trails/pull/116)):** `sync` distinguishes a repo with no remotes (local-only) from a configured remote that is broken. It does not invent hosted remotes or treat missing-remote as a fetch failure.
+
+### Changed
+- Safer onboarding (#103; [PR #113](https://github.com/MachineWisdomAI/fava-trails/pull/113), [PR #114](https://github.com/MachineWisdomAI/fava-trails/pull/114)): `fava-trails init` and `fava-trails scope set` persist scope in `.fava-trails.yaml` and no longer write application `.env` files unless `--write-env` is passed. Existing `FAVA_TRAILS_SCOPE` reads are unchanged. Generated agent guidance (`AGENTS_USAGE_INSTRUCTIONS.md`, server instructions, data-repo `agents-guide.md`) and root `AGENTS.md` no longer tell agents to edit application-owned `.env` files. `fava-trails register --write` and `--verify` fail unless a real data-repository path is resolved; print-only guidance may still show a placeholder.
+- Honest substring recall (#100; [PR #110](https://github.com/MachineWisdomAI/fava-trails/pull/110)): public docs and the retrieval baseline state that `recall` is lexical whitespace-token substring AND across content and selected metadata. They do not promise semantic search, hallucination prevention, or truth verification.
+- Public Trust Gate wording no longer implies that a review verdict prevents secret persistence or egress.
+- Support MCP SDK 2.2 with explicit low-level handlers, preserving tool schemas, annotations, input/output validation, structured results, and Markdown usage guidance over stdio and Streamable HTTP. Adds installed-wheel protocol tests for legacy initialization and current SDK clients. Resolves #83 ([PR #94](https://github.com/MachineWisdomAI/fava-trails/pull/94)).
+- **JJ installer / current-stable policy (issue #98; [PR #108](https://github.com/MachineWisdomAI/fava-trails/pull/108)):** `fava-trails install-jj` (canonical `jj_install.py`; `scripts/install-jj.sh` is a thin Bash 3.2-safe delegate) reuses any installed JJ `>= 0.28.0` before platform checks, never silently downgrades or overwrites a user-managed binary, resolves current GitHub stable when install is needed (explicit `--version` / `JJ_VERSION` override retained), verifies GitHub asset SHA-256 digests when published, requires exactly one safe regular `jj` archive member, installs atomically with restore of the prior managed binary after any post-replacement failure, and PATH-hints the selected install directory. CI matrix covers JJ **0.28.0** and **0.45.1**. See `docs/jj-compatibility.md`.
+
+### Fixed
+- Raised direct MCP (`>=1.28.1`, later `>=2.2.0`) and Starlette (`>=1.3.1`) floors and refreshed the lockfile to clear open Dependabot advisories (including high-severity transitive updates such as NLTK and Transformers). Supersedes #81 ([PR #91](https://github.com/MachineWisdomAI/fava-trails/pull/91)).
+- Duplicate-recovery receipts stay private and durable before retry ([PR #95](https://github.com/MachineWisdomAI/fava-trails/pull/95)).
 
 ## [0.6.0] — 2026-07-31
 

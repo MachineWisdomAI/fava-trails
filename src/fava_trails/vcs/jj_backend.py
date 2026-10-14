@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 import shutil
+from contextlib import contextmanager
 from pathlib import Path
 
 from .base import (
@@ -22,6 +24,111 @@ from .base import (
 )
 
 logger = logging.getLogger(__name__)
+
+MISSING_REMOTE_SUMMARY = (
+    "Remote sync is not configured. This data repository is local-only until an "
+    "operator adds a reachable git remote (`git remote add origin <url>`) or clones "
+    "a shared repository (`fava-trails clone <url> <path>`). FAVA does not create "
+    "hosted repositories, push private content, or change remotes automatically. "
+    "Local save, recall, review, and supersession still work without a remote."
+)
+
+_PERMISSION_MARKERS = (
+    "permission denied",
+    "operation not permitted",
+    "authentication failed",
+    "could not read from remote repository",
+    "access denied",
+    "http 401",
+    "http 403",
+    "401 unauthorized",
+    "403 forbidden",
+    "terminal prompts disabled",
+    "could not read username",
+    "invalid username or password",
+    "auth fail",
+)
+
+_UNREACHABLE_MARKERS = (
+    "could not resolve host",
+    "name or service not known",
+    "nodename nor servname",
+    "connection refused",
+    "failed to connect",
+    "couldn't connect",
+    "could not connect",
+    "network is unreachable",
+    "no route to host",
+    "timed out",
+    "connection timed out",
+    "unable to access",
+    "connection reset",
+    "temporary failure in name resolution",
+    "does not appear to be a git repository",
+    "repository not found",
+    "failed to connect to",
+    "could not find repository",
+    "no such file or directory",
+)
+
+
+def classify_remote_fetch_error(message: str) -> str:
+    """Distinguish permission failures from unreachable configured remotes."""
+    text = message.lower()
+    if any(marker in text for marker in _PERMISSION_MARKERS):
+        return "permission"
+    if any(marker in text for marker in _UNREACHABLE_MARKERS):
+        return "unreachable"
+    return "unreachable"
+
+
+@contextmanager
+def _repo_init_lock(repo_root: Path):
+    """Blocking cross-process exclusive lock serializing monorepo initialization.
+
+    Server processes that share a data repository run ``init_monorepo`` at
+    startup. On a fresh repository they race on ``jj git init --colocate`` (jj
+    refuses the second creator), and on every startup they rewrite the shared
+    repository config through four ``jj config set --repo`` calls. Two
+    unsynchronized writers can leave that config file unparseable, which aborts
+    the second server before it can serve any request (issue #142).
+
+    The lock is taken on the repository directory itself so it is available
+    before ``.jj`` exists — jj refuses to initialize a repository whose ``.jj``
+    directory was pre-created, so a lock file inside ``.jj`` cannot guard the
+    fresh-init case. Platforms without directory locking fall back to a lock
+    file beside jj's metadata once that metadata exists.
+    """
+    if os.name == "nt" or not hasattr(os, "O_DIRECTORY"):
+        lock_file = repo_root / ".jj" / "fava-init.lock"
+        if not lock_file.parent.is_dir():
+            yield
+            return
+        import msvcrt
+
+        with lock_file.open("a+b") as stream:
+            stream.write(b"0")
+            stream.flush()
+            stream.seek(0)
+            msvcrt.locking(stream.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                stream.seek(0)
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+        return
+
+    import fcntl
+
+    fd = os.open(repo_root, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
 
 
 class JjError(Exception):
@@ -88,12 +195,13 @@ class JjBackend(VcsBackend):
             )
         return stdout, stderr
 
-    async def _run_git(self, *args: str, check: bool = True) -> tuple[str, str]:
+    async def _run_git(self, *args: str, check: bool = True, env: dict[str, str] | None = None) -> tuple[str, str]:
         """Run a git command at repo_root. Internal helper for colocated safety checks."""
         proc = await asyncio.create_subprocess_exec(
             "git",
             *args,
             cwd=self.repo_root,
+            env=env,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -234,13 +342,23 @@ class JjBackend(VcsBackend):
     async def init_monorepo(self) -> str:
         """Initialize the monorepo at repo_root with four-case detection.
 
+        Serialized across processes (see ``_repo_init_lock``): concurrent server
+        startup on one shared data repository must not race the JJ init or the
+        shared repository config writes.
+        """
+        self.repo_root.mkdir(parents=True, exist_ok=True)
+        with _repo_init_lock(self.repo_root):
+            return await self._init_monorepo_locked()
+
+    async def _init_monorepo_locked(self) -> str:
+        """Init body; caller holds the cross-process repository init lock.
+
         Cases:
         1. .git only (no .jj) → colocate JJ on top of existing git repo
         2. Both .jj and .git exist → already initialized, configure and skip
         3. .jj only (no .git) → non-colocated repo, raise error with fix instructions
         4. Neither exists → fresh init with jj git init --colocate
         """
-        self.repo_root.mkdir(parents=True, exist_ok=True)
         jj_dir = self.repo_root / ".jj"
         git_dir = self.repo_root / ".git"
 
@@ -566,6 +684,11 @@ class JjBackend(VcsBackend):
                 return change
         return None
 
+    async def _git_remote_names(self) -> list[str]:
+        """Return configured git remote names without creating or changing remotes."""
+        stdout, _ = await self._run_git("remote")
+        return [line.strip() for line in stdout.splitlines() if line.strip()]
+
     async def fetch_and_rebase(self) -> RebaseResult:
         case_collisions = await self._tracked_case_collisions()
         if case_collisions:
@@ -590,15 +713,43 @@ class JjBackend(VcsBackend):
                 ),
             )
 
+        remote_names = await self._git_remote_names()
+        if not remote_names:
+            return RebaseResult(
+                success=False,
+                missing_remote=True,
+                summary=MISSING_REMOTE_SUMMARY,
+            )
+
         # Record pre-rebase op for rollback
         ops = await self.op_log(limit=1)
         pre_op = ops[0].op_id if ops else ""
 
         try:
-            await self._run("git", "fetch", "--all-remotes", check=False)
+            fetch_env = os.environ.copy()
+            fetch_env["GIT_TERMINAL_PROMPT"] = "0"
+            await self._run_git("fetch", "--all", env=fetch_env)
         except JjError as e:
             logger.warning(f"Git fetch failed: {e}")
-            return RebaseResult(success=False, pre_rebase_op_id=pre_op, summary=f"Fetch failed: {e}")
+            kind = classify_remote_fetch_error(f"{e} {e.stderr}")
+            if kind == "permission":
+                summary = (
+                    "Configured git remote denied access (permission failure). "
+                    "Fix credentials or repository permissions, then retry. "
+                    "FAVA does not change remotes or push private content automatically."
+                )
+            else:
+                summary = (
+                    "Configured git remote is unreachable. Check the remote URL, network, "
+                    "and that the repository exists, then retry. This is not a local-only "
+                    "repository; a remote is configured but cannot be reached."
+                )
+            return RebaseResult(
+                success=False,
+                remote_failure=kind,
+                pre_rebase_op_id=pre_op,
+                summary=summary,
+            )
 
         try:
             await self._run("rebase", "-d", f"{self.DEFAULT_BOOKMARK}@origin")

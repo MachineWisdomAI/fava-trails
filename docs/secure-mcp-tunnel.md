@@ -131,11 +131,13 @@ check. Health includes repository readiness; process existence alone is
 insufficient. The startup output identifies the repository, trails directory,
 loopback URL, and tunnel profile.
 
-`--sync-on-start` requires successful repository sync before exposure. Periodic
+`--sync-on-start` requires successful repository sync before exposure. A
+local-only repository with no git remote is `not_configured` and fails closed
+when that flag is set; configure a reachable remote first. Periodic
 sync updates the long-lived clone; use `--sync-interval-seconds 0` only if another
-owned mechanism handles it. Dirty state, case collisions, or merge conflicts
-require operator attention. Do not grant operator access to the shared MCP
-endpoint merely to enable ordinary `sync`.
+owned mechanism handles it. Dirty state, case collisions, merge conflicts,
+unreachable remotes, or permission failures require operator attention. Do not
+grant operator access to the shared MCP endpoint merely to enable ordinary `sync`.
 
 ## Connect ChatGPT and verify the workflow
 

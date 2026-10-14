@@ -9,8 +9,9 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 import yaml
+from pydantic import ValidationError
 
-from .models import GlobalConfig, TrailConfig
+from .models import GlobalConfig, TrailConfig, format_validation_error_for_diagnostics
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ MACHINE_TRUST_GATE_KEYS = frozenset({
     "trust_gate_api_key_file",
     "trust_gate_timeout_secs",
     "trust_gate_extra_body",
+    "trust_gate_decisions_config",
 })
 
 # Scope path segment: alphanumeric + hyphens/dots/underscores, starts with alphanumeric
@@ -124,7 +126,12 @@ def apply_machine_config(data_config: dict[str, Any]) -> dict[str, Any]:
 def load_effective_global_config(data_repo_root: Path) -> GlobalConfig:
     """Load data-repo configuration with standard per-machine Trust Gate overrides."""
     data = _read_config_mapping(data_repo_root / "config.yaml", missing_ok=True)
-    return GlobalConfig(**apply_machine_config(data))
+    try:
+        return GlobalConfig(**apply_machine_config(data))
+    except ValidationError as exc:
+        # Convert to a secret-free ValueError so doctor/startup/tunnel paths never
+        # print Pydantic's default input_value (e.g. credential-bearing api_base).
+        raise ValueError(format_validation_error_for_diagnostics(exc)) from None
 
 
 class ConfigStore:
@@ -286,7 +293,8 @@ def ensure_data_repo_root() -> Path:
 def get_trust_gate_policy(trail_name: str) -> str:
     """Resolve the trust gate policy for a given trail.
 
-    Priority: trail-level .fava-trails.yaml > global config.yaml > default ("llm-oneshot").
+    Priority: trail-level override when not the inherit sentinel ``llm-oneshot``,
+    else global config.yaml, else the shipped default (``decisions``).
     """
     trail_config = load_trail_config(trail_name)
     if trail_config.trust_gate_policy != "llm-oneshot":

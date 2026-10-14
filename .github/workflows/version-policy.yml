@@ -1,0 +1,27 @@
+name: Version policy
+on:
+  pull_request:
+    types: [opened, reopened, edited, synchronize, ready_for_review]
+permissions:
+  contents: read
+concurrency:
+  group: version-policy-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  version-policy:
+    name: Version policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+      - name: Check intended version against current base
+        env:
+          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+        run: python3 scripts/mw-version.py check --base "refs/remotes/origin/$BASE_BRANCH" --event-file "$GITHUB_EVENT_PATH"

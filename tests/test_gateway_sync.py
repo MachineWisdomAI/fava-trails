@@ -31,7 +31,10 @@ async def test_non_operator_gateway_lists_and_syncs_real_local_remote(trail_mana
     subprocess.run(["git", "init", "--bare", str(remote)], check=True, capture_output=True)
     await trail_manager.vcs.add_remote("origin", str(remote))
     await trail_manager.vcs._run("bookmark", "set", "main", "-r", "@-")
-    await trail_manager.vcs._run("git", "push", "--allow-new", "-b", "main")
+    # Seed the bare remote with local bookmarks. Prefer --all over --allow-new:
+    # --allow-new was removed in JJ 0.42+; --all still creates new remote bookmarks
+    # on both the supported floor (0.28) and current stable.
+    await trail_manager.vcs._run("git", "push", "--allow-empty-description", "--all")
     monkeypatch.setenv("FAVA_TRAILS_AGENT_ID", "chatgpt-gateway")
     monkeypatch.delenv("FAVA_TRAILS_OPERATOR", raising=False)
     monkeypatch.setattr(server, "_trail_managers", {trail_manager.trail_name: trail_manager})

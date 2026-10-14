@@ -27,6 +27,23 @@ recall(trail_name="example/engineering", mode="authoring", statuses=["draft", "p
 recall(trail_name="example/engineering", mode="history", statuses=["rejected"], include_superseded=True)
 ```
 
+## Lexical matching
+
+`query` is not semantic search. Implementation (`TrailManager.recall`):
+
+1. lowercase the query and split on whitespace;
+2. build a searchable string from content, thought id, source type, agent id,
+   project, branch, and tags;
+3. require every query token to appear as a **substring** of that string.
+
+Paraphrases, synonyms, and tokens that only exist in the caller's head miss.
+Empty query returns visibility-allowed records up to `limit`. Shareable synthetic
+matrix with expected vs actual rows: [retrieval-baseline.md](retrieval-baseline.md).
+
+Namespace and metadata filters narrow a view; they never grant another agent's
+unapproved drafts. A shared data repo filesystem and a shared MCP credential are
+operator trust boundaries, not per-agent sandboxing.
+
 ## Identity boundary
 
 The operator sets `FAVA_TRAILS_AGENT_ID` when starting a dedicated MCP process.
@@ -49,6 +66,11 @@ ordinary agent endpoint. Existing installations must configure identities before
 turning on authoring; this change does not migrate files or assume old `agent_id`
 claims were authenticated. Existing draft ownership needs operator review before
 reusing an old identity for private authoring.
+
+After package upgrades, confirm the process your MCP client launches is the
+intended install with `fava-trails version` (module path and product vs MCP SDK
+versions). Local `uv run --directory` / vendor selectors can keep an older
+checkout active; see [runtime-and-upgrade.md](runtime-and-upgrade.md).
 
 ## Replacement lifecycle
 
@@ -76,11 +98,13 @@ before retrying; never reset the repository wholesale.
 
 The configured Trust Gate can approve under its existing policy. New provenance
 records `metadata.extra.approval.kind="llm_advisory"`; that is not explicit human
-approval. On an operator endpoint, `propose_truth(..., approval="human")` records
-an explicit operator action with `kind="human"` and the configured actor.
+approval and is **not** independent verification of project facts. On an operator
+endpoint, `propose_truth(..., approval="human")` records an explicit operator
+action with `kind="human"` and the configured actor.
 Do not infer human approval from `source_type="user_input"`, the preferences
 namespace, a reviewer-shaped string, or legacy metadata. A successor never
-inherits its predecessor's approval evidence.
+inherits its predecessor's approval evidence. Supersession installs lineage and
+default-visibility rules; it does not establish truth of the replacement.
 
 ## Rich Views
 

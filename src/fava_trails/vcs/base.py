@@ -58,6 +58,8 @@ class RebaseResult:
     dirty_paths: list[str] = field(default_factory=list)
     has_case_collisions: bool = False
     case_collisions: list[list[str]] = field(default_factory=list)
+    missing_remote: bool = False
+    remote_failure: str | None = None
     pre_rebase_op_id: str = ""
     conflict_details: list[VcsConflict] = field(default_factory=list)
     summary: str = ""

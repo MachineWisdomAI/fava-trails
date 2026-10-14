@@ -435,6 +435,7 @@ def test_run_syncs_once_on_start_without_recurring_worker(tmp_path, monkeypatch)
         {"status": "blocked", "message": "dirty working copy"},
         {"status": "conflict", "message": "merge conflict"},
         {"status": "error", "message": "sync timed out after 30s"},
+        {"status": "not_configured", "message": "Remote sync is not configured"},
     ],
 )
 def test_run_does_not_expose_after_initial_sync_failure(tmp_path, monkeypatch, sync_state):
@@ -1017,3 +1018,102 @@ def test_http_runtime_healthz_reports_tree_bound(tmp_path, monkeypatch):
 
     assert response.status_code == 503
     assert response.json()["reason"] == "scope_tree_too_large"
+
+
+def _decisions_data_repo(tmp_path: Path) -> Path:
+    return _make_data_repo(
+        tmp_path,
+        trust_gate_model="typesafe/jev-1.13",
+        extra_lines=[
+            "trust_gate: decisions",
+            "trust_gate_decisions_config:",
+            "  trust_gate_noul_question: Does this thought belong in the record?",
+            "  trust_gate_noul_threshold: 0.9",
+        ],
+    )
+
+
+def test_load_gateway_config_decisions_policy_discloses_egress(tmp_path, monkeypatch):
+    data_repo = _decisions_data_repo(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            config = _load_gateway_config(_args(data_repo=str(data_repo)))
+
+    assert config.trust_gate_credential == "OPENROUTER_API_KEY"
+    assert config.trust_gate_egress is not None
+    assert "remote OpenRouter" in config.trust_gate_egress
+    assert "https://openrouter.ai/api/alpha/decisions" in config.trust_gate_egress
+    assert "test-key" not in config.trust_gate_egress
+
+
+def test_load_gateway_config_local_laya_discloses_systemone(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(
+        tmp_path,
+        openrouter_env=None,
+        trust_gate_api_key_env="UNSLOTH_API_KEY",
+        trust_gate_provider="openai",
+        trust_gate_model="laya-typed-decisions",
+        trust_gate_api_base="http://127.0.0.1:8888/v1",
+        extra_lines=[
+            "trust_gate: decisions",
+            "trust_gate_decisions_config:",
+            "  trust_gate_noul_question: Does this thought belong in the record?",
+            "  trust_gate_noul_threshold: 0.9",
+        ],
+    )
+    monkeypatch.setenv("UNSLOTH_API_KEY", "test-laya-key")
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            config = _load_gateway_config(_args(data_repo=str(data_repo)))
+
+    assert config.trust_gate_credential == "UNSLOTH_API_KEY"
+    assert config.trust_gate_egress is not None
+    assert "local Unsloth" in config.trust_gate_egress
+    assert "http://127.0.0.1:8888/v1/systemone" in config.trust_gate_egress
+    assert "remote OpenRouter" not in config.trust_gate_egress
+    assert "test-laya-key" not in config.trust_gate_egress
+
+
+def test_load_gateway_config_decisions_policy_requires_noul_question(tmp_path, monkeypatch):
+    data_repo = _make_data_repo(
+        tmp_path,
+        trust_gate_model="typesafe/jev-1.13",
+        extra_lines=[
+            "trust_gate: decisions",
+            "trust_gate_decisions_config:",
+            '  trust_gate_noul_question: ""',
+            "  trust_gate_noul_threshold: 0.45",
+        ],
+    )
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    with patch("fava_trails.tunnel_cli._find_jj_bin", return_value="/usr/bin/jj"):
+        with patch("shutil.which", return_value="/usr/bin/tunnel-client"):
+            with pytest.raises(ValueError, match="invalid Trust Gate configuration"):
+                _load_gateway_config(_args(data_repo=str(data_repo)))
+
+
+def test_print_startup_includes_decisions_egress_line(capsys):
+    config = tunnel_cli.GatewayConfig(
+        data_repo=Path("/tmp/data"),
+        trails_dir=Path("/tmp/data/trails"),
+        host=DEFAULT_HOST,
+        port=DEFAULT_PORT,
+        mcp_path=DEFAULT_MCP_PATH,
+        profile=DEFAULT_PROFILE,
+        tunnel_client="tunnel-client",
+        trust_gate_credential="OPENROUTER_API_KEY",
+        trust_gate_egress=(
+            "thought content and selected metadata are transmitted to remote "
+            "OpenRouter for Decisions review (https://openrouter.ai/api/alpha/decisions)"
+        ),
+    )
+
+    tunnel_cli._print_startup(config)
+
+    out = capsys.readouterr().out
+    assert "Egress:" in out
+    assert "remote OpenRouter" in out

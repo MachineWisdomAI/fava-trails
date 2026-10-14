@@ -11,22 +11,318 @@ Policies:
 from __future__ import annotations
 
 import html
+import ipaddress
 import json
 import logging
+import math
+import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Any, Literal
+from urllib.parse import urlparse, urlunparse
 
 import yaml
 from any_llm.exceptions import AnyLLMError, ProviderError
 
+from .decisions import DecisionsClient, DecisionsError
 from .llm import LLMClient
+from .llm.sanitize import sanitize_provider_exception
 from .models import ThoughtRecord
+
+if TYPE_CHECKING:
+    from .models import GlobalConfig
 
 logger = logging.getLogger(__name__)
 
 TRUST_GATE_PROMPT_FILENAME = "trust-gate-prompt.md"
+
+# Process-scoped: first disclosure (MCP startup log or promotion) sets the flag.
+_egress_disclosure_lock = threading.Lock()
+_egress_disclosed_in_process = False
+
+
+def reset_trust_gate_egress_disclosure_state() -> None:
+    """Test helper: clear the process-scoped first-disclosure flag."""
+    global _egress_disclosed_in_process
+    with _egress_disclosure_lock:
+        _egress_disclosed_in_process = False
+
+
+# Paths safe to show in disclosures. Anything else may embed gateway tokens.
+_DISCLOSABLE_API_BASE_PATHS = frozenset({"", "/", "/v1", "/v1/"})
+
+
+def redact_trust_gate_api_base_for_disclosure(api_base: str | None) -> str | None:
+    """Return a secret-free api_base suitable for logs, doctor, and tool JSON.
+
+    Strips URL userinfo, query string, and fragment. Path is disclosed only when
+    it is empty or the conventional OpenAI-compatible ``/v1`` suffix; any other
+    path is replaced with ``/[redacted]`` so gateway tokens in path segments
+    cannot leak. Malformed ports fail closed to a non-secret placeholder rather
+    than raising. The live request may still use the full configured value.
+    """
+    if not api_base:
+        return None
+    raw = api_base.strip()
+    if not raw:
+        return None
+    parsed = urlparse(raw)
+    hostname = parsed.hostname or ""
+    if not hostname:
+        return f"{parsed.scheme or 'http'}://[invalid-api-base]"
+    if ":" in hostname:
+        host_for_netloc = f"[{hostname}]"
+    else:
+        host_for_netloc = hostname
+    try:
+        port = parsed.port
+    except ValueError:
+        # Defense in depth: never crash doctor/startup logs on a bad port.
+        return f"{parsed.scheme or 'http'}://[invalid-api-base]"
+    if port is not None:
+        netloc = f"{host_for_netloc}:{port}"
+    else:
+        netloc = host_for_netloc
+    path = parsed.path or ""
+    if path not in _DISCLOSABLE_API_BASE_PATHS:
+        path = "/[redacted]"
+    elif path == "/v1/":
+        path = "/v1"
+    elif path == "/":
+        path = ""
+    # Drop username/password (netloc rebuild), params, query, and fragment.
+    return urlunparse((parsed.scheme, netloc, path, "", "", ""))
+
+
+def _is_loopback_api_base(api_base: str | None) -> bool:
+    """True only for localhost or numeric loopback IP literals (not 127.* DNS names)."""
+    if not api_base:
+        return False
+    try:
+        host = (urlparse(api_base).hostname or "").lower()
+    except Exception:
+        return False
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def describe_trust_gate_egress(
+    config: GlobalConfig,
+    *,
+    approval: str | None = None,
+    policy: str | None = None,
+    first_in_process: bool | None = None,
+) -> dict[str, Any]:
+    """Describe where candidate data goes during Trust Gate review.
+
+    Never includes API keys, key file paths, or secret values — only destination
+    identity, model, and a plain summary of which candidate fields are sent.
+
+    ``policy`` names the effective review policy (trail-level override aware);
+    it defaults to ``config.trust_gate`` so doctor/startup callers that only
+    hold the global config still describe the configured policy accurately.
+    """
+    from .credentials import trust_gate_credential_description
+
+    if approval == "human":
+        notice: dict[str, Any] = {
+            "policy": "operator_human",
+            "provider": None,
+            "model": None,
+            "destination": "operator endpoint (no LLM request)",
+            "destination_kind": "operator_human",
+            "credential_source": None,
+            "data_sent": [],
+            "data_sent_summary": (
+                "No candidate content is transmitted to an LLM provider. "
+                "Promotion uses explicit operator approval on this process only."
+            ),
+            "cloud_fallback": False,
+            "rejection_happens_after_transmission": False,
+            "explanation": (
+                "Operator review path: propose_truth(..., approval=\"human\") on an "
+                "operator-controlled endpoint (FAVA_TRAILS_OPERATOR=1 with a configured "
+                "FAVA_TRAILS_AGENT_ID). Candidate text is not sent to a remote or local "
+                "LLM. This is separate from automatic llm-oneshot review."
+            ),
+        }
+        if first_in_process is not None:
+            notice["first_in_process"] = first_in_process
+        return notice
+
+    effective_policy = policy or config.trust_gate
+    if effective_policy == "decisions":
+        from .decisions import (
+            DECISIONS_API_PATH,
+            DEFAULT_DECISIONS_API_BASE,
+            decisions_endpoint,
+            uses_local_decisions_backend,
+        )
+
+        decisions_provider = config.trust_gate_provider
+        decisions_model = config.trust_gate_model
+        api_base = config.trust_gate_api_base
+        if api_base:
+            disclosed_base = (
+                redact_trust_gate_api_base_for_disclosure(api_base) or "[invalid-api-base]"
+            )
+            destination = (
+                decisions_endpoint(disclosed_base, provider=decisions_provider)
+                if disclosed_base != "[invalid-api-base]"
+                else disclosed_base
+            )
+            destination_kind: Literal["local_endpoint", "custom_endpoint", "remote_provider"] = (
+                "local_endpoint" if _is_loopback_api_base(api_base) else "custom_endpoint"
+            )
+        elif uses_local_decisions_backend(decisions_provider):
+            destination_kind = "local_endpoint"
+            destination = decisions_endpoint(None, provider=decisions_provider)
+        else:
+            destination_kind = "remote_provider"
+            destination = (
+                f"{decisions_provider} Decisions API "
+                f"({DEFAULT_DECISIONS_API_BASE}{DECISIONS_API_PATH})"
+            )
+        decisions_data_sent = [
+            "full scope-resolved Trust Gate prompt (state.review_instructions)",
+            "full candidate thought content (markdown body, state.thought_under_review)",
+            "selected metadata fields sent: thought_id, source_type, confidence, validation_status",
+            "optional selected metadata fields sent: trail_name, parent_id, project, branch, tags",
+            "the configured Noul question text (state.questions.trust.instructions)",
+        ]
+        notice = {
+            "policy": "decisions",
+            "provider": decisions_provider,
+            "model": decisions_model,
+            "destination": destination,
+            "destination_kind": destination_kind,
+            "credential_source": trust_gate_credential_description(config),
+            "data_sent": decisions_data_sent,
+            "data_sent_summary": (
+                "The full scope-resolved Trust Gate prompt, the full candidate "
+                "thought content, and the complete selected metadata fields "
+                "(thought_id, source_type, confidence, validation_status; "
+                "optional trail_name/parent_id/project/branch/tags) are "
+                "transmitted as structured Decisions state together with the "
+                "configured Noul question. agent_id and metadata.extra are "
+                "excluded and never sent."
+            ),
+            "cloud_fallback": False,
+            "rejection_happens_after_transmission": True,
+            "explanation": (
+                "Provider selection is a data-egress choice: the candidate is "
+                f"transmitted to {destination} using model {decisions_model!r} "
+                "before a verdict exists. One Noul question is asked; the answer "
+                "carries a calibrated probability and no reasoning. A remote reject "
+                "still means the content already left this process. There is no "
+                "automatic pass-through/off mode and no silent fallback to another "
+                "provider if this destination is unavailable or misconfigured."
+            ),
+        }
+        if first_in_process is not None:
+            notice["first_in_process"] = first_in_process
+        return notice
+
+    provider = config.trust_gate_provider
+    model = config.trust_gate_model
+    api_base = config.trust_gate_api_base
+    disclosed_api_base = redact_trust_gate_api_base_for_disclosure(api_base)
+    if api_base and _is_loopback_api_base(api_base):
+        destination_kind: Literal["local_endpoint", "custom_endpoint", "remote_provider"] = "local_endpoint"
+        destination = disclosed_api_base or ""
+    elif api_base:
+        destination_kind = "custom_endpoint"
+        destination = disclosed_api_base or ""
+    elif provider == "openrouter":
+        destination_kind = "remote_provider"
+        destination = "OpenRouter (provider default API)"
+    else:
+        destination_kind = "remote_provider"
+        destination = f"{provider} (provider default API)"
+
+    data_sent = [
+        "full candidate thought content (markdown body)",
+        "selected metadata fields sent: thought_id, source_type, confidence, validation_status",
+        "optional selected metadata fields sent: trail_name, parent_id, project, branch, tags",
+    ]
+    notice = {
+        "policy": config.trust_gate,
+        "provider": provider,
+        "model": model,
+        "destination": destination,
+        "destination_kind": destination_kind,
+        "credential_source": trust_gate_credential_description(config),
+        "data_sent": data_sent,
+        "data_sent_summary": (
+            "Candidate thought content plus the complete selected metadata "
+            "fields (thought_id, source_type, confidence, validation_status; "
+            "optional trail_name/parent_id/project/branch/tags). agent_id and "
+            "metadata.extra are excluded and never sent."
+        ),
+        "cloud_fallback": False,
+        "rejection_happens_after_transmission": True,
+        "explanation": (
+            "Provider selection is a data-egress choice: the candidate is transmitted "
+            f"to {destination} using model {model!r} before a verdict exists. "
+            "A remote reject still means the content already left this process. "
+            "There is no automatic pass-through/off mode and no silent fallback to "
+            "another provider if this destination is unavailable or misconfigured."
+        ),
+    }
+    if first_in_process is not None:
+        notice["first_in_process"] = first_in_process
+    return notice
+
+
+def format_trust_gate_egress_notice(notice: dict[str, Any]) -> str:
+    """Plain multi-line operator explanation (no secrets)."""
+    kind = notice.get("destination_kind")
+    lines = [
+        "Trust Gate data egress",
+        f"  policy:       {notice.get('policy')}",
+    ]
+    if kind == "operator_human":
+        lines.extend(
+            [
+                "  destination:  operator endpoint (no LLM request)",
+                f"  detail:       {notice.get('data_sent_summary')}",
+                f"  note:         {notice.get('explanation')}",
+            ]
+        )
+        return "\n".join(lines)
+
+    lines.extend(
+        [
+            f"  provider:     {notice.get('provider')}",
+            f"  model:        {notice.get('model')}",
+            f"  destination:  {notice.get('destination')} ({kind})",
+            f"  credential:   {notice.get('credential_source')} (name/source only; secret not shown)",
+            f"  data sent:    {notice.get('data_sent_summary')}",
+            "  timing:       rejection by a remote gate happens after transmission",
+            "  fallback:     never silently fall back to a cloud provider; fail closed",
+            f"  note:         {notice.get('explanation')}",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def mark_trust_gate_egress_disclosed() -> bool:
+    """Mark first-in-process disclosure. Returns True if this was the first call."""
+    global _egress_disclosed_in_process
+    with _egress_disclosure_lock:
+        first = not _egress_disclosed_in_process
+        _egress_disclosed_in_process = True
+        return first
+
+
+def log_trust_gate_egress_notice(notice: dict[str, Any]) -> None:
+    """Emit a secret-free egress notice to the server log (before network I/O)."""
+    logger.info("%s", format_trust_gate_egress_notice(notice))
 
 
 class TrustGateConfigError(Exception):
@@ -39,7 +335,7 @@ class TrustResult:
 
     verdict: Literal["approve", "reject", "error"]
     reasoning: str
-    reviewer: str  # "llm-oneshot:<model>" or "human:<user_id>"
+    reviewer: str  # "llm-oneshot:<model>", "decisions:<model>", or "human:<user_id>"
     reviewed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     confidence: float | None = None
     # Provider selected for the review (e.g. "openrouter", "openai"). Optional
@@ -48,6 +344,12 @@ class TrustResult:
     # Model identifier returned by the provider (may differ from configured id).
     model: str | None = None
     approval_kind: Literal["llm_advisory", "human"] = "llm_advisory"
+    # Review policy that produced this result ("llm-oneshot", "decisions").
+    policy: str | None = None
+    # Decisions policy provenance: calibrated Jev Noul probability and the
+    # operator-configured threshold it was compared against.
+    noul_probability: float | None = None
+    threshold: float | None = None
 
 
 class TrustGatePromptCache:
@@ -124,9 +426,10 @@ class TrustGatePromptCache:
 
 
 def _redact_metadata(record: ThoughtRecord, *, trail_name: str | None = None) -> dict:
-    """Redact sensitive fields from thought metadata before sending to OpenRouter.
+    """Select the metadata fields transmitted for review.
 
-    Strips: agent_id, metadata.extra, and any fields marked sensitive.
+    The selected fields are sent in full (their values are not redacted);
+    agent_id and metadata.extra are excluded entirely.
     Includes trail_name (scope path) when provided — not sensitive, enables
     scope-based artifact type detection (e.g. /specs/, /plans/, /reviews/).
     """
@@ -286,8 +589,16 @@ async def review_thought(
             "See Spec 3 for planned approval channels (CLI, PR/GHA, MCP tools)."
         )
 
+    if policy == "decisions":
+        raise TrustGateConfigError(
+            "trust_gate: the 'decisions' policy uses review_thought_decisions(); "
+            "review_thought() implements 'llm-oneshot' only."
+        )
+
     if policy != "llm-oneshot":
-        raise TrustGateConfigError(f"Unknown trust gate policy: {policy!r}. Available: 'llm-oneshot'.")
+        raise TrustGateConfigError(
+            f"Unknown trust gate policy: {policy!r}. Available: 'llm-oneshot', 'decisions'."
+        )
 
     system_msg, user_msg = _build_review_payload(prompt, record, trail_name=trail_name)
     # Keep reviewer shape stable for backward compatibility; provider/model are
@@ -322,10 +633,9 @@ async def review_thought(
             )
 
         except ProviderError as e:
-            status_code = getattr(e.original_exception, "status_code", "unknown")
             return TrustResult(
                 verdict="error",
-                reasoning=f"LLM API HTTP {status_code}: {str(e.message)[:200]}",
+                reasoning=f"LLM API {sanitize_provider_exception(e)}",
                 reviewer=reviewer_id,
                 provider=provider,
                 model=model,
@@ -334,7 +644,7 @@ async def review_thought(
         except AnyLLMError as e:
             return TrustResult(
                 verdict="error",
-                reasoning=f"LLM connection error: {type(e).__name__}: {e.message}",
+                reasoning=f"LLM connection error: {sanitize_provider_exception(e)}",
                 reviewer=reviewer_id,
                 provider=provider,
                 model=model,
@@ -356,7 +666,7 @@ async def review_thought(
         except Exception as e:
             return TrustResult(
                 verdict="error",
-                reasoning=f"Unexpected error: {type(e).__name__}: {e}",
+                reasoning=f"Unexpected error: {sanitize_provider_exception(e)}",
                 reviewer=reviewer_id,
                 provider=provider,
                 model=model,
@@ -369,4 +679,131 @@ async def review_thought(
         reviewer=reviewer_id,
         provider=provider,
         model=model,
+    )
+
+
+def _validate_decisions_review_inputs(question: str, threshold: float) -> None:
+    """Validate the Noul question and threshold before any transmission.
+
+    Raises TrustGateConfigError so misconfiguration surfaces as an operator
+    error instead of a recorded review outcome.
+    """
+    if not isinstance(question, str) or not question.strip():
+        raise TrustGateConfigError(
+            "trust_gate_decisions_config.trust_gate_noul_question must be a "
+            "non-empty string before a Decisions review can be transmitted"
+        )
+    if (
+        isinstance(threshold, bool)
+        or not isinstance(threshold, (int, float))
+        or not math.isfinite(float(threshold))
+        or not (0.0 <= float(threshold) <= 1.0)
+    ):
+        raise TrustGateConfigError(
+            "trust_gate_decisions_config.trust_gate_noul_threshold must be a "
+            f"finite number within [0, 1]; got {threshold!r}"
+        )
+
+
+def _build_decisions_state(
+    prompt: str,
+    record: ThoughtRecord,
+    *,
+    trail_name: str | None = None,
+) -> dict:
+    """Build the Decisions ``state`` payload.
+
+    Sends the full scope-resolved Trust Gate prompt, the full thought body, and
+    the same selected metadata as ``llm-oneshot`` (agent_id and metadata.extra
+    excluded). The state is structured JSON, so untrusted content is escaped
+    the same way as the chat payload to keep injection surface identical.
+    """
+    redacted_meta = _redact_metadata(record, trail_name=trail_name)
+    return {
+        "review_instructions": prompt,
+        "thought_under_review": html.escape(record.content, quote=False),
+        "thought_metadata": html.escape(
+            yaml.dump(redacted_meta, default_flow_style=False, sort_keys=False),
+            quote=False,
+        ),
+    }
+
+
+async def review_thought_decisions(
+    record: ThoughtRecord,
+    prompt: str,
+    model: str,
+    client: DecisionsClient,
+    *,
+    question: str,
+    threshold: float,
+    trail_name: str | None = None,
+) -> TrustResult:
+    """Review a thought through the Decisions policy with one Noul question.
+
+    Approves when the returned Noul probability is at or above ``threshold``;
+    rejects when it is below. The Decisions response carries no reasoning, so
+    the recorded reasoning is a factual statement of the probability and
+    threshold — never fabricated model rationale. Every transport, contract, or
+    range failure fails closed with verdict ``error`` and never contacts
+    another reviewer.
+    """
+    _validate_decisions_review_inputs(question, threshold)
+    threshold = float(threshold)
+
+    reviewer_id = f"decisions:{model}"
+    provider = getattr(client, "provider", None)
+    state = _build_decisions_state(prompt, record, trail_name=trail_name)
+
+    try:
+        answer = await client.ask_noul(model=model, state=state, question=question)
+    except DecisionsError as e:
+        return TrustResult(
+            verdict="error",
+            reasoning=f"Decisions review failed closed: {e}",
+            reviewer=reviewer_id,
+            provider=provider,
+            model=model,
+            policy="decisions",
+            threshold=threshold,
+        )
+    except Exception as e:
+        # Sanitize through the established provider-exception boundary: raw
+        # exception text can embed URLs with userinfo/query/path credentials,
+        # and durable Trust Gate provenance must never repeat it (#124).
+        return TrustResult(
+            verdict="error",
+            reasoning=f"Unexpected error: {sanitize_provider_exception(e)}",
+            reviewer=reviewer_id,
+            provider=provider,
+            model=model,
+            policy="decisions",
+            threshold=threshold,
+        )
+
+    approved = answer.probability >= threshold
+    if approved:
+        reasoning = (
+            f"Noul probability {answer.probability} is at or above the "
+            f"configured threshold {threshold}. The Decisions response carries "
+            "no reasoning; none is fabricated."
+        )
+    else:
+        reasoning = (
+            f"Noul probability {answer.probability} is below the configured "
+            f"threshold {threshold}. The Decisions response carries no reasoning; "
+            "none is fabricated."
+        )
+
+    return TrustResult(
+        verdict="approve" if approved else "reject",
+        reasoning=reasoning,
+        reviewer=reviewer_id,
+        # Persist the configured reviewer provider (the transmission destination,
+        # e.g. "openrouter"); the served model snapshot records what answered.
+        provider=provider or answer.provider,
+        model=answer.model or model,
+        policy="decisions",
+        noul_probability=answer.probability,
+        threshold=threshold,
     )

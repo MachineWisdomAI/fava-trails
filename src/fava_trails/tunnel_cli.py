@@ -26,6 +26,7 @@ from pydantic import ValidationError
 from .cli import _find_jj_bin
 from .config import ConfigStore, load_effective_global_config
 from .credentials import load_trust_gate_api_key, trust_gate_credential_description
+from .models import format_validation_error_for_diagnostics
 from .readiness import DEFAULT_READINESS_TIMEOUT_SECONDS
 
 DEFAULT_HOST = "127.0.0.1"
@@ -39,6 +40,15 @@ MAX_HEALTH_RESPONSE_BYTES = 64 * 1024
 HEALTH_REQUEST_TIMEOUT_SECONDS = DEFAULT_READINESS_TIMEOUT_SECONDS + 0.5
 
 
+def _invalid_trust_gate_config_error(exc: BaseException) -> ValueError:
+    """Raise a secret-free configuration error for gateway preflight."""
+    if isinstance(exc, ValidationError):
+        detail = format_validation_error_for_diagnostics(exc)
+    else:
+        detail = str(exc)
+    return ValueError(f"invalid Trust Gate configuration: {detail}")
+
+
 @dataclass(frozen=True)
 class GatewayConfig:
     data_repo: Path
@@ -49,6 +59,8 @@ class GatewayConfig:
     profile: str
     tunnel_client: str
     trust_gate_credential: str
+    # Secret-free egress disclosure for the decisions policy (None otherwise).
+    trust_gate_egress: str | None = None
 
     @property
     def mcp_url(self) -> str:
@@ -155,7 +167,7 @@ def _load_gateway_config(args: argparse.Namespace, *, require_tunnel_client: boo
     try:
         global_config = load_effective_global_config(data_repo)
     except (ValidationError, ValueError, TypeError) as exc:
-        raise ValueError(f"invalid Trust Gate configuration: {exc}") from exc
+        raise _invalid_trust_gate_config_error(exc) from None
 
     trails_value = global_config.trails_dir
     trails_dir = Path(trails_value)
@@ -170,10 +182,10 @@ def _load_gateway_config(args: argparse.Namespace, *, require_tunnel_client: boo
     try:
         global_config.validate_trust_gate_runtime()
         trust_gate_credential = trust_gate_credential_description(global_config)
-        if global_config.trust_gate == "llm-oneshot":
+        if global_config.trust_gate in ("llm-oneshot", "decisions"):
             load_trust_gate_api_key(global_config)
     except (ValidationError, ValueError, TypeError) as exc:
-        raise ValueError(f"invalid Trust Gate configuration: {exc}") from exc
+        raise _invalid_trust_gate_config_error(exc) from None
 
     host = getattr(args, "host", DEFAULT_HOST)
     port = getattr(args, "port", DEFAULT_PORT)
@@ -188,6 +200,15 @@ def _load_gateway_config(args: argparse.Namespace, *, require_tunnel_client: boo
 
     _validate_loopback_host(host)
 
+    trust_gate_egress: str | None = None
+    if global_config.trust_gate == "decisions":
+        from .decisions import describe_trust_gate_egress
+
+        trust_gate_egress = describe_trust_gate_egress(
+            global_config.trust_gate_api_base,
+            provider=global_config.trust_gate_provider,
+        )
+
     return GatewayConfig(
         data_repo=data_repo,
         trails_dir=trails_dir,
@@ -197,6 +218,7 @@ def _load_gateway_config(args: argparse.Namespace, *, require_tunnel_client: boo
         profile=profile,
         tunnel_client=tunnel_client or tunnel_client_arg,
         trust_gate_credential=trust_gate_credential,
+        trust_gate_egress=trust_gate_egress,
     )
 
 
@@ -481,6 +503,10 @@ async def _sync_data_repo_async(config: GatewayConfig) -> dict:
         }
     if result.has_conflicts:
         return {"status": "conflict", "message": result.summary}
+    if getattr(result, "missing_remote", False):
+        return {"status": "not_configured", "message": result.summary}
+    if not result.success:
+        return {"status": "error", "message": result.summary}
     return {"status": "ok", "message": result.summary}
 
 
@@ -604,6 +630,8 @@ def _print_startup(config: GatewayConfig, *, state_dir: Path | None = None) -> N
     print(f"  Trails dir: {config.trails_dir}")
     print(f"  MCP URL:    {config.mcp_url}")
     print(f"  Tunnel:     OpenAI Secure MCP Tunnel profile {config.profile!r}")
+    if config.trust_gate_egress:
+        print(f"  Egress:     {config.trust_gate_egress}")
     if state_dir:
         print(f"  State:      {state_dir}")
         print(f"  Log:        {_log_file(state_dir)}")

@@ -1,6 +1,10 @@
 # CLAUDE.md — FAVA Trails Data Repository
 
 > This file contains instructions specific to Claude Code. For other AI coding tools (Codex, Crush, etc.), see AGENTS.md.
+>
+> Bootstrap installs this file as `CLAUDE.md` in new data repositories.
+> Source name is `claude-code-guide.md` so agent workspaces can edit the packaged
+> template without colliding with Hermes-protected `CLAUDE.md` basenames.
 
 ## What this repo is
 
@@ -26,15 +30,22 @@ git reset       # Never — destroys the commit graph
 
 ### Push local commits to remote
 
-```bash
-jj git push -b main
-```
-
-If blocked by a no-description commit:
+Completed MCP writes sit at `@-`. Advance `main` before pushing:
 
 ```bash
-jj git push --allow-empty-description -b main
+jj bookmark set main -r @-
+jj git push --bookmark main
 ```
+
+If blocked by a no-description commit (after the bookmark step):
+
+```bash
+jj bookmark set main -r @-
+jj git push --allow-empty-description --bookmark main
+```
+
+Bare `jj git push` without first advancing `main` to `@-` can miss completed writes.
+Do not use short-form bookmark flags as a substitute for the two-step protocol above.
 
 ### Pull remote changes
 
@@ -42,6 +53,8 @@ jj git push --allow-empty-description -b main
 jj git fetch
 jj rebase -d main@origin
 ```
+
+The MCP `sync` tool performs this fetch/rebase path only; it does not publish local commits.
 
 ### Inspect (always safe)
 
@@ -73,7 +86,7 @@ jj new -m "(new change)"
 jj bookmark set main -r @-
 
 # 6. Push to remote
-jj git push -b main
+jj git push --bookmark main
 ```
 
 > **Do not skip or reorder any step.** Steps 3–6 mirror what the MCP server does. Skipping `jj describe` before `jj new` creates phantom empty commits.
@@ -87,8 +100,9 @@ jj log
 # Is origin behind?
 jj log -r "main@origin..main" --no-graph
 
-# Push
-jj git push -b main
+# Publish completed writes (bookmark first — writes sit at @-)
+jj bookmark set main -r @-
+jj git push --bookmark main
 
 # Is local behind?
 jj git fetch && jj rebase -d main@origin
