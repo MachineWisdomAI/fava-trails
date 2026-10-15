@@ -42,9 +42,9 @@ Every tool call requires `trail_name` — a slash-separated scope path (e.g. `mw
 
 See [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md) for full scope discovery protocol with examples.
 
-## Session Start Protocol
+## Retrieving Context (On Demand)
 
-Before starting work, recall existing context:
+No recall is required at session start. When a task needs prior context, retrieve it explicitly, for example:
 
 ```
 recall(trail_name="<scope>", query="status")

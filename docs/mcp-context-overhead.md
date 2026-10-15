@@ -56,16 +56,16 @@ Candidate (this head, live `mcp.Client`):
 
 | Surface | Instructions tokens | tools/list tokens | Session-init tokens | Session-init chars |
 | --- | ---: | ---: | ---: | ---: |
-| full (default) | 1184 | 5867 | 7051 | 28201 |
-| compact | 187 | 3186 | 3373 | 13487 |
+| full (default) | 591 | 5867 | 6458 | 25827 |
+| compact | 209 | 3186 | 3395 | 13578 |
 
-`get_usage_guide` body on this candidate (on demand, not in session-init): 2884
-heuristic tokens (11536 chars). An evaluator previously estimated about 6000 tokens
+`get_usage_guide` body on this candidate (on demand, not in session-init): 2945
+heuristic tokens (11777 chars). An evaluator previously estimated about 6000 tokens
 of schemas and instructions versus about 1600 for a committed agent guide; that
 estimate was client-specific and is not reproduced here as a universal number.
 
 Budget, from the candidate full session-init baseline: compact session-init tokens
-must be ≤ 70% of full under the same tokenizer. This run: 3373 / 7051 ≈ 0.48. Met.
+must be ≤ 70% of full under the same tokenizer. This run: 3395 / 6458 ≈ 0.53. Met.
 
 Largest full-surface source is advertised `tools/list` JSON (schemas, then
 descriptions), then initialize instructions. Compact therefore:
@@ -111,7 +111,7 @@ not labeled as `called` or `skipped` client behavior. Results:
 
 | Check | full | compact |
 | --- | --- | --- |
-| Token usage (session-init, this tokenizer) | 6947 | 3366 |
+| Token usage (session-init, this tokenizer) | 6458 | 3395 |
 | Discoverability of recall, save_thought, propose_truth, get_usage_guide, list_scopes | yes | yes |
 | All 17 tools advertised | yes | yes |
 | Input schemas | full | same |
@@ -121,15 +121,14 @@ not labeled as `called` or `skipped` client behavior. Results:
 | Executed propose_truth | ok | ok |
 | Error recovery: missing scope | status error, then list_scopes + retry recall on returned path (same arguments except `trail_name`; count 1) | same |
 | Error recovery: save without content | failed, then retry ok | failed, then retry ok |
-| Session-start recall trio in initialize text | yes | no; in `get_usage_guide` |
+| On-demand retrieval guidance (no session-start recall) in initialize text | yes | yes (one line) |
 | `propose_truth` requested in initialize text | yes (mandatory wording) | yes (core loop; no “mandatory”) |
-| Prompt-coverage gap (instruction scan, not a client choice) | none for session-start recall | session-start recall only |
+| Prompt-coverage gap (instruction scan, not a client choice) | none | none |
 
 Prompt-coverage indicators are a deterministic scan of initialize text, not
 behavior observed from a client. Compact initialize still requests `propose_truth`
-in the core loop; missing the word “mandatory” is not a skip. Compact omits the
-session-start recall trio, which remains a coverage gap unless the client calls
-`get_usage_guide` or injects its own guide. The server does not invoke those
+in the core loop; missing the word “mandatory” is not a skip. Neither surface
+prescribes a session-start recall; retrieval examples live in `get_usage_guide`. The server does not invoke those
 steps on either surface. Missing-scope recovery selects an exact `list_scopes`
 path and retries recall; a successful empty `list_scopes` is discovery attempted,
 not recovery.
@@ -148,7 +147,7 @@ Server-enforced (same on both surfaces):
 Prompt/client behavior (not enforced by listing or instructions):
 
 - calling `get_usage_guide`
-- session-start recall of status/decisions/gotchas
+- retrieving prior context when a task needs it (no session-start recall is prescribed)
 - deciding work is “finalized” and calling `propose_truth`
 - creating `.fava-trails.yaml` (do not write application `.env` files)
 - whether the client shows initialize instructions or re-lists tools

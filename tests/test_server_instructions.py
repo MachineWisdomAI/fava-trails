@@ -46,11 +46,19 @@ class TestServerInstructions:
         assert "write it to .env" not in instructions
         assert "FAVA_TRAILS_SCOPE=<scope>" not in instructions
 
-    def test_instructions_contain_session_protocol(self):
-        """Instructions must cover session start protocol."""
+    def test_instructions_have_no_unconditional_startup_recall(self):
+        """Instructions must not prescribe a session-start recall ritual."""
         instructions = _build_server_instructions()
-        assert "recall" in instructions
-        assert "Session Start" in instructions
+        assert "Session Start Protocol" not in instructions
+        assert 'query="status"' not in instructions
+        assert "Do not run a recall routine at session start" in instructions
+
+    async def test_usage_guide_has_on_demand_retrieval(self):
+        """Detailed recall procedures remain in the usage guide, as on-demand."""
+        guide = _load_usage_guide()
+        assert "## At Session Start" not in guide
+        assert "Retrieving Context (On Demand)" in guide
+        assert "recall(" in guide
 
     def test_instructions_contain_promotion_mandate(self):
         """Instructions must emphasize mandatory promotion."""
@@ -133,8 +141,40 @@ class TestToolDescriptionEnhancements:
         instructions = _build_server_instructions()
         assert "push_strategy: immediate" in instructions
         assert "does not push local commits" in instructions
-        assert "bookmark set main" in instructions
         assert "call `sync` to push to remote" not in instructions
+        # Manual VCS publication commands live in the usage guide, not at startup.
+        assert "bookmark set main" not in instructions
+        assert "jj git push" not in instructions
+        guide = _load_usage_guide()
+        assert "jj bookmark set main -r @-" in guide
+        assert "jj git push --bookmark main" in guide
+
+    def test_startup_instructions_are_concise_and_defer_detail(self):
+        """Default full and compact startup text keep essentials; procedures live in the guide."""
+        from fava_trails.mcp_context import serialize_initialize_instructions
+
+        full = serialize_initialize_instructions("full")
+        compact = serialize_initialize_instructions("compact")
+        assert len(full) <= 3000  # was 4734 chars on main before #146
+        assert len(compact) < len(full)
+        guide = _load_usage_guide()
+        for text in (full, compact):
+            assert "get_usage_guide" in text
+            assert "propose_truth" in text
+            assert "FAVA_TRAILS_SCOPE" in text
+        for detail in (
+            "### During Work",
+            "jj bookmark set main",
+            'source_type="observation"',
+            '"builder-42"',
+            "tokens as a substring",
+        ):
+            assert detail not in full
+        assert "Governed Visibility" in full
+        assert "Agent Identity" in full
+        assert "Trust Gate" in full
+        assert "jj bookmark set main -r @-" in guide
+        assert "builder-42" in guide
 
     def test_sync_tool_does_not_claim_push(self):
         """sync description must state fetch/rebase only, not publish."""
@@ -150,10 +190,11 @@ class TestToolDescriptionEnhancements:
         assert "FAVA_TRAILS_SCOPE" in desc
         assert ".fava-trails.yaml" in desc
 
-    def test_recall_contains_session_start_hint(self):
-        """recall description must hint at session start usage."""
+    def test_recall_is_on_demand_not_session_start(self):
+        """recall description must not tell agents to recall at session start."""
         desc = _get_tool_desc("recall")
-        assert "session" in desc.lower()
+        assert "Start each session" not in desc
+        assert "on demand" in desc.lower()
 
     def test_get_usage_guide_entry_point_language(self):
         """get_usage_guide description must be positioned as entry point for new agents."""
@@ -294,7 +335,7 @@ class TestGetUsageGuide:
         """Usage guide must contain expected sections."""
         content = _load_usage_guide()
         assert "Scope Discovery" in content
-        assert "Session Start" in content or "At Session Start" in content
+        assert "Retrieving Context (On Demand)" in content
         assert "Task Completion" in content or "On Task Completion" in content
         assert "Trust Calibration" in content or "Handling Recalled Thoughts" in content
 
