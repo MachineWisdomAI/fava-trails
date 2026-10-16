@@ -24,6 +24,12 @@
     "uniques": 3
   },
   {
+    "path": "/MachineWisdomAI/fava-trails/blob/main/CLAUDE.md",
+    "title": "/blob/main/CLAUDE.md",
+    "count": 3,
+    "uniques": 1
+  },
+  {
     "path": "/MachineWisdomAI/fava-trails/pull/143",
     "title": "/pull/143",
     "count": 2,
@@ -36,6 +42,12 @@
     "uniques": 1
   },
   {
+    "path": "/MachineWisdomAI/fava-trails/blob/main/CONTRIBUTING.md",
+    "title": "/blob/main/CONTRIBUTING.md",
+    "count": 1,
+    "uniques": 1
+  },
+  {
     "path": "/MachineWisdomAI/fava-trails/issues/107",
     "title": "/issues/107",
     "count": 1,
@@ -44,18 +56,6 @@
   {
     "path": "/MachineWisdomAI/fava-trails/issues/124",
     "title": "/issues/124",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pull/140",
-    "title": "/pull/140",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pull/143/changes",
-    "title": "/pull/143/changes",
     "count": 1,
     "uniques": 1
   }
