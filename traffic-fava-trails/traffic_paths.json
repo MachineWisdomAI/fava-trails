@@ -36,6 +36,12 @@
     "uniques": 1
   },
   {
+    "path": "/MachineWisdomAI/fava-trails/issues",
+    "title": "/issues",
+    "count": 1,
+    "uniques": 1
+  },
+  {
     "path": "/MachineWisdomAI/fava-trails/issues/107",
     "title": "/issues/107",
     "count": 1,
@@ -50,12 +56,6 @@
   {
     "path": "/MachineWisdomAI/fava-trails/pull/140",
     "title": "/pull/140",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pull/143/changes",
-    "title": "/pull/143/changes",
     "count": 1,
     "uniques": 1
   }
