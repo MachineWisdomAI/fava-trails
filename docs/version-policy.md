@@ -33,6 +33,7 @@ those defaults, such as `skills/**`, `skillsets/**`, or `src/content/**`. Review
 the actual package/build inputs when adopting the policy: installed skills,
 runtime prompts, templates, and rendered site content are product, even in
 Markdown. Existing `exclude_paths` still exclude captured or vendored material.
+Existing `release_paths` cannot be removed or narrowed in a change PR.
 Root units use `**`. Lockfiles retain their resolved dependencies. Updating again
 uses the base version, so it does not accumulate bumps. Update your branch from
 current main before merging; the required check rejects a stale base.
