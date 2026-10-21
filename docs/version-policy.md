@@ -4,8 +4,10 @@ The updater needs Python 3.11 or newer and no third-party libraries. Select that
 interpreter explicitly if the system `python3` is older (for example,
 `python3.13 scripts/mw-version.py ...` on macOS).
 
-Every change PR updates affected versions before merge. Run the repository-local
-updater after your implementation and again after updating the branch from main:
+Bump affected product versions in the original change PR. Documentation,
+tests, CI, repository metadata, and development checks alone do not need a bump.
+The updater determines this from changed paths, not the PR title; a mixed PR
+still bumps the affected product. Run it before review and after updating from main:
 
 ```bash
 git fetch origin main
@@ -16,13 +18,21 @@ python3 scripts/mw-version.py check --base origin/main --title 'chore(deps): upd
 Use the actual PR title. Supply `--body-file PATH` for its body, or `--event-file`
 with a GitHub pull-request event containing title/body. The updater also reads
 the PR branch's commits. One PR gets the largest applicable increment: features
-are minor; fixes and every other change (including chores, docs, tests, CI, and
-direct/transitive dependencies) are patch. `!`, `BREAKING CHANGE:`, or
+are minor; fixes and other product changes, including runtime dependencies,
+are patch. `!`, `BREAKING CHANGE:`, or
 `BREAKING-CHANGE:` is major from 1.0 onward and minor before 1.0. A dependency's
 own major number does not establish a breaking change in this project.
 
 `.version-policy.json` lists version units, paths, and synchronized files. Changes
 outside all unit paths affect every unit, except configured `exclude_paths`.
+The standard non-release paths cover Markdown/reStructuredText, `docs/`, test
+directories and test files, `.github/`, Git/editor metadata, and repository
+version/test/check scripts. Other paths conservatively count as product changes.
+Use optional `release_paths` glob patterns for files that ship as product despite
+those defaults, such as `skills/**`, `skillsets/**`, or `src/content/**`. Review
+the actual package/build inputs when adopting the policy: installed skills,
+runtime prompts, templates, and rendered site content are product, even in
+Markdown. Existing `exclude_paths` still exclude captured or vendored material.
 Root units use `**`. Lockfiles retain their resolved dependencies. Updating again
 uses the base version, so it does not accumulate bumps. Update your branch from
 current main before merging; the required check rejects a stale base.
