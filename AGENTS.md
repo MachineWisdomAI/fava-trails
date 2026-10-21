@@ -342,4 +342,4 @@ uv run pytest --cov=fava_trails
 
 ## Version updates
 
-For a versioned change PR, follow [the version policy](docs/version-policy.md) and run the repository-local updater before review and after updating the branch from main. Keep commit and PR titles in Conventional Commits format.
+Follow [the version policy](docs/version-policy.md): bump affected product versions in the original change PR; documentation, tests, CI, and development checks alone need no bump. Run the repository-local updater before review and after updating from main. Keep commit and PR titles in Conventional Commits format.

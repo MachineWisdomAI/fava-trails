@@ -25,5 +25,9 @@
         }
       ]
     }
+  ],
+  "release_paths": [
+    "src/fava_trails/**",
+    "AGENTS_USAGE_INSTRUCTIONS.md"
   ]
 }

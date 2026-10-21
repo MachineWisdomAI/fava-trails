@@ -18,6 +18,14 @@ CONFIG = ".version-policy.json"
 SUBJECT = re.compile(r"^([a-z][a-z0-9-]*)(?:\([^()\r\n]+\))?(!)?: ([^\r\n]+)$")
 BREAKING = re.compile(r"^BREAKING(?: CHANGE|-CHANGE):\s*\S", re.MULTILINE)
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$")
+NON_RELEASE_PATHS = (
+    "*.md", "*.mdx", "*.rst", "docs/**", "**/docs/**",
+    "test/**", "**/test/**", "tests/**", "**/tests/**",
+    "__tests__/**", "**/__tests__/**", "*.test.*", "*.spec.*",
+    "test_*.py", "*/test_*.py", "*_test.py", "conftest.py", "*/conftest.py",
+    ".github/**", ".gitignore", ".gitattributes", ".editorconfig",
+    CONFIG, "scripts/mw-version.py", "scripts/test-*", "scripts/check-*", "scripts/verify.sh",
+)
 WORKFLOW = '''name: Version policy
 on:
   pull_request:
@@ -52,8 +60,10 @@ The updater needs Python 3.11 or newer and no third-party libraries. Select that
 interpreter explicitly if the system `python3` is older (for example,
 `python3.13 scripts/mw-version.py ...` on macOS).
 
-Every change PR updates affected versions before merge. Run the repository-local
-updater after your implementation and again after updating the branch from main:
+Bump affected product versions in the original change PR. Documentation,
+tests, CI, repository metadata, and development checks alone do not need a bump.
+The updater determines this from changed paths, not the PR title; a mixed PR
+still bumps the affected product. Run it before review and after updating from main:
 
 ```bash
 git fetch origin main
@@ -64,13 +74,22 @@ python3 scripts/mw-version.py check --base origin/main --title 'chore(deps): upd
 Use the actual PR title. Supply `--body-file PATH` for its body, or `--event-file`
 with a GitHub pull-request event containing title/body. The updater also reads
 the PR branch's commits. One PR gets the largest applicable increment: features
-are minor; fixes and every other change (including chores, docs, tests, CI, and
-direct/transitive dependencies) are patch. `!`, `BREAKING CHANGE:`, or
+are minor; fixes and other product changes, including runtime dependencies,
+are patch. `!`, `BREAKING CHANGE:`, or
 `BREAKING-CHANGE:` is major from 1.0 onward and minor before 1.0. A dependency's
 own major number does not establish a breaking change in this project.
 
 `.version-policy.json` lists version units, paths, and synchronized files. Changes
 outside all unit paths affect every unit, except configured `exclude_paths`.
+The standard non-release paths cover Markdown/reStructuredText, `docs/`, test
+directories and test files, `.github/`, Git/editor metadata, and repository
+version/test/check scripts. Other paths conservatively count as product changes.
+Use optional `release_paths` glob patterns for files that ship as product despite
+those defaults, such as `skills/**`, `skillsets/**`, or `src/content/**`. Review
+the actual package/build inputs when adopting the policy: installed skills,
+runtime prompts, templates, and rendered site content are product, even in
+Markdown. Existing `exclude_paths` still exclude captured or vendored material.
+Existing `release_paths` cannot be removed or narrowed in a change PR.
 Root units use `**`. Lockfiles retain their resolved dependencies. Updating again
 uses the base version, so it does not accumulate bumps. Update your branch from
 current main before merging; the required check rejects a stale base.
@@ -99,7 +118,7 @@ For a new versioned component, run the toolkit bootstrap again or run
 installed copy. Review the generated configuration and add any runtime/plugin
 mirrors. Captured templates and vendored packages are not owned version units.
 '''
-POINTER = "\n## Version updates\n\nFor a versioned change PR, follow [the version policy](docs/version-policy.md) and run the repository-local updater before review and after updating the branch from main. Keep commit and PR titles in Conventional Commits format.\n"
+POINTER = '\n## Version updates\n\nFollow [the version policy](docs/version-policy.md): bump affected product versions in the original change PR; documentation, tests, CI, and development checks alone need no bump. Run the repository-local updater before review and after updating from main. Keep commit and PR titles in Conventional Commits format.\n'
 
 
 START_RC_MARKER = re.compile(r"^Release-Channel: rc[ \t]*$", re.MULTILINE)
@@ -274,6 +293,61 @@ def render(text: str, spec: dict, value: str) -> str:
     return output
 
 
+def version_fields(spec: dict) -> list[tuple]:
+    if spec["kind"] == "json":
+        return [tuple(spec.get("key") or ["version"])]
+    if spec["kind"] == "npm-lock":
+        return [("version",), ("packages", "", "version")]
+    return [()]
+
+def configured_files(root: Path, units: list[dict]) -> dict[str, list[dict]]:
+    by_path = {}
+    for unit in units:
+        if not unit["files"]:
+            raise PolicyError("version unit needs an authoritative file")
+        for spec in unit["files"]:
+            safe_path(root, spec["path"])
+            previous = by_path.setdefault(spec["path"], [])
+            for other in previous:
+                for field in version_fields(spec):
+                    for claimed in version_fields(other):
+                        if field[:len(claimed)] == claimed or claimed[:len(field)] == field:
+                            raise PolicyError(f"overlapping version fields in {spec['path']}")
+            previous.append(spec)
+    return by_path
+
+def without_versions(content: str, specs: list[dict]) -> str:
+    for spec in specs:
+        content = render(content, spec, "VERSION")
+    return content
+
+def substantive_changes(root: Path, base: str, paths: set[str], by_path: dict) -> set[str]:
+    changes = set(paths)
+    for name in paths & by_path.keys():
+        result = subprocess.run(["git", "-C", str(root), "show", f"{base}:{name}"], capture_output=True, text=True)
+        if result.returncode:
+            continue
+        content = safe_path(root, name).read_text()
+        try:
+            if without_versions(content, by_path[name]) == without_versions(result.stdout, by_path[name]):
+                changes.remove(name)
+        except (PolicyError, KeyError, ValueError):
+            # Introducing a new mirror is still an implementation change.
+            continue
+    return changes
+
+def release_changes(paths: set[str], config: dict) -> set[str]:
+    release_paths = config.get("release_paths", [])
+    if not isinstance(release_paths, list) or any(not isinstance(p, str) or not p or p.startswith("/") or ".." in p.split("/") for p in release_paths):
+        raise PolicyError("release_paths must be a list of relative glob patterns")
+    return {
+        path for path in paths
+        if not any(fnmatch.fnmatchcase(path, p) for p in config.get("exclude_paths", []))
+        and (any(fnmatch.fnmatchcase(path, p) for p in release_paths)
+             or not any(fnmatch.fnmatchcase(path.lower(), p) for p in NON_RELEASE_PATHS))
+    }
+
+
 def evaluate(root: Path, args) -> list[tuple[Path, str]]:
     config = json.loads(safe_path(root, args.config).read_text())
     if config.get("schema_version") != 1 or not isinstance(config.get("units"), list):
@@ -297,6 +371,8 @@ def evaluate(root: Path, args) -> list[tuple[Path, str]]:
                 raise PolicyError("existing version units, paths, and mirrors cannot be removed from a change PR")
         if not set(config.get("exclude_paths", [])).issubset(prior.get("exclude_paths", [])):
             raise PolicyError("a change PR cannot add exclusions that bypass existing version checks")
+        if not set(prior.get("release_paths", [])).issubset(config.get("release_paths", [])):
+            raise PolicyError("a change PR cannot remove release_paths that protect shipped product files")
     event = json.loads(Path(args.event_file).read_text()) if args.event_file else {}
     pr = event.get("pull_request", {})
     title = args.title if args.title is not None else pr.get("title", "")
@@ -314,6 +390,9 @@ def evaluate(root: Path, args) -> list[tuple[Path, str]]:
         raise PolicyError("version unit names must be unique")
     if not units:
         raise PolicyError("version policy must contain at least one owned unit")
+    if not promote:
+        changes = substantive_changes(root, base, changes, configured_files(root, units))
+        changes = release_changes(changes, config)
     all_patterns = [p for u in units for p in u["paths"]]
     shared = any(not any(fnmatch.fnmatchcase(p, pat) for pat in all_patterns) for p in changes)
     today = dt.datetime.now(ZoneInfo("America/Toronto")).date()
