@@ -10,7 +10,7 @@ status: draft
 ## Status
 
 - Design: draft. Describes the review gate's contract; the new-install default is in [Local review default](../features/local_review_default.blueprint.md), whose design is approved.
-- Implementation: Implemented, inspected at `fava-trails@0f7c01f` in `src/fava_trails/trust_gate.py`, `decisions.py`, `credentials.py`, `models.py` and `config.py`. PRREF adds the Decisions-model check for `llm-oneshot` (`GlobalConfig.check_review_model_for_policy`), the `trust_gate_policy_note` diagnostic, and passes `trust_gate_timeout_secs` to each chat request; the sections below describe those changes.
+- Implementation: Implemented, inspected at `fava-trails@0f7c01f` in `src/fava_trails/trust_gate.py`, `decisions.py`, `credentials.py`, `models.py` and `config.py`. fava-trails PR #153 adds the Decisions-model check for `llm-oneshot` (`GlobalConfig.check_review_model_for_policy`), the `trust_gate_policy_note` diagnostic, and passes `trust_gate_timeout_secs` to each chat request; the sections below describe those changes.
 - Evidence: fixture tests in `tests/test_trust_gate*.py`, `test_machine_trust_gate_config.py`, `test_config.py` and `test_local_review_default.py`. Fixture servers prove protocol handling and fail-closed behavior. They do not show that any real model reviews well.
 - Release: source merge only; the changes are in version 0.9.0-rc.1 and nothing is published.
 

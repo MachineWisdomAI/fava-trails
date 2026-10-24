@@ -9,9 +9,9 @@ implemented_features: [review_and_recall_lifecycle]
 ## Status
 
 - This document records inspected implementation; it grants no design approval, so it carries no design status.
-- Inspected at `fava-trails@0f7c01f`, version 0.8.5rc1; updated for PRREF (version 0.9.0-rc.1), which adds the local-review default.
+- Inspected at `fava-trails@0f7c01f`, version 0.8.5rc1; updated for fava-trails PR #153 (version 0.9.0-rc.1), which adds the local-review default.
 - Covers the review-and-recall lifecycle and the review gate. Rich views, the secure-tunnel gateway, duplicate maintenance and the ACE/RLM/SECOM protocol hooks are present in the tree but not described here.
-- [Local review default](../../../features/local_review_default.blueprint.md) is implemented in PRREF and unpublished.
+- [Local review default](../../../features/local_review_default.blueprint.md) is implemented in fava-trails PR #153 and unpublished.
 
 ## Where behavior lives
 
@@ -50,4 +50,4 @@ implemented_features: [review_and_recall_lifecycle]
 
 ## Verification
 
-Run on `fava-trails@0f7c01f` with `python -m pytest` over `tests/test_config.py`, `test_machine_trust_gate_config.py`, `test_trust_gate.py`, `test_trust_gate_local_provider.py`, `test_trust_gate_decisions.py`, `test_trust_gate_egress.py`, `test_governance.py`, `test_local_only_sync.py` and `test_navigation_tools.py`: 236 passed. These use fixture servers and a local Jujutsu 0.45.1. They are not evidence of review quality from a real model, and they are a subset of the full suite. PRREF adds `tests/test_local_review_default.py`, and the full suite passed on its head.
+Run on `fava-trails@0f7c01f` with `python -m pytest` over `tests/test_config.py`, `test_machine_trust_gate_config.py`, `test_trust_gate.py`, `test_trust_gate_local_provider.py`, `test_trust_gate_decisions.py`, `test_trust_gate_egress.py`, `test_governance.py`, `test_local_only_sync.py` and `test_navigation_tools.py`: 236 passed. These use fixture servers and a local Jujutsu 0.45.1. They are not evidence of review quality from a real model, and they are a subset of the full suite. fava-trails PR #153 adds `tests/test_local_review_default.py`, and the full suite passed on its head.
