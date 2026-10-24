@@ -54,7 +54,7 @@ jj git fetch
 jj rebase -d main@origin
 ```
 
-The MCP `sync` tool performs this fetch/rebase path only; it does not publish local commits.
+The MCP `sync` tool performs this fetch/rebase path; it is not a publication step (under `push_strategy: immediate` the after-write push also runs after a successful `sync`).
 
 ### Inspect (always safe)
 

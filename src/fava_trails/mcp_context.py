@@ -33,7 +33,7 @@ _COMPACT_DESCRIPTIONS: dict[str, str] = {
     "propose_truth": "Promote a draft thought to its permanent namespace based on source_type.",
     "recall": "Search thoughts by query, namespace, and scope. Default view is governed current approved records.",
     "forget": "Discard the current reasoning line.",
-    "sync": "Fetch/rebase when a remote is configured. Missing remotes are not_configured; does not push.",
+    "sync": "Fetch/rebase when a remote is configured. Missing remotes are not_configured; not a publication step (immediate mode pushes after a successful sync).",
     "conflicts": "Return structured conflict summaries, never raw VCS notation.",
     "rollback": "Restore the trail to a historical JJ operation.",
     "diff": "Show what changed in a revision.",
@@ -66,7 +66,7 @@ Every tool call requires `trail_name`, a slash-separated scope path. Resolve it 
 Do not run a recall routine at session start. When a task needs prior decisions or history, call `recall` for the scopes that matter.
 
 ### Task Completion — MANDATORY
-`propose_truth` is mandatory for finalized work; unpromoted drafts are private authoring records. Promotion commits locally and does not push local commits; the `sync` tool only fetches/rebases. Publishing depends on `push_strategy: immediate` or a manual bookmark push; `get_usage_guide` has the manual publication protocol.
+`propose_truth` is mandatory for finalized work; unpromoted drafts are private authoring records. Promotion commits locally and does not push local commits; the `sync` tool's own work is fetch/rebase (immediate mode also pushes after a successful `sync`). Publishing depends on `push_strategy: immediate` or a manual bookmark push; `get_usage_guide` has the manual publication protocol.
 
 ### Governed Visibility
 Default recall/get returns approved current governed records only. `mode="authoring"` reveals only the configured identity's own draft/proposed records; `mode="history"` requires an operator endpoint. A proposed replacement leaves the original current until durable approval. LLM advisory review is not explicit human approval.

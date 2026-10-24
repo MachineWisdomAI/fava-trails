@@ -2,16 +2,16 @@
 name: review_gate
 type: module
 description: Decides whether a draft thought may become approved shared memory, and records who or what decided.
-status: draft
+status: approved
 ---
 
 # Review gate
 
 ## Status
 
-- Design: draft. Describes the review gate's contract; the new-install default is in [Local review default](../features/local_review_default.blueprint.md), whose design is approved.
+- Design: approved at `fava-trails@dc7085a`, the revision the delivery coordinator reviewed and accepted under the operator's autonomous-delivery authority of 2026-10-24 ([recorded decision](https://github.com/MachineWisdomAI/fava-trails.org/issues/32#issuecomment-6388458186)). Describes the review gate's contract; the new-install default is in [Local review default](../features/local_review_default.blueprint.md).
 - Implementation: Implemented, inspected at `fava-trails@0f7c01f` in `src/fava_trails/trust_gate.py`, `decisions.py`, `credentials.py`, `models.py` and `config.py`. fava-trails PR #153 adds the Decisions-model check for `llm-oneshot` (`GlobalConfig.check_review_model_for_policy`), the `trust_gate_policy_note` diagnostic, and passes `trust_gate_timeout_secs` to each chat request; the sections below describe those changes.
-- Evidence: fixture tests in `tests/test_trust_gate*.py`, `test_machine_trust_gate_config.py`, `test_config.py` and `test_local_review_default.py`. Fixture servers prove protocol handling and fail-closed behavior. They do not show that any real model reviews well.
+- Evidence: fixture tests in `tests/test_trust_gate*.py`, `test_machine_trust_gate_config.py`, `test_config.py` and `test_local_review_default.py`. Fixture servers prove protocol handling and fail-closed behavior. They do not show that any real model reviews well. Separately, one recorded run of the 0.9.0rc1 candidate against one local model produced real rejections with feedback and later approvals; see [the local review walkthrough](../../docs/local-review-walkthrough.md). That is a single observation, not a benchmark.
 - Release: source merge only; the changes are in version 0.9.0-rc.1 and nothing is published.
 
 ## Purpose and boundaries

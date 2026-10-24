@@ -280,7 +280,7 @@ def test_packaged_data_repo_guides_do_not_drift():
         if preferred_name.startswith("agents"):
             assert "lexical" in preferred_text.lower()
             assert "bookmark set main" in preferred_text
-            assert "does **not** push" in preferred_text or "does not push" in preferred_text.lower()
+            assert "not a publication step" in preferred_text
             assert "invisible to other agents" not in preferred_text
         else:
             assert "bookmark set main -r @-" in preferred_text
@@ -319,7 +319,7 @@ def test_bootstrap_creates_structure(tmp_path):
     assert "semantic search" not in agents.lower()
     assert "lexical" in agents.lower()
     assert "substring" in agents.lower()
-    assert "does **not** push" in agents or "does not push" in agents.lower()
+    assert "not a publication step" in agents
     assert "bookmark set main" in agents
     assert "@-" in agents
     assert "invisible to other agents" not in agents

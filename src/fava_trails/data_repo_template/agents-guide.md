@@ -30,8 +30,9 @@ jj bookmark set main -r @-     # completed writes sit at @-
 jj git push --bookmark main
 ```
 
-Writers must publish before peers can fetch. The `sync` tool only fetches and
-rebases shared truth; it does **not** push local commits.
+Writers must publish before peers can fetch. The `sync` tool's own work is to
+fetch and rebase shared truth; it is not a publication step (under
+`push_strategy: immediate` the after-write push also runs after a successful `sync`).
 
 ## Scope Discovery
 
@@ -67,7 +68,7 @@ context in `metadata.extra` instead.
 | `get_thought` | Retrieve a specific thought by ULID |
 | `update_thought` | Refine wording in-place (draft/proposed only) |
 | `supersede` | Propose a corrected draft successor |
-| `sync` | Fetch/rebase shared truth from remote (does not push) |
+| `sync` | Fetch/rebase shared truth from remote (not a publication step) |
 | `get_usage_guide` | Full protocol reference with examples |
 
 ## Getting Started
@@ -78,8 +79,8 @@ context in `metadata.extra` instead.
 3. Use `save_thought` + `propose_truth` to persist your findings.
 4. Publish local commits (`push_strategy: immediate`, or manual
    `jj bookmark set main -r @-` then `jj git push --bookmark main`).
-5. On peer machines, call `sync` to fetch/rebase shared truth (sync does not
-   publish).
+5. On peer machines, call `sync` to fetch/rebase shared truth (sync is not a
+   publication step).
 
 ## Directory Structure
 

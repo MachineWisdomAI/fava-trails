@@ -42,7 +42,7 @@ implemented_features: [review_and_recall_lifecycle]
 
 - Defaults are applied per key, so partial configurations can still pair constants from different backends. The one pairing that is always wrong, `llm-oneshot` with a Decisions-only model, is refused at promotion, doctor and tunnel preflight; the others are diagnosed with an informational note and left unchanged (see [Local review default](../../../features/local_review_default.blueprint.md)).
 - `save_thought`, `update_thought` and `learn_preference` write the file before the Jujutsu steps and do not use the governance journal. An interrupted write can leave a dirty working copy.
-- `llm-oneshot` retries transport failures up to three times; `trust_gate_timeout_secs` is now passed to each attempt and also bounds the whole call, so one slow reviewer can still use up to three times the setting before the outer bound applies.
+- `llm-oneshot` retries transport failures up to three times; `trust_gate_timeout_secs` is now passed to each attempt and is also the outer bound on the whole call (`asyncio.wait_for` in `handle_propose_truth`), so retries cannot extend a review past the setting.
 - `save_global_config` persists every field, defaults included, so a command that rewrites `config.yaml` turns unstated Trust Gate keys into stated ones.
 - Recall is lexical. There is no semantic search.
 - `trust_gate: human` is accepted by the schema and raises when used.

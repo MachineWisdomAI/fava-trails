@@ -16,6 +16,7 @@ Each fact has one authoritative source. Other documents summarize it and link to
 | Why the lifecycle works as it does: flow, publication, failure behavior | [Review-and-recall lifecycle](../blueprints/features/review_and_recall_lifecycle.blueprint.md) | Website lifecycle pages, case study |
 | The review gate's contract and the reasons behind it | [Review gate](../blueprints/modules/review_gate.blueprint.md) | Setup guide, README Trust Gate paragraph |
 | Which reviewer new installations use, and how existing configuration is preserved | [Local review default](../blueprints/features/local_review_default.blueprint.md) | Setup guide and README Trust Gate paragraph. Say "from 0.9.0"; do not describe it as installed until a package containing it is published. |
+| A recorded end-to-end walkthrough: local reviewer setup through rejection, revision, approval, recall and correction | [local-review-walkthrough.md](local-review-walkthrough.md) | README entry link, website operator guide. Candidate-evidence note changes only when a release is published. |
 | Runtime identity and upgrades | [runtime-and-upgrade.md](runtime-and-upgrade.md) | README upgrade notes |
 | Release history | [CHANGELOG.md](../CHANGELOG.md), [releases/](releases/) | None. History is never edited to match later behavior. |
 | Website page layout and authoring rules | `AGENTS.md` in the [fava-trails.org](https://github.com/MachineWisdomAI/fava-trails.org) repository | Site contributors and agents |
