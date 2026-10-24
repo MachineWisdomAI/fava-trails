@@ -6,21 +6,21 @@ Each fact has one authoritative source. Other documents summarize it and link to
 
 | Fact | Owner | Summaries that must agree |
 | --- | --- | --- |
-| What FAVA is for, and the claims made about it | [README](../README.md) opening sections and the wording table below | Website pages, package description, an agent index (`llms.txt`) when published |
+| What FAVA is for | [README](../README.md) opening sections | Website pages, package description, an agent index (`llms.txt`) when published |
+| Which guarantees may be claimed, and in what words | The wording table below | README, website, agent-facing documents |
 | The values of built-in defaults | `src/fava_trails/models.py` | Every document that quotes a default. Blueprints quote values only with the inspected revision. |
 | How to install and configure: per-machine setup, providers, credentials | [AGENTS_SETUP_INSTRUCTIONS.md](../AGENTS_SETUP_INSTRUCTIONS.md) | README quick start, website Quick Start |
 | Tool parameters and results | [AGENTS.md](../AGENTS.md) | Tool descriptions in `server.py` |
 | Session protocol for agents | [AGENTS_USAGE_INSTRUCTIONS.md](../AGENTS_USAGE_INSTRUCTIONS.md) | Website agent guidance |
-| Operator rules: visibility modes, identity setup, replacement and recovery procedures | [governed-recall.md](governed-recall.md) | README feature list |
+| Operating rules: visibility modes, identity setup, replacement, interrupted-write guarantees and recovery | [governed-recall.md](governed-recall.md) | README feature list and durable-writes bullet, website, agent summaries |
 | Why the lifecycle works as it does: flow, publication, failure behavior | [Review-and-recall lifecycle](../blueprints/features/review_and_recall_lifecycle.blueprint.md) | Website lifecycle pages, case study |
 | The review gate's contract and the reasons behind it | [Review gate](../blueprints/modules/review_gate.blueprint.md) | Setup guide, README Trust Gate paragraph |
 | The planned change to new-install review | [Local review default](../blueprints/features/local_review_default.blueprint.md) | Nothing, until a release contains the change |
-| Interrupted-write guarantees (the short statement) | [README](../README.md) durable-writes bullet | Website, `AGENTS.md` summaries |
 | Runtime identity and upgrades | [runtime-and-upgrade.md](runtime-and-upgrade.md) | README upgrade notes |
 | Release history | [CHANGELOG.md](../CHANGELOG.md), [releases/](releases/) | None. History is never edited to match later behavior. |
 | Website page layout and authoring rules | `AGENTS.md` in the [fava-trails.org](https://github.com/MachineWisdomAI/fava-trails.org) repository | Site contributors and agents |
 
-The website repository owns presentation only. A page may shorten an explanation but must not introduce a claim, default or guarantee that the owning document does not make.
+Blueprints record the design and the behavior of an inspected revision, with reasons; when they overlap an operating document, the operating document governs what an operator should do. The website repository owns presentation only. A page may shorten an explanation but must not introduce a claim, default or guarantee that the owning document does not make.
 
 ## Approved and avoided wording
 

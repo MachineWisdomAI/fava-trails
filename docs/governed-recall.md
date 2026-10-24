@@ -94,6 +94,14 @@ journal by hand or copy a data repository mid-transaction. If recovery reports
 unrelated dirty files, preserve those files and resolve that specific conflict
 before retrying; never reset the repository wholesale.
 
+The journal covers `propose_truth` (every outcome) and `supersede`. `save_thought`
+and `update_thought` do not use it: each writes the thought file and then runs its
+Jujutsu commit steps. A successful return means both finished. An interruption
+between them can leave an uncommitted file, and later writes to that repository can
+then refuse with an unexpected-dirty-path error until an operator inspects the
+working copy. Do not reset the repository to clear it; resolve that file
+specifically.
+
 ## Approval evidence
 
 The configured Trust Gate can approve under its existing policy. New provenance

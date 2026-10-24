@@ -11,7 +11,7 @@ date_added: 2026-10-24
 ## Status
 
 - Design: draft. This document describes existing behavior and proposes no change to it.
-- Implementation: Implemented. Claims were compared with source at `fava-trails@0f7c01f` (version 0.8.5rc1) and corrected after an independent source review; behaviors without a dedicated test say so.
+- Implementation: Implemented. Claims were compared with source at `fava-trails@0f7c01f` (version 0.8.5rc1); behaviors without a dedicated test say so.
 - Evidence: 236 fixture-based tests across configuration, the review gate, governed visibility, local-only sync and navigation passed on that revision. The reviewer in those tests is a fixture HTTP server; no real model was run.
 - Release: not applicable; no behavior changes here.
 
