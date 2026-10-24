@@ -112,7 +112,9 @@ action with `kind="human"` and the configured actor.
 Do not infer human approval from `source_type="user_input"`, the preferences
 namespace, a reviewer-shaped string, or legacy metadata. A successor never
 inherits its predecessor's approval evidence. Supersession installs lineage and
-default-visibility rules; it does not establish truth of the replacement.
+default-visibility rules; it does not establish truth of the replacement. A worked example with recorded
+rejections and a superseding correction is in
+[local-review-walkthrough.md](local-review-walkthrough.md).
 
 ## Rich Views
 

@@ -1,6 +1,6 @@
 ---
 feature_name: review_and_recall_lifecycle
-status: draft
+status: approved
 module_blueprints: [review_gate]
 dependencies: []
 date_added: 2026-10-24
@@ -10,7 +10,7 @@ date_added: 2026-10-24
 
 ## Status
 
-- Design: draft. This document describes existing behavior and proposes no change to it.
+- Design: approved at `fava-trails@dc7085a`, the revision the delivery coordinator reviewed and accepted under the operator's autonomous-delivery authority of 2026-10-24 ([recorded decision](https://github.com/MachineWisdomAI/fava-trails.org/issues/32#issuecomment-6388458186)). This document describes existing behavior and proposes no change to it.
 - Implementation: Implemented. Claims were compared with source at `fava-trails@0f7c01f` (version 0.8.5rc1); behaviors without a dedicated test say so.
 - Evidence: 236 fixture-based tests across configuration, the review gate, governed visibility, local-only sync and navigation passed on that revision. The reviewer in those tests is a fixture HTTP server; no real model was run.
 - Release: not applicable; no behavior changes here.
@@ -85,7 +85,7 @@ Do not describe this system as crash-proof or as preventing contradictory memori
 | Rejected record edited | Refused, content frozen | `test_tools.py::test_update_thought_content_freeze_rejected` (outside the 236-test set) |
 | Remote missing | `sync` reports `not_configured`; local save, review and supersession still work | `test_local_only_sync.py` |
 
-Evidence gap: no recorded run of the full cycle against a real local reviewer.
+Real-model evidence: one recorded run of the full cycle (two rejections with feedback, a revision approved, governed recall, and a superseding correction with preserved lineage) was made against the 0.9.0rc1 candidate and one local model on 2026-10-24. It is a single observation, not a benchmark, and it is written up in [the local review walkthrough](../../docs/local-review-walkthrough.md). It did not exercise remote publication.
 
 ## Limits kept
 
@@ -93,4 +93,4 @@ Per-trail `trust_gate_policy` treats the value `llm-oneshot` as "inherit global"
 
 ## References
 
-[`docs/governed-recall.md`](../../docs/governed-recall.md) states the operator-facing visibility, identity and replacement rules. [Documentation ownership](../../docs/documentation-ownership.md) maps each topic to its owner.
+[Design acceptance](https://github.com/MachineWisdomAI/fava-trails.org/issues/32#issuecomment-6388458186) · [`docs/governed-recall.md`](../../docs/governed-recall.md) states the operator-facing visibility, identity and replacement rules. [Documentation ownership](../../docs/documentation-ownership.md) maps each topic to its owner.

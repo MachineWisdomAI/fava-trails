@@ -72,7 +72,7 @@ For a long-lived private ChatGPT connection, follow the deployment-neutral
 
 ### Prerequisites
 
-FAVA Trails uses [Jujutsu (JJ)](https://jj-vcs.github.io/jj/) as its storage engine, running in colocate mode alongside Git. Your repo remains a standard Git repo (GitHub and CI/CD see normal commits). Publishing local commits uses `push_strategy: immediate` (auto-push after successful writes) or the full manual protocol `jj bookmark set main -r @-` then `jj git push --bookmark main` (completed writes sit at `@-`). The `sync` MCP tool only fetches/rebases shared truth — it does not push. One-time install:
+FAVA Trails uses [Jujutsu (JJ)](https://jj-vcs.github.io/jj/) as its storage engine, running in colocate mode alongside Git. Your repo remains a standard Git repo (GitHub and CI/CD see normal commits). Publishing local commits uses `push_strategy: immediate` (auto-push after successful writes) or the full manual protocol `jj bookmark set main -r @-` then `jj git push --bookmark main` (completed writes sit at `@-`). The `sync` MCP tool itself only fetches/rebases shared truth; it is not how you publish, although under `push_strategy: immediate` the server's after-write push also runs after a successful `sync`. One-time install:
 
 ```bash
 fava-trails install-jj
@@ -273,6 +273,8 @@ OPENROUTER_API_KEY = "sk-or-v1-..."
 
 > **The Trust Gate uses an LLM (or explicit human) review step:** Thoughts can be reviewed before promotion. The reviewer applies a configured rubric or a typed Noul question with limited context — it does **not** independently verify project facts, your agent safety policy, or ground truth. A convincing false claim can still be approved. With no Trust Gate settings, FAVA Trails uses [OpenRouter](https://openrouter.ai/) Decisions with TypeSafe Jev (`~typesafe/jev-latest`); get a free API key at [openrouter.ai/keys](https://openrouter.ai/keys). Data repositories created by `fava-trails bootstrap` from 0.9.0 review through a local OpenAI-compatible server instead, with no hosted account (see [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md)). **Provider selection is a data-egress choice:** under `decisions`, the full prompt, candidate content, selected metadata, and Noul question are transmitted to the configured destination *before* a verdict exists (a remote reject still means the text already left the process). Jev returns no reasoning. A local [obvious-secret preflight](docs/secret-preflight.md) refuses a bounded set of known credential shapes before persist or transmit; it is not complete DLP and does not erase already-stored drafts. Run `fava-trails doctor` to see the effective destination/model and which candidate fields are sent (API secrets are never printed). You can point Trust Gate at a local OpenAI-compatible endpoint (e.g. [Unsloth Studio](https://unsloth.ai/docs/new/studio)) via `~/.config/fava-trails/config.yaml` with explicit `llm-oneshot`, or promote without LLM transmission using operator `propose_truth(..., approval="human")` — see [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md).
 
+To run the full draft, rejection, revision, approval and correction loop against a local reviewer, see [docs/local-review-walkthrough.md](docs/local-review-walkthrough.md).
+
 ### Use it
 
 Agents call MCP tools. Core workflow:
@@ -324,7 +326,7 @@ commits stay local until you publish them. Publishing is **not** what the
 |------|----------|
 | `push_strategy: immediate` | After each successful write, the server advances `main` and runs `jj git push` (push failures are non-fatal warnings). |
 | `push_strategy: manual` (bootstrap default) | No auto-push. Operator must `jj bookmark set main -r @-` then `jj git push --bookmark main` (or set `immediate`). |
-| `sync` MCP tool | Fetches/rebases from the remote only. Does **not** commit dirty local files and does **not** publish local commits. Missing remotes return `not_configured`. |
+| `sync` MCP tool | Fetches/rebases from the remote. Does **not** commit dirty local files and is not a publication step. Under `push_strategy: immediate`, a successful `sync` counts as a write operation, so the server's after-write push can run once it finishes. Missing remotes return `not_configured`. |
 
 For multi-machine authoring, set `push_strategy: immediate` in the data repo `config.yaml` (or publish manually after writes). Peers still call `sync` to pull. Local-only repositories should keep `push_strategy: manual`.
 
@@ -407,7 +409,7 @@ fava-trails cleanup-empty-scopes --scope mw/headspace --scope mw --apply
 
 ### Manual push (required when `push_strategy: manual`)
 
-Bootstrap defaults to `manual`. Under that setting, approved local records stay on the writing machine until an operator publishes. The `sync` tool will not push them.
+Bootstrap defaults to `manual`. Under that setting, approved local records stay on the writing machine until an operator publishes. The `sync` tool does not publish them under `manual`.
 
 ```bash
 cd /path/to/fava-trails-data
@@ -489,7 +491,7 @@ push_strategy: manual       # manual | immediate
 
 The standard per-machine config overrides only Trust Gate runtime fields. Repository settings such as `trails_dir`, `remote_url`, `push_strategy`, hooks, and trail definitions remain owned by the data repo. Effective precedence is machine config, then data-repo config, then defaults.
 
-When `push_strategy: immediate`, the server auto-pushes after every successful write (advances `main` to `@-` then pushes). Push failures are non-fatal. When `manual` (bootstrap default), writes commit locally only; use the full manual protocol above (`jj bookmark set main -r @-` then `jj git push --bookmark main`). The `sync` tool never substitutes for push.
+When `push_strategy: immediate`, the server auto-pushes after every successful write operation, including a successful `sync` (advances `main` to `@-` then pushes). Push failures are non-fatal. When `manual` (bootstrap default), writes commit locally only; use the full manual protocol above (`jj bookmark set main -r @-` then `jj git push --bookmark main`). The `sync` tool's own work is fetch and rebase, so it never substitutes for a deliberate push under `manual`.
 
 See [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) for full config reference including trust gate and per-trail overrides.
 

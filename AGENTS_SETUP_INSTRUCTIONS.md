@@ -303,7 +303,7 @@ Create exactly **two files** — nothing else:
 trails_dir: trails
 remote_url: "https://github.com/YOUR-ORG/fava-trails-data.git"
 # bootstrap / CLI default is manual. Use immediate for multi-machine authoring
-# so successful writes auto-publish. sync only fetches/rebases — it does not push.
+# so successful writes auto-publish (a successful sync counts as a write). sync itself only fetches/rebases.
 push_strategy: immediate
 ```
 
@@ -348,8 +348,9 @@ fava-trails clone https://github.com/YOUR-ORG/fava-trails-data.git fava-trails-d
 Both machines share the same git remote. The writing side must publish before
 peers can fetch: set `push_strategy: immediate`, or under `manual` (bootstrap
 default) run `jj bookmark set main -r @-` then `jj git push --bookmark main`.
-Use the `sync` MCP tool only to **pull** (fetch/rebase) latest shared truth — it
-does not publish local commits. Completed writes sit at `@-`; a bare
+Use the `sync` MCP tool to **pull** (fetch/rebase) latest shared truth; it is not
+a publication step. (Under `push_strategy: immediate`, the server's after-write
+push also runs after a successful `sync`.) Completed writes sit at `@-`; a bare
 `jj git push` without advancing `main` can miss them.
 
 ## Global Config Reference (`config.yaml`)
@@ -360,7 +361,7 @@ trails_dir: trails                        # relative to FAVA_TRAILS_DATA_REPO
 remote_url: "https://github.com/..."      # git remote URL (null if local-only)
 push_strategy: manual                     # bootstrap default: local commits only
 # push_strategy: immediate                # recommended multi-machine: auto-push after writes
-                                          # sync MCP tool never pushes — fetch/rebase only
+                                          # sync MCP tool fetches/rebases; immediate mode also pushes after it succeeds
 
 # Trust Gate (built-in default when unstated: decisions / OpenRouter Jev;
 # `fava-trails bootstrap` 0.9.0+ writes llm-oneshot plus the local reviewer you name)
@@ -406,7 +407,7 @@ trails:
 |-------|------|---------|-------------|
 | `trails_dir` | string | `trails` | Directory for trail data (relative to repo root) |
 | `remote_url` | string | `null` | Git remote URL for sync |
-| `push_strategy` | string | `manual` | `immediate` auto-pushes after successful writes (advances `main` to `@-` then pushes); `manual` (bootstrap default) keeps commits local until the operator runs `jj bookmark set main -r @-` then `jj git push --bookmark main`. The `sync` tool only fetches/rebases and never publishes. |
+| `push_strategy` | string | `manual` | `immediate` auto-pushes after successful writes (advances `main` to `@-` then pushes); `manual` (bootstrap default) keeps commits local until the operator runs `jj bookmark set main -r @-` then `jj git push --bookmark main`. The `sync` tool itself only fetches/rebases; under `immediate`, a successful `sync` is also followed by the after-write push. |
 | `trust_gate` | string | `decisions` | Global trust gate policy. **Built-in default when unstated: `decisions`** (OpenRouter Jev); `bootstrap` from 0.9.0 writes `llm-oneshot` for new data repositories. `llm-oneshot` with a Decisions-only model (`~typesafe/jev-latest`, `typesafe/jev-1.13`) is refused before transmission. `human` is unimplemented (raises `NotImplementedError`). Non-LLM path is per-call `propose_truth(..., approval="human")` on an operator endpoint, not this config field. |
 | `trust_gate_provider` | string | `openrouter` | any-llm provider id (`openrouter`, `openai`, …) |
 | `trust_gate_model` | string | `~typesafe/jev-latest` | Exact model id or alias. Chat-completions models (e.g. `google/gemini-2.5-flash`) are for explicit `llm-oneshot`. |
@@ -694,7 +695,7 @@ jj bookmark set main -r @-     # advance main bookmark to latest committed chang
 jj git push --bookmark main    # push to remote
 ```
 
-Do **not** treat `sync` as publish: it only fetches/rebases remote shared truth.
+Do **not** treat `sync` as publish: its own work is to fetch/rebase remote shared truth. Under `push_strategy: immediate` the server's after-write push can follow a successful `sync`; under `manual` nothing is pushed.
 
 ## Data Repo Layout
 
