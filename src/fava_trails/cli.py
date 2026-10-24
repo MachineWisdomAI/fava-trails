@@ -311,7 +311,7 @@ def _validate_review_options(args: argparse.Namespace) -> dict[str, str]:
     model = getattr(args, "review_model", None)
     key_env = getattr(args, "review_key_env", None)
     if endpoint is not None:
-        supplied["trust_gate_api_base"] = _validate_review_endpoint(endpoint)
+        supplied["endpoint"] = _validate_review_endpoint(endpoint)
     if model is not None:
         model = model.strip()
         if not model or len(model) > 200 or any(ch.isspace() or ord(ch) < 32 for ch in model):
@@ -321,7 +321,7 @@ def _validate_review_options(args: argparse.Namespace) -> dict[str, str]:
                 "--review-model must name a model your OpenAI-compatible server serves; "
                 "the Jev model ids are Decisions-only and cannot be used for local review"
             )
-        supplied["trust_gate_model"] = model
+        supplied["model"] = model
     if key_env is not None:
         key_env = key_env.strip()
         if not _REVIEW_KEY_ENV_RE.match(key_env):
@@ -329,7 +329,7 @@ def _validate_review_options(args: argparse.Namespace) -> dict[str, str]:
                 "--review-key-env must be the NAME of an environment variable "
                 "(letters, digits, underscore), not the credential itself"
             )
-        supplied["trust_gate_api_key_env"] = key_env
+        supplied["env_var"] = key_env
     return supplied
 
 
@@ -340,9 +340,9 @@ def _is_loopback_review_endpoint(endpoint: str) -> bool:
 
 
 _REVIEW_OPTION_FLAGS = {
-    "trust_gate_api_base": "--review-endpoint",
-    "trust_gate_model": "--review-model",
-    "trust_gate_api_key_env": "--review-key-env",
+    "endpoint": "--review-endpoint",
+    "model": "--review-model",
+    "env_var": "--review-key-env",
 }
 
 
@@ -389,19 +389,18 @@ def _report_review_selection(target: Path, supplied: dict[str, str]) -> int:
     print(f"  model:        {cfg.trust_gate_model}")
     print(f"  endpoint:     {redact_trust_gate_api_base_for_disclosure(cfg.trust_gate_api_base) or '(provider default)'}")
     print(f"  destination:  {_DESTINATION_KIND_LABELS.get(str(kind), kind)}")
-    print(f"  credential:   {egress.get('credential_source')} (name/source only)")
     if overrides:
         print("  per-machine config overrides: " + ", ".join(overrides))
         print(f"    ({get_machine_config_path()} wins over this repository key by key)")
 
     if complete:
-        requested_base = supplied["trust_gate_api_base"].rstrip("/")
+        requested_base = supplied["endpoint"].rstrip("/")
         effective_base = (cfg.trust_gate_api_base or "").rstrip("/")
         differs = (
             cfg.trust_gate != "llm-oneshot"
             or cfg.trust_gate_provider != "openai"
             or effective_base != requested_base
-            or cfg.trust_gate_model != supplied["trust_gate_model"]
+            or cfg.trust_gate_model != supplied["model"]
         )
     elif blocked:
         print("  status:       incomplete. Promotion fails closed with guidance until a local")
@@ -473,9 +472,9 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     }
     if complete_review:
         config_data["trust_gate_provider"] = "openai"
-        config_data["trust_gate_api_base"] = review_options["trust_gate_api_base"]
-        config_data["trust_gate_model"] = review_options["trust_gate_model"]
-        config_data["trust_gate_api_key_env"] = review_options["trust_gate_api_key_env"]
+        config_data["trust_gate_api_base"] = review_options["endpoint"]
+        config_data["trust_gate_model"] = review_options["model"]
+        config_data["trust_gate_api_key_env"] = review_options["env_var"]
     config_path = target / "config.yaml"
     config_path.write_text(yaml.dump(config_data, default_flow_style=False, sort_keys=False))
     print("[1/6] Created config.yaml")
@@ -587,9 +586,9 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
         print("Do not use --sync-on-start until a reachable remote is configured.")
     if complete_review:
         print("\nLocal review is configured in config.yaml (committed to this repository).")
-        print(f"  Export {review_options['trust_gate_api_key_env']} before promoting; a server that ignores")
+        print(f"  Export {review_options['env_var']} before promoting; a server that ignores")
         print("  authentication still needs a placeholder value. FAVA did not contact the endpoint.")
-        if remote_url and _is_loopback_review_endpoint(review_options["trust_gate_api_base"]):
+        if remote_url and _is_loopback_review_endpoint(review_options["endpoint"]):
             print(
                 "Warning: the review endpoint is a loopback address but this repository has a remote. "
                 "Every clone inherits it and will look for a reviewer on its own machine; "
