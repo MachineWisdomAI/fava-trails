@@ -790,3 +790,25 @@ def test_tunnel_preflight_refuses_llm_oneshot_with_decisions_model(tmp_path, mon
     ):
         with pytest.raises(ValueError, match="trust_gate_model"):
             _load_gateway_config(Namespace(data_repo=str(repo), profile="fava-trails", tunnel_client=None))
+
+
+# ─── timeout reaches the HTTP layer ──────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_chat_timeout_reaches_the_http_client_phases():
+    """A raised trust_gate_timeout_secs must be what httpx uses, not the 60 s default."""
+    import any_llm
+
+    captured: dict = {}
+
+    async def fake(*args, **kwargs):
+        captured.update(kwargs)
+        raise RuntimeError("stop after capture")
+
+    client = LLMClient(api_key="k", provider="openai", api_base=ENDPOINT)
+    with patch.object(any_llm, "acompletion", fake), pytest.raises(RuntimeError):
+        await client.chat(messages=[{"role": "user", "content": "x"}], model=MODEL, timeout=200.0)
+
+    timeout = captured["client_args"]["timeout"]
+    assert timeout.read == 200.0 and timeout.write == 200.0

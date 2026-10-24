@@ -1,6 +1,6 @@
 ---
 feature_name: local_review_default
-status: draft
+status: approved
 module_blueprints: [review_gate]
 dependencies: [review_and_recall_lifecycle]
 date_added: 2026-10-24
@@ -10,7 +10,7 @@ date_added: 2026-10-24
 
 ## Status
 
-- Design: approved by the delivery coordinator at `fava-trails@dc7085a` (tracking issue 32). The coordinator accepted it under the operator's autonomous-delivery authority of 2026-10-24; no human approval gate remains.
+- Design: approved at `fava-trails@dc7085a`, the revision the delivery coordinator reviewed and accepted under the operator's autonomous-delivery authority of 2026-10-24 ([recorded decision](https://github.com/MachineWisdomAI/fava-trails.org/issues/32#issuecomment-6388458186)). No human approval gate remains.
 - Implementation: Implemented in fava-trails PR #153 (version 0.9.0-rc.1) in `models.py`, `cli.py`, `trust_gate.py`, `tools/navigation.py` and `server.py`. The pre-change behavior in the table below was observed at `fava-trails@0f7c01f`. Deviations from the proposal: none in behavior. Two details the proposal left open are fixed here: `--review-model` also refuses FAVA's two Decisions model ids, and the informational line is carried as `trust_gate_policy_note` on a failed `propose_truth` response.
 - Evidence: fixture tests only, in `tests/test_local_review_default.py` (bootstrap options, endpoint refusals, machine-config overrides and exit status, each configuration row, promotion errors, explanation pass-through, Jev probability and threshold, down/401/malformed reviewers with no hosted fallback, timeout pass-through, doctor output), plus the three updated fixtures. The full suite passed on the PR head. No run against a real local model has been made, so nothing here shows that any model gives useful rejection feedback.
 - Release: a source merge only. Nothing is published to PyPI and no deployed MCP instance or stored record changed. Public documentation states the local default as available from 0.9.0 and must not describe it as installed until that package exists.
@@ -91,4 +91,4 @@ A keyless local server still needs a placeholder credential. A trail cannot pin 
 
 ## References
 
-[Tracking issue](https://github.com/MachineWisdomAI/fava-trails.org/issues/33) · [Review gate](../modules/review_gate.blueprint.md) · [Review-and-recall lifecycle](review_and_recall_lifecycle.blueprint.md)
+[Tracking issue](https://github.com/MachineWisdomAI/fava-trails.org/issues/33) · [Design acceptance](https://github.com/MachineWisdomAI/fava-trails.org/issues/32#issuecomment-6388458186) · [Review gate](../modules/review_gate.blueprint.md) · [Review-and-recall lifecycle](review_and_recall_lifecycle.blueprint.md)
