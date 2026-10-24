@@ -1,14 +1,14 @@
 # Blueprints
 
-Blueprints explain how FAVA Trails behaves and why, in enough detail for an engineer to judge a change before reading the code. They adapt the feature / module / codebase split used by the A2UI and SAGA projects, and leave the rest of that tooling behind.
+Blueprints explain how FAVA Trails behaves and why, in enough detail for an engineer to judge a change before reading the code. They adapt the feature / module / codebase split of the [A2UI Blueprint model](https://github.com/a2ui-project/a2ui/tree/1657e70119eaa3b76c2a106ac60c7c4dcfe206e0/blueprints) and leave its tooling behind.
 
-| Type | Location | Describes |
-| --- | --- | --- |
-| Feature | [`features/`](features/) | A capability or change that crosses modules: the user-visible flow, failure behavior and verification outcomes. |
-| Module | [`modules/`](modules/) | One responsibility: what it owns, what callers can rely on, where its authority ends. |
-| Codebase | [`codebases/`](codebases/) | How the source tree realizes the module contracts, including known gaps. Paths mirror the repository path. |
+| Type | Location | Describes | Front matter |
+| --- | --- | --- | --- |
+| Feature | [`features/`](features/) | A capability or change that crosses modules: flow, failure behavior, verification outcomes. | `feature_name`, `status`, `module_blueprints`, `dependencies`, `date_added` |
+| Module | [`modules/`](modules/) | One responsibility: what it owns, what callers can rely on, where its authority ends. | `name`, `type: module`, `description`, `status` |
+| Codebase | [`codebases/`](codebases/) | How a source tree realizes a module contract, with known gaps. The path mirrors the repository path. | `codebase_path`, `associated_module`, `implemented_features` |
 
-Filenames are stable `snake_case` capability names with no dates. A document's front matter `status` records the design decision: `draft`, `approved`, `rejected` or `superseded`. Its **Status** section records, separately, what is implemented and what evidence exists. A merged document does not approve or implement anything by itself.
+Filenames are stable `snake_case` capability names with no dates. Feature and module `status` is the design decision: `draft`, `approved`, `rejected` or `superseded`. A codebase document describes inspected code and carries no design status.
 
 ## Find a design
 
@@ -20,13 +20,17 @@ Filenames are stable `snake_case` capability names with no dates. A document's f
 | Which source file owns what | [`src/fava_trails` codebase map](codebases/src/fava_trails/codebase.blueprint.md) |
 | Which document is authoritative for a behavior | [Documentation ownership](../docs/documentation-ownership.md) |
 
-## Status vocabulary
+## Status section
 
-- **Design** — `draft`, `approved`, `rejected` or `superseded`, plus the reviewed revision once approved.
-- **Implementation** — `Not started`, `Partial`, `Implemented` or `Unverified`. State the source revision inspected or the change that landed it, and name any scope still missing.
-- **Evidence** — fixture tests, observed runs against a real reviewer, and release publication are different claims. Record each separately and say which one a sentence relies on.
+Every feature and module has a short **Status** section with four separate lines, so a reader can tell what to rely on:
+
+- **Design** — the decision above, and the reviewed revision once approved.
+- **Implementation** — `Not started`, `Partial`, `Implemented` or `Unverified`, with the source revision inspected or the change that landed it, and any scope still missing.
+- **Evidence** — fixture tests, observed runs against a real reviewer, and release publication are different claims. Say which one a sentence relies on.
 - **Release** — a source merge is not a published package or a deployed site.
+
+A merged document does not approve or implement anything by itself.
 
 ## Authoring
 
-Write for a reader deciding whether the design makes sense. Lead with a before/after example, then responsibilities, interfaces, tradeoffs, failure behavior and verification outcomes. Keep a feature to roughly 500–1,000 words. Worker instructions, review chronology and ticket history belong in the tracker, not here. Use `mw-writing-tech-specs`, then `mw-writing-for-human-readers`.
+Write for a reader deciding whether the design makes sense. Lead with a before/after example, then responsibilities, interfaces, tradeoffs, failure behavior and verification outcomes. Aim for 500–1,000 words per feature; go longer only when the contract needs it. Keep worker instructions, review chronology and ticket history in the tracker.
