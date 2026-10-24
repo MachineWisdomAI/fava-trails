@@ -1,6 +1,6 @@
 ---
 feature_name: local_review_default
-status: draft
+status: approved
 module_blueprints: [review_gate]
 dependencies: [review_and_recall_lifecycle]
 date_added: 2026-10-24
@@ -10,10 +10,10 @@ date_added: 2026-10-24
 
 ## Status
 
-- Design: draft.
-- Implementation: Not started. Current behavior below was observed at `fava-trails@0f7c01f`.
-- Evidence: the configuration results come from loading `GlobalConfig` at that revision. No test exists for the proposed behavior.
-- Release: nothing published. Public documentation must not say new installations select a local reviewer until a release containing this change exists.
+- Design: approved at `fava-trails@dc7085a`, the revision the delivery coordinator reviewed and accepted under the operator's autonomous-delivery authority of 2026-10-24 ([recorded decision](https://github.com/MachineWisdomAI/fava-trails.org/issues/32#issuecomment-6388458186)). No human approval gate remains.
+- Implementation: Implemented in fava-trails PR #153 (version 0.9.0-rc.1) in `models.py`, `cli.py`, `trust_gate.py`, `tools/navigation.py` and `server.py`. The pre-change behavior in the table below was observed at `fava-trails@0f7c01f`. Deviations from the proposal: none in behavior. Two details the proposal left open are fixed here: `--review-model` also refuses FAVA's two Decisions model ids, and the informational line is carried as `trust_gate_policy_note` on a failed `propose_truth` response.
+- Evidence: fixture tests only, in `tests/test_local_review_default.py` (bootstrap options, endpoint refusals, machine-config overrides and exit status, each configuration row, promotion errors, explanation pass-through, Jev probability and threshold, down/401/malformed reviewers with no hosted fallback, timeout pass-through, doctor output), plus the three updated fixtures. The full suite passed on the PR head. No run against a real local model has been made, so nothing here shows that any model gives useful rejection feedback.
+- Release: a source merge only. Nothing is published to PyPI and no deployed MCP instance or stored record changed. Public documentation states the local default as available from 0.9.0 and must not describe it as installed until that package exists.
 
 ## Problem and current behavior
 
@@ -54,7 +54,7 @@ Both apply to the effective policy of the trail being promoted. A trail that pin
 ## Responsibilities and interfaces
 
 - `models.py`/`config.py`: the model check and the "stated" diagnostic.
-- `trust_gate.py`/`tools/navigation.py`: apply the check before any network call; chat requests pass `trust_gate_timeout_secs`. At the inspected revision `llm-oneshot` leaves each HTTP request at the client's 60 s default, makes up to three attempts, and the HTTP client may repeat each (up to nine requests were observed against a slow fixture), so raising the setting does not help a slow local model.
+- `trust_gate.py`/`tools/navigation.py`: apply the check before any network call; chat requests pass `trust_gate_timeout_secs`. At `0f7c01f` `llm-oneshot` left each HTTP request at the client's 60 s default, made up to three attempts, and the HTTP client could repeat each (up to nine requests were observed against a slow fixture), so raising the setting did not help a slow local model. The setting now reaches each request; the retry layers are unchanged, and the outer bound still applies to the whole call.
 - `cli.py`: bootstrap options, the effective-configuration report and doctor output.
 - The review gate's fail-closed behavior is unchanged ([Review gate](../modules/review_gate.blueprint.md)).
 
@@ -67,7 +67,7 @@ Two kinds of failure already occur, and neither falls back to a hosted provider:
 
 Nothing rewrites an existing configuration or stored record. Rollback is a revert of the change; no explicit configuration changed.
 
-## Verification outcomes (planned)
+## Verification outcomes
 
 | Condition | Expected result |
 | --- | --- |
@@ -83,7 +83,7 @@ Nothing rewrites an existing configuration or stored record. Rollback is a rever
 | Local server down, 401, malformed body | Recorded `error`; no promotion; hosted provider not contacted |
 | Reviewer slower than 60 s with `trust_gate_timeout_secs` raised | The configured timeout applies to the whole call |
 
-These are fixture checks. A separate run against a real local reviewer is required before documentation claims useful rejection feedback.
+These are fixture checks and they now exist (see Status). A separate run against a real local reviewer is still required before documentation claims useful rejection feedback.
 
 ## Limits kept
 
@@ -91,4 +91,4 @@ A keyless local server still needs a placeholder credential. A trail cannot pin 
 
 ## References
 
-[Tracking issue](https://github.com/MachineWisdomAI/fava-trails.org/issues/33) · [Review gate](../modules/review_gate.blueprint.md) · [Review-and-recall lifecycle](review_and_recall_lifecycle.blueprint.md)
+[Tracking issue](https://github.com/MachineWisdomAI/fava-trails.org/issues/33) · [Design acceptance](https://github.com/MachineWisdomAI/fava-trails.org/issues/32#issuecomment-6388458186) · [Review gate](../modules/review_gate.blueprint.md) · [Review-and-recall lifecycle](review_and_recall_lifecycle.blueprint.md)

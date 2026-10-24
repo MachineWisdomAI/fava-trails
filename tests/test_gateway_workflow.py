@@ -26,6 +26,7 @@ def gateway_repo(tmp_fava_home, tmp_path, monkeypatch):
     (tmp_fava_home / "config.yaml").write_text(
         "trails_dir: trails\ntrust_gate: llm-oneshot\npush_strategy: manual\n"
         "trust_gate_api_key_env: SYNTHETIC_TRUST_GATE_KEY\n"
+        "trust_gate_model: synthetic-local-reviewer\n"
     )
     (tmp_fava_home / "trails" / "trust-gate-prompt.md").write_text("Synthetic review policy.\n")
     (tmp_fava_home / ".gitignore").write_text(".jj/\n")

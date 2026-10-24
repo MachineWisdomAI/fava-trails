@@ -217,6 +217,21 @@ DEFAULT_NAMESPACE = "drafts"
 DEFAULT_TRUST_GATE_POLICY = "decisions"
 DEFAULT_TRUST_GATE_PROVIDER = "openrouter"
 DEFAULT_TRUST_GATE_MODEL = "~typesafe/jev-latest"
+# FAVA's own Decisions model identifiers. They are valid only for the
+# ``decisions`` policy; ``llm-oneshot`` posts a chat completion and must name a
+# model the chat server actually serves. The comparison is against these
+# constants, not a vendor naming pattern.
+PINNED_DECISIONS_MODEL = "typesafe/jev-1.13"
+DECISIONS_ONLY_MODELS = frozenset({DEFAULT_TRUST_GATE_MODEL, PINNED_DECISIONS_MODEL})
+LOCAL_REVIEW_SETUP_GUIDANCE = (
+    "Set the local reviewer in the data repository's config.yaml (or the per-machine "
+    "config) with: trust_gate: llm-oneshot, trust_gate_provider: openai, "
+    "trust_gate_api_base: http://HOST:PORT/v1 (your OpenAI-compatible server), "
+    "trust_gate_model: <the exact model id that server serves>, and "
+    "trust_gate_api_key_env: <NAME of an environment variable holding the credential; "
+    "use a placeholder value if the server ignores authentication>. "
+    "FAVA does not probe localhost, download a model, or fall back to a hosted provider."
+)
 DEFAULT_NOUL_QUESTION = (
     "Should this candidate be promoted as durable, high-quality institutional "
     "memory under the supplied Trust Gate policy?"
@@ -422,6 +437,46 @@ class GlobalConfig(BaseModel):
             self.trust_gate_decisions_config.validate_for_decisions_policy()
         return self
 
+    def check_review_model_for_policy(self, policy: str | None = None) -> None:
+        """Refuse a Decisions-only model under the ``llm-oneshot`` chat policy.
+
+        Raises ``ValueError`` naming ``trust_gate_model`` before any
+        transmission. Not part of config load: callers invoke it at promotion,
+        doctor, and tunnel preflight with the effective policy.
+        """
+        effective = policy or self.trust_gate
+        if effective == "llm-oneshot" and self.trust_gate_model in DECISIONS_ONLY_MODELS:
+            raise ValueError(
+                "trust_gate_model must name a chat model: policy 'llm-oneshot' sends a "
+                f"chat completion, but trust_gate_model is {self.trust_gate_model!r}, which is "
+                "a Decisions-only model. Nothing was sent. "
+                + LOCAL_REVIEW_SETUP_GUIDANCE
+                + " To keep Jev instead, set trust_gate: decisions."
+            )
+
+    def trust_gate_policy_note(self, effective_policy: str | None = None) -> str | None:
+        """Informational line when the policy is unstated but provider/model is.
+
+        Behavior is never changed: a pre-0.8 chat configuration and a correct
+        local Decisions configuration look the same here, so the line also
+        appears for the latter. A rewritten ``config.yaml`` that states the
+        policy silences it.
+        """
+        stated = self.model_fields_set
+        if "trust_gate" in stated:
+            return None
+        if not ({"trust_gate_provider", "trust_gate_model"} & stated):
+            return None
+        effective = effective_policy or self.trust_gate
+        if effective != self.trust_gate:
+            return None  # a trail pinned its own policy; do not second-guess it
+        return (
+            f"Note: trust_gate is not stated, so policy {effective!r} took effect while a "
+            "provider or model is configured. If trust_gate_model is a chat model, add "
+            "'trust_gate: llm-oneshot'; if it is a local Decisions model keep the "
+            "policy as it is."
+        )
+
     def validate_trust_gate_runtime(self) -> str:
         """Validate Trust Gate provider configuration for startup/preflight.
 
@@ -451,6 +506,8 @@ class GlobalConfig(BaseModel):
 
         if self.trust_gate == "decisions":
             self.trust_gate_decisions_config.validate_for_decisions_policy()
+
+        self.check_review_model_for_policy()
 
         key_env = self.resolve_trust_gate_api_key_env()
         if not key_env:
