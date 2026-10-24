@@ -109,7 +109,30 @@ async def handle_propose_truth(
     arguments: dict,
     prompt_cache: TrustGatePromptCache | None = None,
 ) -> dict[str, Any]:
-    """Promote thought from drafts/ to permanent namespace, gated by Trust Gate review."""
+    """Promote thought from drafts/ to permanent namespace, gated by Trust Gate review.
+
+    A failed promotion (error or reject) under an unstated policy that
+    coexists with a stated provider or model also carries an informational
+    ``trust_gate_policy_note``. The note never changes behavior.
+    """
+    result = await _propose_truth(trail, arguments, prompt_cache)
+    if result.get("status") in ("error", "rejected") and arguments.get("approval") != "human":
+        try:
+            note = ConfigStore.get().global_config.trust_gate_policy_note(
+                get_trust_gate_policy(trail.trail_name)
+            )
+        except Exception:  # diagnostics must never mask the real failure
+            note = None
+        if note:
+            result["trust_gate_policy_note"] = note
+    return result
+
+
+async def _propose_truth(
+    trail,
+    arguments: dict,
+    prompt_cache: TrustGatePromptCache | None = None,
+) -> dict[str, Any]:
     thought_id = arguments.get("thought_id", "")
     if not thought_id:
         return {"status": "error", "message": "thought_id is required"}
@@ -155,6 +178,14 @@ async def handle_propose_truth(
                 "message": "Approved by explicit operator action",
                 "trust_gate_egress": egress_notice,
             }
+        # Fail closed before any prompt/credential work or transmission when the
+        # chat policy names one of FAVA's Decisions-only models. Explicit human
+        # approval (above) needs no model and is unaffected.
+        if policy == "llm-oneshot":
+            try:
+                ConfigStore.get().global_config.check_review_model_for_policy(policy)
+            except ValueError as exc:
+                return {"status": "error", "message": str(exc)}
         if policy in ("llm-oneshot", "decisions") and prompt_cache is None:
             return {
                 "status": "error",
@@ -241,6 +272,10 @@ async def handle_propose_truth(
                     client=llm_client,
                     policy=policy,
                     trail_name=trail.trail_name,
+                    # The configured timeout applies to every HTTP attempt as well
+                    # as (via wait_for below) the whole call, so raising it helps
+                    # a slow local model instead of stopping at the client's 60 s.
+                    timeout=float(tg_timeout) if tg_timeout > 0 else 60.0,
                 )
             try:
                 if tg_timeout > 0:

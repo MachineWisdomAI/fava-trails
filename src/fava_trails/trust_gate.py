@@ -569,6 +569,7 @@ async def review_thought(
     policy: str = "llm-oneshot",
     *,
     trail_name: str | None = None,
+    timeout: float = 60.0,
 ) -> TrustResult:
     """Review a thought using the specified policy.
 
@@ -579,6 +580,9 @@ async def review_thought(
         client: LLMClient instance for making API calls.
         policy: Review policy ("llm-oneshot" or "human").
         trail_name: Scope path (e.g. 'codev-artifacts/Org/Repo/specs/26-foo').
+        timeout: Per-HTTP-attempt read/write timeout in seconds, passed to the
+            client. The caller's outer ``trust_gate_timeout_secs`` bounds the
+            whole call including retries.
 
     Returns:
         TrustResult with verdict, reasoning, and provenance.
@@ -618,6 +622,7 @@ async def review_thought(
                 model=model,
                 temperature=0,
                 response_format={"type": "json_object"},
+                timeout=timeout,
             )
             verdict, reasoning, confidence = _parse_verdict(response.content)
             returned_model = response.model or model

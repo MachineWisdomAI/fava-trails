@@ -172,6 +172,9 @@ async def _init_server() -> None:
     log_trust_gate_egress_notice(
         describe_trust_gate_egress(store.global_config, first_in_process=first)
     )
+    policy_note = store.global_config.trust_gate_policy_note()
+    if policy_note:
+        logger.info("%s", policy_note)
     if store.global_config.hooks:
         _hook_registry.load_from_entries(store.global_config.hooks, base_dir=store.data_repo_root)
 

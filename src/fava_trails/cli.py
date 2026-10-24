@@ -263,8 +263,173 @@ def cmd_init(args: argparse.Namespace) -> int:
     return 0
 
 
+_REVIEW_KEY_ENV_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_REVIEW_ENDPOINT_PATHS = frozenset({"", "/", "/v1", "/v1/"})
+_DESTINATION_KIND_LABELS = {
+    "local_endpoint": "loopback endpoint on this machine",
+    "custom_endpoint": "custom endpoint (not loopback; requests leave this machine)",
+    "remote_provider": "hosted provider (requests leave this machine)",
+}
+
+
+def _validate_review_endpoint(value: str) -> str:
+    """Validate a committed-and-possibly-pushed review endpoint.
+
+    Accepts a bare ``http(s)://host[:port][/v1]``. Userinfo, query, fragment and
+    any other path are refused. Error text never echoes the value because a
+    rejected value is exactly the kind that may hold a credential.
+    """
+    from urllib.parse import urlparse
+
+    raw = value.strip() if isinstance(value, str) else ""
+    problem = (
+        "--review-endpoint must be a bare http(s)://host[:port][/v1] URL without "
+        "credentials, query, fragment, or extra path segments"
+    )
+    if not raw or any(ch.isspace() or ord(ch) < 32 for ch in raw) or "?" in raw or "#" in raw:
+        raise ValueError(problem)
+    parsed = urlparse(raw)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ValueError(problem)
+    if parsed.username is not None or parsed.password is not None or "@" in parsed.netloc:
+        raise ValueError(problem)
+    try:
+        _ = parsed.port
+    except ValueError:
+        raise ValueError(problem) from None
+    if parsed.params or parsed.path not in _REVIEW_ENDPOINT_PATHS:
+        raise ValueError(problem)
+    return raw.rstrip("/")
+
+
+def _validate_review_options(args: argparse.Namespace) -> dict[str, str]:
+    """Return the validated review options that were supplied (possibly none)."""
+    from .models import DECISIONS_ONLY_MODELS
+
+    supplied: dict[str, str] = {}
+    endpoint = getattr(args, "review_endpoint", None)
+    model = getattr(args, "review_model", None)
+    key_env = getattr(args, "review_key_env", None)
+    if endpoint is not None:
+        supplied["trust_gate_api_base"] = _validate_review_endpoint(endpoint)
+    if model is not None:
+        model = model.strip()
+        if not model or len(model) > 200 or any(ch.isspace() or ord(ch) < 32 for ch in model):
+            raise ValueError("--review-model must be the exact served model id (no spaces)")
+        if model in DECISIONS_ONLY_MODELS:
+            raise ValueError(
+                "--review-model must name a model your OpenAI-compatible server serves; "
+                "the Jev model ids are Decisions-only and cannot be used for local review"
+            )
+        supplied["trust_gate_model"] = model
+    if key_env is not None:
+        key_env = key_env.strip()
+        if not _REVIEW_KEY_ENV_RE.match(key_env):
+            raise ValueError(
+                "--review-key-env must be the NAME of an environment variable "
+                "(letters, digits, underscore), not the credential itself"
+            )
+        supplied["trust_gate_api_key_env"] = key_env
+    return supplied
+
+
+def _is_loopback_review_endpoint(endpoint: str) -> bool:
+    from .trust_gate import _is_loopback_api_base
+
+    return _is_loopback_api_base(endpoint)
+
+
+_REVIEW_OPTION_FLAGS = {
+    "trust_gate_api_base": "--review-endpoint",
+    "trust_gate_model": "--review-model",
+    "trust_gate_api_key_env": "--review-key-env",
+}
+
+
+def _report_review_selection(target: Path, supplied: dict[str, str]) -> int:
+    """Report the effective review selection; return non-zero if it differs.
+
+    Bootstrap never writes the per-machine config. That file overrides the data
+    repository key by key, so after writing we load the effective configuration
+    and say what will actually happen. The repository already exists either way.
+    """
+    from .config import (
+        MACHINE_TRUST_GATE_KEYS,
+        _read_config_mapping,
+        get_machine_config_path,
+        load_effective_global_config,
+    )
+    from .trust_gate import (
+        _is_loopback_api_base,
+        describe_trust_gate_egress,
+        redact_trust_gate_api_base_for_disclosure,
+    )
+
+    print("\nReview (Trust Gate):")
+    try:
+        cfg = load_effective_global_config(target)
+        machine = _read_config_mapping(get_machine_config_path(), missing_ok=True)
+    except (OSError, ValueError) as exc:
+        print(f"  Could not evaluate the effective configuration: {exc}")
+        print("  Fix the per-machine config (see `fava-trails doctor`), then re-check.")
+        return 1
+
+    complete = len(supplied) == len(_REVIEW_OPTION_FLAGS)
+    overrides = sorted(MACHINE_TRUST_GATE_KEYS.intersection(machine))
+    try:
+        cfg.check_review_model_for_policy()
+        blocked = False
+    except ValueError:
+        blocked = True
+
+    egress = describe_trust_gate_egress(cfg)
+    kind = egress.get("destination_kind")
+    print(f"  policy:       {cfg.trust_gate}")
+    print(f"  provider:     {cfg.trust_gate_provider}")
+    print(f"  model:        {cfg.trust_gate_model}")
+    print(f"  endpoint:     {redact_trust_gate_api_base_for_disclosure(cfg.trust_gate_api_base) or '(provider default)'}")
+    print(f"  destination:  {_DESTINATION_KIND_LABELS.get(str(kind), kind)}")
+    print(f"  credential:   {egress.get('credential_source')} (name/source only)")
+    if overrides:
+        print("  per-machine config overrides: " + ", ".join(overrides))
+        print(f"    ({get_machine_config_path()} wins over this repository key by key)")
+
+    if complete:
+        requested_base = supplied["trust_gate_api_base"].rstrip("/")
+        effective_base = (cfg.trust_gate_api_base or "").rstrip("/")
+        differs = (
+            cfg.trust_gate != "llm-oneshot"
+            or cfg.trust_gate_provider != "openai"
+            or effective_base != requested_base
+            or cfg.trust_gate_model != supplied["trust_gate_model"]
+        )
+    elif blocked:
+        print("  status:       incomplete. Promotion fails closed with guidance until a local")
+        print("                model and endpoint are supplied. Nothing is sent.")
+        differs = False
+    else:
+        # Incomplete selection that nonetheless can transmit (a per-machine file
+        # supplied the rest): acceptable only if it stays on this machine.
+        differs = not (cfg.trust_gate_api_base and _is_loopback_api_base(cfg.trust_gate_api_base))
+
+    if differs:
+        print(
+            "Error: the effective review destination differs from the one requested. "
+            "The data repository was created, but a per-machine setting changes where "
+            "candidates are reviewed. Remove or adjust the override listed above.",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
 def cmd_bootstrap(args: argparse.Namespace) -> int:
     """Bootstrap a new FAVA Trails data repository."""
+    try:
+        review_options = _validate_review_options(args)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
     target = Path(args.path).expanduser().resolve()
 
     # Validate JJ is available
@@ -295,11 +460,22 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     remote_url: str | None = getattr(args, "remote", None)
 
     # Create config.yaml
-    config_data = {
+    # New installations review locally: llm-oneshot against an OpenAI-compatible
+    # server the operator names. Only a complete selection is written together;
+    # otherwise just the policy, so promotion fails closed with guidance rather
+    # than guessing an endpoint or model. Nothing is probed or downloaded.
+    complete_review = len(review_options) == len(_REVIEW_OPTION_FLAGS)
+    config_data: dict[str, object] = {
         "trails_dir": "trails",
         "remote_url": remote_url,
         "push_strategy": "manual",
+        "trust_gate": "llm-oneshot",
     }
+    if complete_review:
+        config_data["trust_gate_provider"] = "openai"
+        config_data["trust_gate_api_base"] = review_options["trust_gate_api_base"]
+        config_data["trust_gate_model"] = review_options["trust_gate_model"]
+        config_data["trust_gate_api_key_env"] = review_options["trust_gate_api_key_env"]
     config_path = target / "config.yaml"
     config_path.write_text(yaml.dump(config_data, default_flow_style=False, sort_keys=False))
     print("[1/6] Created config.yaml")
@@ -409,9 +585,39 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
         print("repository (`fava-trails clone <url> <path>`). FAVA does not create hosted")
         print("repositories, push private content, or change remotes automatically.")
         print("Do not use --sync-on-start until a reachable remote is configured.")
+    if complete_review:
+        print("\nLocal review is configured in config.yaml (committed to this repository).")
+        print(f"  Export {review_options['trust_gate_api_key_env']} before promoting; a server that ignores")
+        print("  authentication still needs a placeholder value. FAVA did not contact the endpoint.")
+        if remote_url and _is_loopback_review_endpoint(review_options["trust_gate_api_base"]):
+            print(
+                "Warning: the review endpoint is a loopback address but this repository has a remote. "
+                "Every clone inherits it and will look for a reviewer on its own machine; "
+                "use a per-machine config on each clone if they differ.",
+                file=sys.stderr,
+            )
+    else:
+        missing = [flag for key, flag in _REVIEW_OPTION_FLAGS.items() if key not in review_options]
+        print("\nReview is not fully configured: promotion will fail closed until you supply")
+        print(f"  {', '.join(missing)}")
+        print("  Edit config.yaml in this repository or the per-machine config, for example:")
+        print("    trust_gate_provider: openai")
+        print("    trust_gate_api_base: http://127.0.0.1:<port>/v1")
+        print("    trust_gate_model: <exact model id your server serves>")
+        print("    trust_gate_api_key_env: <NAME of the variable holding the credential>")
+        print("  FAVA does not probe localhost, choose a model, or fall back to a hosted provider.")
+        print(
+            "Warning: only 'trust_gate: llm-oneshot' was written. A fava-trails release without the "
+            "new model check reviews differently: 0.8.x posts the Decisions model as a chat request to "
+            "OpenRouter when OPENROUTER_API_KEY is set, and 0.7 and earlier use hosted "
+            "google/gemini-2.5-flash. Supply all of --review-endpoint, --review-model and "
+            "--review-key-env, or use a release that includes the check.",
+            file=sys.stderr,
+        )
+    review_rc = _report_review_selection(target, review_options)
     print("\nAvailable integrations:")
     print("  fava-trails integrate codev    Set up codev artifact storage with quality gate")
-    return 0
+    return review_rc
 
 
 def cmd_clone(args: argparse.Namespace) -> int:
@@ -683,6 +889,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         if disclosed_api_base:
             provider_line += f" api_base={disclosed_api_base}"
         print(provider_line)
+        policy_note = global_config.trust_gate_policy_note()
+        if policy_note:
+            print(f"  {policy_note}")
 
         egress = describe_trust_gate_egress(global_config)
         # Operator-facing disclosure before any promotion: destination, model, data categories.
@@ -1828,6 +2037,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_bootstrap.add_argument("path", help="Path to create the data repository")
     p_bootstrap.add_argument("--remote", metavar="URL", default=None, help="Git remote URL (optional)")
+    p_bootstrap.add_argument(
+        "--review-endpoint",
+        metavar="URL",
+        default=None,
+        help="Local OpenAI-compatible review server, http(s)://host[:port][/v1] (no credentials, query, or other path)",
+    )
+    p_bootstrap.add_argument(
+        "--review-model",
+        metavar="ID",
+        default=None,
+        help="Exact model id the review server serves",
+    )
+    p_bootstrap.add_argument(
+        "--review-key-env",
+        metavar="NAME",
+        default=None,
+        help="NAME of the environment variable holding the review credential (a placeholder if the server ignores auth)",
+    )
     p_bootstrap.set_defaults(func=cmd_bootstrap)
 
     # clone

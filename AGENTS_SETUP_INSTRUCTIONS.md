@@ -33,9 +33,12 @@ publication note.
 
 ### LLM Configuration (for Trust Gate)
 
-The Trust Gate reviews thoughts before promotion using OpenRouter Decisions
-(Jev) by default, an explicit `llm-oneshot` rubric, **or** an explicit
-operator approval path. Provider selection is a **data-egress choice**: under the
+The Trust Gate reviews thoughts before promotion using a local
+OpenAI-compatible `llm-oneshot` reviewer that you name (new data repositories
+created by `fava-trails bootstrap` from **0.9.0**), OpenRouter Decisions (Jev),
+or an explicit operator approval path. Releases through 0.8.x and any existing
+configuration keep their current behavior: with no Trust Gate settings, the
+built-in default is still OpenRouter Decisions (Jev). Provider selection is a **data-egress choice**: under the
 shipped `decisions` policy, the full scope-resolved Trust Gate prompt, the full
 candidate thought content, the selected metadata fields (`agent_id` and
 `metadata.extra` are excluded), and the configured Noul question are transmitted
@@ -60,7 +63,75 @@ that process). Early validation failures — missing `thought_id`, missing promp
 cache, thought not found, or prompt-resolution errors — return before disclosure
 and omit `trust_gate_egress`.
 
-**OpenRouter (default, remote egress):**
+**New installations: local review (0.9.0 and later; no hosted account needed):**
+
+`fava-trails bootstrap` selects the `llm-oneshot` policy and asks you to name
+the reviewer. You supply the endpoint and the exact model id your server
+serves. FAVA does not assume hardware, download a model, probe localhost, or
+read a default credential variable.
+
+```bash
+export LOCAL_REVIEW_KEY=placeholder   # a server that ignores authentication still needs a value
+fava-trails bootstrap fava-trails-data \
+  --review-endpoint http://127.0.0.1:8080/v1 \
+  --review-model <exact-model-id-your-server-serves> \
+  --review-key-env LOCAL_REVIEW_KEY
+```
+
+With all three options, bootstrap writes `trust_gate: llm-oneshot`,
+`trust_gate_provider: openai`, `trust_gate_api_base`, `trust_gate_model` and
+`trust_gate_api_key_env` (the variable *name*, never the value) to the data
+repository's `config.yaml`, so every clone behaves the same. The endpoint must
+be a bare `http(s)://host[:port][/v1]`: URLs with credentials, a query,
+a fragment or other path segments are refused because the value is committed
+and may be pushed. Bootstrap warns when a loopback endpoint is combined with
+`--remote`, since every clone inherits it.
+
+With any option missing, bootstrap writes only `trust_gate: llm-oneshot`, tells
+you which options to supply, and finishes. Until the endpoint and model are set
+(in that `config.yaml` or the per-machine config below), `propose_truth` and
+`fava-trails doctor` stop with guidance and nothing is transmitted. A repository
+bootstrapped this way behaves differently on a release without the new check:
+0.8.x posts the Decisions model as a chat request to OpenRouter when
+`OPENROUTER_API_KEY` is set, and 0.7 and earlier use hosted
+`google/gemini-2.5-flash`. Upgrade, or supply all three options.
+
+Bootstrap never writes the per-machine config, which is shared by every data
+repository on the machine and overrides it key by key. After writing, bootstrap
+loads the effective configuration and reports the policy, model, endpoint,
+destination kind and every Trust Gate key a per-machine file overrides. It exits
+non-zero when the effective destination differs from the one you requested (the
+repository is still created). "No request leaves the machine" therefore holds
+only when that report shows no override that redirects it.
+
+Failures never fall back to a hosted provider. A server that is down, returns
+401, or sends a malformed reply produces a recorded `error` verdict and
+promotes nothing; a missing credential, missing setting or outer timeout is a
+tool error and the record is unchanged. A local reviewer's explanation is
+returned to the caller in `trust_gate.reasoning`. Jev (`decisions`) returns a
+probability and threshold only, and none of its reasoning is invented. A slow
+local model needs a higher `trust_gate_timeout_secs`, which now applies to each
+request as well as to the whole review (keep it below `tool_timeout_secs`).
+Evidence so far is fixture tests; whether a particular model gives useful
+rejection feedback is for you to confirm with your own server.
+
+**Existing configurations are not rewritten.** Built-in defaults and per-key
+fallback are unchanged, so an existing explicit Jev (`decisions`) selection, a
+local Laya Decisions configuration, or a hosted `llm-oneshot` configuration
+resolves exactly as before. Two additions apply:
+
+- `trust_gate: llm-oneshot` with FAVA's own Decisions model (`~typesafe/jev-latest`,
+  the built-in default, or `typesafe/jev-1.13`) is refused before transmission
+  with an error naming `trust_gate_model`. Set the chat model your server serves,
+  or `trust_gate: decisions` to keep Jev. Explicit operator
+  `approval="human"` needs no model and is unaffected.
+- When `trust_gate` is not stated but a provider or model is, `fava-trails doctor`,
+  server startup logging and a failed promotion add an informational note naming
+  the policy that took effect and `trust_gate: llm-oneshot` as the fix for a chat
+  model. Behavior is unchanged; the note also appears for a correct local
+  Decisions configuration, and stating the policy silences it.
+
+**OpenRouter (hosted Decisions; the built-in default when nothing is configured, remote egress):**
 
 1. Create a free account at https://openrouter.ai/
 2. Generate an API key at https://openrouter.ai/keys
@@ -189,8 +260,15 @@ A local JJ/Git data repository is valid for evaluation. Bootstrap without a
 remote:
 
 ```bash
-fava-trails bootstrap fava-trails-data
+fava-trails bootstrap fava-trails-data \
+  --review-endpoint http://127.0.0.1:8080/v1 \
+  --review-model <exact-model-id-your-server-serves> \
+  --review-key-env LOCAL_REVIEW_KEY
 ```
+
+The three `--review-*` options configure the local reviewer (0.9.0 and later; see
+[LLM Configuration](#llm-configuration-for-trust-gate)). Without them,
+bootstrap tells you what to supply and promotion fails closed until you do.
 
 Save, recall, review, and supersession work without a git remote. `sync`
 returns `not_configured` with the next step (`git remote add origin <url>` or
@@ -284,7 +362,8 @@ push_strategy: manual                     # bootstrap default: local commits onl
 # push_strategy: immediate                # recommended multi-machine: auto-push after writes
                                           # sync MCP tool never pushes — fetch/rebase only
 
-# Trust Gate (shipped policy is decisions / OpenRouter Jev)
+# Trust Gate (built-in default when unstated: decisions / OpenRouter Jev;
+# `fava-trails bootstrap` 0.9.0+ writes llm-oneshot plus the local reviewer you name)
 trust_gate: decisions                     # decisions | llm-oneshot
 trust_gate_provider: openrouter           # any-llm provider id (openrouter | openai | ...)
 trust_gate_model: ~typesafe/jev-latest    # tracking alias; pin typesafe/jev-1.13 if desired
@@ -328,7 +407,7 @@ trails:
 | `trails_dir` | string | `trails` | Directory for trail data (relative to repo root) |
 | `remote_url` | string | `null` | Git remote URL for sync |
 | `push_strategy` | string | `manual` | `immediate` auto-pushes after successful writes (advances `main` to `@-` then pushes); `manual` (bootstrap default) keeps commits local until the operator runs `jj bookmark set main -r @-` then `jj git push --bookmark main`. The `sync` tool only fetches/rebases and never publishes. |
-| `trust_gate` | string | `decisions` | Global trust gate policy. **Shipped default: `decisions`** (OpenRouter Jev). Explicit `llm-oneshot` remains supported. `human` is unimplemented (raises `NotImplementedError`). Non-LLM path is per-call `propose_truth(..., approval="human")` on an operator endpoint, not this config field. |
+| `trust_gate` | string | `decisions` | Global trust gate policy. **Built-in default when unstated: `decisions`** (OpenRouter Jev); `bootstrap` from 0.9.0 writes `llm-oneshot` for new data repositories. `llm-oneshot` with a Decisions-only model (`~typesafe/jev-latest`, `typesafe/jev-1.13`) is refused before transmission. `human` is unimplemented (raises `NotImplementedError`). Non-LLM path is per-call `propose_truth(..., approval="human")` on an operator endpoint, not this config field. |
 | `trust_gate_provider` | string | `openrouter` | any-llm provider id (`openrouter`, `openai`, …) |
 | `trust_gate_model` | string | `~typesafe/jev-latest` | Exact model id or alias. Chat-completions models (e.g. `google/gemini-2.5-flash`) are for explicit `llm-oneshot`. |
 | `trust_gate_api_base` | string | `null` | Optional API root. Decisions default is `https://openrouter.ai/api`; OpenAI-compatible local endpoints use `/v1`. |

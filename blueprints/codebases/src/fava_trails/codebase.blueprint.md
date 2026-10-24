@@ -9,9 +9,9 @@ implemented_features: [review_and_recall_lifecycle]
 ## Status
 
 - This document records inspected implementation; it grants no design approval, so it carries no design status.
-- Inspected at `fava-trails@0f7c01f`, version 0.8.5rc1.
+- Inspected at `fava-trails@0f7c01f`, version 0.8.5rc1; updated for PRREF (version 0.9.0-rc.1), which adds the local-review default.
 - Covers the review-and-recall lifecycle and the review gate. Rich views, the secure-tunnel gateway, duplicate maintenance and the ACE/RLM/SECOM protocol hooks are present in the tree but not described here.
-- [Local review default](../../../features/local_review_default.blueprint.md) is proposed and not implemented.
+- [Local review default](../../../features/local_review_default.blueprint.md) is implemented in PRREF and unpublished.
 
 ## Where behavior lives
 
@@ -27,10 +27,10 @@ implemented_features: [review_and_recall_lifecycle]
 | `llm/` | Chat-completion client over `any-llm-sdk`. Forwards the configured model id unchanged for non-default providers or custom base URLs. | Policy. |
 | `decisions.py` | Decisions HTTP client and response validation. | Threshold comparison (in `trust_gate.py`). |
 | `credentials.py` | Key lookup from an owner-only file or environment variable. | Where the key is stored. |
-| `models.py`, `config.py` | Record schema, `GlobalConfig` defaults and validators, machine-over-data-repo config merge, scope and namespace validation. | — |
+| `models.py`, `config.py` | Record schema, `GlobalConfig` defaults and validators, the Decisions-only model check and the unstated-policy note, machine-over-data-repo config merge, scope and namespace validation. | — |
 | `secret_preflight.py` | Refuses a bounded set of obvious credential shapes before persist or transmit. | Complete leak prevention. |
 | `vcs/jj_backend.py` | Every Jujutsu command; `commit_files` asserts that only the expected paths are dirty. | — |
-| `cli.py` | `bootstrap`, `doctor` and operator commands. | Server behavior. |
+| `cli.py` | `bootstrap` (including `--review-endpoint`, `--review-model`, `--review-key-env`, endpoint validation and the effective-configuration report), `doctor` and operator commands. | Server behavior. |
 
 ## Contract mapping
 
@@ -40,9 +40,9 @@ implemented_features: [review_and_recall_lifecycle]
 
 ## Known gaps and limits
 
-- Defaults are applied per key, so partial configurations can pair constants from different backends (see [Local review default](../../../features/local_review_default.blueprint.md)).
+- Defaults are applied per key, so partial configurations can still pair constants from different backends. The one pairing that is always wrong, `llm-oneshot` with a Decisions-only model, is refused at promotion, doctor and tunnel preflight; the others are diagnosed with an informational note and left unchanged (see [Local review default](../../../features/local_review_default.blueprint.md)).
 - `save_thought`, `update_thought` and `learn_preference` write the file before the Jujutsu steps and do not use the governance journal. An interrupted write can leave a dirty working copy.
-- `llm-oneshot` review leaves each HTTP attempt at the client's 60 s default and retries transport failures up to three times; `trust_gate_timeout_secs` bounds the whole call but is not passed down. The Decisions client honors it.
+- `llm-oneshot` retries transport failures up to three times; `trust_gate_timeout_secs` is now passed to each attempt and also bounds the whole call, so one slow reviewer can still use up to three times the setting before the outer bound applies.
 - `save_global_config` persists every field, defaults included, so a command that rewrites `config.yaml` turns unstated Trust Gate keys into stated ones.
 - Recall is lexical. There is no semantic search.
 - `trust_gate: human` is accepted by the schema and raises when used.
@@ -50,4 +50,4 @@ implemented_features: [review_and_recall_lifecycle]
 
 ## Verification
 
-Run on this revision with `python -m pytest` over `tests/test_config.py`, `test_machine_trust_gate_config.py`, `test_trust_gate.py`, `test_trust_gate_local_provider.py`, `test_trust_gate_decisions.py`, `test_trust_gate_egress.py`, `test_governance.py`, `test_local_only_sync.py` and `test_navigation_tools.py`: 236 passed. These use fixture servers and a local Jujutsu 0.45.1. They are not evidence of review quality from a real model, and they are a subset of the full suite.
+Run on `fava-trails@0f7c01f` with `python -m pytest` over `tests/test_config.py`, `test_machine_trust_gate_config.py`, `test_trust_gate.py`, `test_trust_gate_local_provider.py`, `test_trust_gate_decisions.py`, `test_trust_gate_egress.py`, `test_governance.py`, `test_local_only_sync.py` and `test_navigation_tools.py`: 236 passed. These use fixture servers and a local Jujutsu 0.45.1. They are not evidence of review quality from a real model, and they are a subset of the full suite. PRREF adds `tests/test_local_review_default.py`, and the full suite passed on its head.
