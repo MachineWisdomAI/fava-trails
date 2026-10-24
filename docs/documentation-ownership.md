@@ -12,10 +12,10 @@ Each fact has one authoritative source. Other documents summarize it and link to
 | How to install and configure: per-machine setup, providers, credentials | [AGENTS_SETUP_INSTRUCTIONS.md](../AGENTS_SETUP_INSTRUCTIONS.md) | README quick start, website Quick Start |
 | Tool parameters and results | [AGENTS.md](../AGENTS.md) | Tool descriptions in `server.py` |
 | Session protocol for agents | [AGENTS_USAGE_INSTRUCTIONS.md](../AGENTS_USAGE_INSTRUCTIONS.md) | Website agent guidance |
-| Operating rules: visibility modes, identity setup, replacement, interrupted-write guarantees and recovery | [governed-recall.md](governed-recall.md) | README feature list and durable-writes bullet, website, agent summaries |
+| Operating rules: visibility modes, identity setup, replacement, interrupted-write guarantees and recovery | [governed-recall.md](governed-recall.md) | README fit-and-limits section, website, agent summaries |
 | Why the lifecycle works as it does: flow, publication, failure behavior | [Review-and-recall lifecycle](../blueprints/features/review_and_recall_lifecycle.blueprint.md) | Website lifecycle pages, case study |
-| The review gate's contract and the reasons behind it | [Review gate](../blueprints/modules/review_gate.blueprint.md) | Setup guide, README Trust Gate paragraph |
-| Which reviewer new installations use, and how existing configuration is preserved | [Local review default](../blueprints/features/local_review_default.blueprint.md) | Setup guide and README Trust Gate paragraph. Say "from 0.9.0"; do not describe it as installed until a package containing it is published. |
+| The review gate's contract and the reasons behind it | [Review gate](../blueprints/modules/review_gate.blueprint.md) | Setup guide, README Choose a reviewer section |
+| Which reviewer new installations use, and how existing configuration is preserved | [Local review default](../blueprints/features/local_review_default.blueprint.md) | Setup guide and README Choose a reviewer section. Say "from 0.9.0"; do not describe it as installed until a package containing it is published. |
 | A recorded end-to-end walkthrough: local reviewer setup through rejection, revision, approval, recall and correction | [local-review-walkthrough.md](local-review-walkthrough.md) | README entry link, website operator guide. Candidate-evidence note changes only when a release is published. |
 | Runtime identity and upgrades | [runtime-and-upgrade.md](runtime-and-upgrade.md) | README upgrade notes |
 | Release history | [CHANGELOG.md](../CHANGELOG.md), [releases/](releases/) | None. History is never edited to match later behavior. |

@@ -8,188 +8,111 @@
 
 **Federated Agents Versioned Audit Trail**, an open-source agent memory system by [Machine Wisdom AI](https://machine-wisdom.ai/).
 
-FAVA Trails helps agents share reviewed decisions across sessions and environments. Agents save drafts, submit them for review, and recall approved records with a history of what changed. Records are Markdown files with YAML frontmatter in a Git-compatible repository you control, exposed through [MCP](https://modelcontextprotocol.io/) tools.
+FAVA Trails helps agents share reviewed decisions across sessions and environments. Agents save drafts, a configured reviewer decides which drafts become shared records, and agents recall approved records with a history of what changed. Records are Markdown files with YAML frontmatter in a Git-compatible repository you control, exposed through [MCP](https://modelcontextprotocol.io/) tools and versioned with [Jujutsu (JJ)](https://jj-vcs.github.io/jj/).
 
-[Get started](#install) · [Product website](https://fava-trails.org/) · [Two-agent case study](https://fava-trails.org/case-study/) · [Machine Wisdom AI's engineering writing](https://machine-wisdom.ai/writing/)
-
-## New in 0.8: Jev at the memory boundary
-
-An agent can write a plausible conclusion in seconds. Deciding whether the next
-agent should inherit it deserves a separate step. FAVA Trails 0.8 uses
-[TypeSafe Jev through OpenRouter Decisions](https://openrouter.ai/blog/insights/what-is-jev/)
-as its default Trust Gate for new installs: one typed question, an explicit
-approval threshold, and a review record you can inspect.
-
-Jev scores the candidate against the supplied memory policy. FAVA applies the
-threshold, records the returned model and probability, and makes approved
-records available through governed recall. Failed reviews stop promotion.
-Your records remain versioned Markdown in your own repository.
-
-[Read the 0.8.0 release notes](docs/releases/v0.8.0.md) for the calibration
-results, existing-install configuration, and data-egress details. Review is a
-quality control step; it does not establish that a claim is true.
+[Evaluate](#fit-and-limits) · [Install](#install) · [Operate](#operating-fava-trails) · [Contribute](#contributing) · [Release history](CHANGELOG.md) · [Product website](https://fava-trails.org/) · [Machine Wisdom AI's engineering writing](https://machine-wisdom.ai/writing/)
 
 ## Why we built FAVA Trails
 
 An observation from one agent can become an assumption for the next. Machine Wisdom AI built FAVA Trails to give that transition an explicit review boundary: saving a thought does not make it accepted knowledge, and an approved correction preserves the record it replaces. The result is a shared history that agents can query and operators can inspect.
 
-This is useful when several agents reuse decisions, when work continues across sessions, or when you need to trace why a remembered conclusion changed. Review remains a quality control step; it does not independently verify the facts. The [governed recall guide](docs/governed-recall.md) describes the identity and visibility boundaries.
+FAVA is the governed institutional record for decisions, observations, validation evidence and lineage. It is not an operational working-context store.
 
-## Governed recall
+## Fit and limits
 
-> **Release status:** The governed visibility model below ships in
-> [FAVA Trails 0.7.0](https://github.com/MachineWisdomAI/fava-trails/releases/tag/v0.7.0),
-> published to PyPI and GitHub on September 13, 2026. Older **0.6.0** does **not**
-> include these governed-read isolation / MCP registration fixes. Confirm what
-> you loaded with `fava-trails version` — see [docs/runtime-and-upgrade.md](docs/runtime-and-upgrade.md).
+FAVA Trails is a good fit when several agents or sessions reuse each other's decisions, when work continues across sessions or machines, or when you need to trace why a remembered conclusion changed. It is also a good fit when you want to choose the reviewer, including a model served from your own infrastructure, and keep the records in a repository you can read, diff and back up.
 
-FAVA is the governed institutional record for decisions, observations, validation,
-and lineage. It is not the operational working-context store. Default `recall`
-and `get_thought` expose current approved records only. Explicit `mode="authoring"`
-retrieves only the server-configured agent's draft/proposed records; operator-only
-`mode="history"` selects lifecycle statuses and superseded records. Neither a
-namespace nor a supplied `agent_id` grants access. See [governed-recall.md](docs/governed-recall.md)
-for identity setup, compatibility, approval provenance, and interrupted-write recovery.
+It is a poor fit in these cases:
 
-The operator configures `FAVA_TRAILS_AGENT_ID` on a dedicated process; caller
-`agent_id` must match it. A shared endpoint is one identity boundary. Configure
-`FAVA_TRAILS_OPERATOR=1` only on a separate operator-controlled endpoint.
+- **One agent, one session.** A plain notes file avoids the overhead of a review lifecycle.
+- **Search by meaning.** `recall` lowercases the query, splits it on whitespace, and requires every token to appear as a substring of the record's searchable text. Paraphrases and synonyms miss. See [docs/retrieval-baseline.md](docs/retrieval-baseline.md) for the matching rules and a shareable synthetic matrix.
+- **Fact checking.** The reviewer applies a rubric or a probability threshold to one candidate with limited context. It does not verify project facts, and a convincing false claim can be approved. It does not compare a candidate with existing records, so approved records can still disagree with one another.
+- **Isolation between agents on one endpoint.** A shared MCP endpoint or shared data filesystem is one identity boundary, not per-caller isolation.
+- **Review text that must stay inside your network, with no reviewer you can run there.** Under a remote reviewer the candidate has already been sent when a rejection returns.
 
-For a long-lived private ChatGPT connection, follow the deployment-neutral
-[Secure MCP Tunnel operator guide](docs/secure-mcp-tunnel.md).
+Further limits to plan for:
 
-## Why
+- **Supersession records lineage.** An approved correction replaces the earlier record in default recall and links back to it. It does not prove the replacement is true.
+- **Model approval is advisory.** A model verdict is recorded as `llm_advisory`, which differs from explicit operator approval (`human`) and is not human review.
+- **Writes are durable, not atomic across steps.** A successful tool return means the write finished. `save_thought` and `update_thought` write the file before their commit steps, so an interruption can leave a recoverable working copy that an operator should inspect. Approval, rejection and supersession use a before-image journal. See [docs/governed-recall.md](docs/governed-recall.md).
+- **Secret preflight is bounded.** A [local preflight](docs/secret-preflight.md) refuses a small set of high-confidence credential shapes before a write or promotion stores or transmits them. It is not complete data-loss prevention and does not erase records that are already stored.
 
-- **Supersession tracking** — a proposed correction leaves the original current; approved replacements make predecessors historical in default recall. Lineage is recorded; supersession does **not** prove the replacement is true.
-- **Draft isolation (0.7.0)** — working thoughts stay in `drafts/`. Default governed `recall`/`get_thought` expose approved current records only; own drafts need explicit `mode="authoring"` on a configured identity. A shared MCP endpoint or shared data filesystem is one boundary, not per-caller crypto isolation. Published **0.6.0** does not match this isolation model — upgrade/check the loaded version before relying on it.
-- **Trust Gate** — the built-in default policy when nothing is configured is `decisions` (OpenRouter TypeSafe Jev: one typed Noul question and a calibrated threshold); `fava-trails bootstrap` from 0.9.0 instead selects `llm-oneshot` against a local OpenAI-compatible server you name (`--review-endpoint`, `--review-model`, `--review-key-env`). Explicit `llm-oneshot` rubric review and operator `propose_truth(..., approval="human")` remain supported. Review is process control with limited context — **not** independent verification of project facts, and not a guarantee that hallucinations never enter shared truth. A reject does not mean the draft was never stored or sent for review. A separate [bounded obvious-secret preflight](docs/secret-preflight.md) refuses a small set of high-confidence credential shapes before normal write and promotion paths persist or transmit them. It is not complete DLP and does not erase already-stored records.
-- **Lexical recall** — `recall` matches lowercased whitespace-separated query tokens as substrings across content and selected metadata (AND). It is not semantic similarity search. See [docs/retrieval-baseline.md](docs/retrieval-baseline.md).
-- **Full lineage** — every thought carries who wrote it, when, and why it changed.
-- **Durable writes** — a successful tool return means the thought file and JJ commit path finished for that operation. File write still precedes several awaited JJ steps, so interruption can leave a recoverable dirty or incomplete working copy; it is not a guarantee of fully atomic multi-step commits or “no dirty working copy.”
-- **Engine/Fuel split** — this repo is the engine MCP process (retains managers/hooks in memory; durable corpus is not embedded). Your data lives in a separate Fuel repo you control.
+## How it works
+
+Four steps cover one record's life, and publication to other machines is a separate fifth step.
+
+1. **Save a draft.** `save_thought` writes a draft under `drafts/`. Default `recall` and `get_thought` return approved current records only. A process reads its own drafts with explicit `mode="authoring"`.
+2. **Ask for review.** `propose_truth` sends the candidate to the configured reviewer, which approves or rejects it. Approval promotes the record, for example to `observations/` or `decisions/`. A rejected draft is frozen, and the author saves a revision with `parent_id` pointing at it.
+3. **Recall approved records.** Governed recall returns approved records that have no approved successor.
+4. **Correct by supersession.** `supersede` creates a draft successor and leaves the original current. When the successor is approved, the original becomes historical in default recall and both records keep their links.
+5. **Publish and sync.** Other machines see approved records after they are published to a shared remote and the reader calls `sync`. See [Sharing across machines](#sharing-across-machines).
+
+Agents call MCP tools and never run version control commands. A minimal sequence looks like this:
+
+```
+save_thought(trail_name="myorg/eng/my-project", content="My finding about X", source_type="observation")
+  → draft in drafts/, not visible under default governed recall
+
+propose_truth(trail_name="myorg/eng/my-project", thought_id=thought_id)
+  → reviewer decides; an approved thought moves to observations/
+
+recall(trail_name="myorg/eng/my-project", query="X")
+  → matches because the token "x" appears in the content
+```
+
+Three visibility modes apply to `recall` and `get_thought`:
+
+| Mode | Records | Authority |
+| --- | --- | --- |
+| `governed` (default) | Approved records without an approved successor | Shared readers |
+| `authoring` | The process's own draft and proposed records in the scopes you select | Server-configured agent identity |
+| `history` | Selected lifecycle statuses, optionally superseded records | Operator-controlled endpoint |
+
+Neither a namespace nor a supplied `agent_id` grants access. [docs/governed-recall.md](docs/governed-recall.md) owns identity setup, approval provenance, replacement rules and interrupted-write recovery.
+
+For a complete lifecycle against a local reviewer, with two rejections, a revision, an approval and a correction, follow the [local review walkthrough](docs/local-review-walkthrough.md). It records one run on 24 October 2026 with one model and is not a benchmark.
 
 ## Install
 
-### Prerequisites
-
-FAVA Trails uses [Jujutsu (JJ)](https://jj-vcs.github.io/jj/) as its storage engine, running in colocate mode alongside Git. Your repo remains a standard Git repo (GitHub and CI/CD see normal commits). Publishing local commits uses `push_strategy: immediate` (auto-push after successful writes) or the full manual protocol `jj bookmark set main -r @-` then `jj git push --bookmark main` (completed writes sit at `@-`). The `sync` MCP tool itself only fetches/rebases shared truth; it is not how you publish, although under `push_strategy: immediate` the server's after-write push also runs after a successful `sync`. One-time install:
+FAVA Trails needs [Jujutsu (JJ)](https://jj-vcs.github.io/jj/) 0.28.0 or later, which runs in colocate mode alongside Git so your data repository remains a standard Git repository.
 
 ```bash
+pip install --upgrade fava-trails
+fava-trails version
 fava-trails install-jj
 ```
 
-This reuses any already-installed JJ at or above the supported minimum (**0.28.0**), including newer versions. It never silently downgrades or overwrites a user-managed `jj`. When installation is needed, it resolves the current official GitHub stable release (override with `--version` / `JJ_VERSION` for reproducible environments). See [docs/jj-compatibility.md](docs/jj-compatibility.md).
+`fava-trails install-jj` reuses any JJ at or above the supported minimum, newer versions included, and never silently downgrades or overwrites a user-managed `jj`. When it needs to install JJ it resolves the current official GitHub stable release, and `--version` or `JJ_VERSION` pins one for reproducible environments. See [docs/jj-compatibility.md](docs/jj-compatibility.md).
 
-### From PyPI (recommended)
+`fava-trails version` prints the product version, the MCP SDK version and the loaded module path. Run it after every upgrade, because a local `uv run --directory` or vendor selector can keep an older checkout active. Restart the MCP client registration after you change the install. [docs/runtime-and-upgrade.md](docs/runtime-and-upgrade.md) explains how to check which install your client launches.
 
-```bash
-pip install fava-trails
-```
+> **Release boundary.** This README describes the source on the main branch. Source features marked "from 0.9.0", including the local-reviewer bootstrap options and the recorded walkthrough, are not in a published package until a release announces them. The walkthrough was recorded on an installed 0.9.0rc1 candidate. Compare the output of `fava-trails version` with the [release history](CHANGELOG.md) before relying on a described behavior.
 
-**Publication note:** [0.7.0 is published on PyPI](https://pypi.org/project/fava-trails/0.7.0/)
-with governed-recall, MCP registration, and the feedback-driven fixes below.
-Confirm what you actually loaded with
-`fava-trails version` (see [docs/runtime-and-upgrade.md](docs/runtime-and-upgrade.md)).
-Local `uv run --directory …` or vendor checkout selectors can keep an older tree
-active after a package upgrade — restart the MCP client registration after
-changing the install.
+To work from source, see [Contributing](#contributing).
 
-### From source (for development)
+## Quick start
+
+Create a local data repository. A local JJ and Git repository with no remote is a valid evaluation setup. Save, recall, review and supersession work without one, and FAVA never creates a hosted repository, pushes private content or changes remotes automatically.
 
 ```bash
-git clone https://github.com/MachineWisdomAI/fava-trails.git
-cd fava-trails
-uv sync
+fava-trails bootstrap "$PWD/fava-trails-data"
+export FAVA_TRAILS_DATA_REPO="$PWD/fava-trails-data"
+fava-trails doctor
 ```
 
-## Quick Start
+`fava-trails doctor` and `fava-trails register` resolve the data repository from `FAVA_TRAILS_DATA_REPO`, which defaults to `~/.fava-trails`. Export the absolute path of the repository you just created before you run either command. Otherwise they can inspect, or print registration for, an unrelated repository that already exists at the default location. `doctor` reports the effective reviewer destination and model for that repository, merged with any per-machine overrides.
 
-### Set up your data repo
+To use an existing shared repository, clone it instead with `fava-trails clone https://github.com/YOUR-ORG/fava-trails-data.git "$PWD/fava-trails-data"`, then export the same absolute path.
 
-**Local-only evaluation (no git remote):**
-
-A separate local JJ/Git repository is a valid evaluation setup. Save, recall,
-review, and supersession work without a remote. FAVA never creates a hosted
-repository, pushes private content, or changes remotes automatically.
-
-```bash
-fava-trails bootstrap fava-trails-data
-```
-
-The `sync` tool reports status `not_configured` until an operator adds a
-reachable remote. That is not a broken remote. Do not enable tunnel
-`--sync-on-start` on a local-only repository; required startup sync stays
-fail-closed.
-
-**New shared data repo (from scratch):**
-
-```bash
-# Create an empty repo on a git host you already operate, then clone it
-git clone https://github.com/YOUR-ORG/fava-trails-data.git
-
-# Bootstrap it (creates config, .gitignore, initializes JJ in colocate mode)
-fava-trails bootstrap fava-trails-data
-```
-
-**Existing data repo (clone from remote):**
-
-```bash
-fava-trails clone https://github.com/YOUR-ORG/fava-trails-data.git fava-trails-data
-```
-
-### Register the MCP server
-
-FAVA uses MCP SDK 2.2 or later within the 2.x series. Existing stdio client
-configuration and the private Streamable HTTP endpoint remain supported, including
-legacy `initialize` clients. Tool input/output schemas, annotations, and structured
-responses are preserved. Restart a configured server after updating its package;
-installing the package alone does not update a running process.
-
-`initialize` advertises FAVA's **product** version in `serverInfo.version`. That
-value is not the MCP SDK distribution version. Use `fava-trails version` to print
-both, plus the loaded module path, without credentials.
-
-Direct stdio testing is not native registration. Print current instructions that
-use an ordinary server-configured agent identity, the resolved `fava-trails-server`
-executable, and the intended data repository:
+Print registration instructions for your MCP client with an ordinary server-configured identity:
 
 ```bash
 fava-trails register --agent-id claude-code
 ```
 
-Optional client-config write is explicit (`--write`). It preserves unrelated client
-settings, writes atomically, keeps a `.bak` backup, opens backup and replacement
-files with the final mode before writing, caps that mode at `0600` (stricter
-existing modes are kept), refuses non-writable existing configs, and reports
-permission denial without bypassing client controls. Unresolved `fava-trails-server`
-is an error unless `--executable` names an existing executable. `--verify` runs a
-direct MCP smoke test, inspects the client config, and loads that config through
-MCP Inspector. Diagnostics label which ran. Inspector success is
-`inspector_config_load`, not a Claude Code/Desktop session. Missing Inspector is
-`inspector_unavailable`; invocation/download failures, config load failures, server
-spawn failures, MCP initialize failures, stale runtime paths, and registration not
-loaded stay distinct. Native-session evidence that a client loaded Claude-shaped
-`mcpServers` config is `tests/test_mcp_protocol.py::test_native_client_registration_loads_and_initializes`.
+This prints only. `--write` updates a client configuration while preserving unrelated settings and keeping a backup, and `--verify` runs a direct smoke test and a configuration load check. A desktop client starts the server in its own process and may not inherit your shell exports. Its registration therefore carries the same absolute `FAVA_TRAILS_DATA_REPO` and, when you deliberately isolate per-machine overrides, the intended `XDG_CONFIG_HOME`. [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) covers Claude Code and Claude Desktop, and [Client registration examples](#client-registration-examples) covers Windows with WSL, OpenAI Codex CLI and other MCP clients.
 
-```bash
-fava-trails register --write --verify --config ~/.claude.json --agent-id claude-code
-```
-
-Set `FAVA_TRAILS_AGENT_ID` on each ordinary authoring process. A shared endpoint
-is one identity boundary; `FAVA_TRAILS_OPERATOR=1` belongs only on a separate
-operator endpoint. Details:
-[docs/governed-recall.md](docs/governed-recall.md) and
-[docs/runtime-and-upgrade.md](docs/runtime-and-upgrade.md).
-
-Add to your MCP client config:
-- **Claude Code CLI**: `~/.claude.json` (top-level `mcpServers` key)
-- **Claude Desktop**: `claude_desktop_config.json`
-
-Authoring endpoints must set a stable process identity (`FAVA_TRAILS_AGENT_ID`).
-Without it the server rejects writes. Omit the identity only for deliberate
-read-only / governed-read setups.
-
-**If installed from PyPI (authoring):**
+A registration has this shape, with the `command` field and paths adapted to your install:
 
 ```json
 {
@@ -198,34 +121,22 @@ read-only / governed-read setups.
       "command": "fava-trails-server",
       "env": {
         "FAVA_TRAILS_DATA_REPO": "/path/to/fava-trails-data",
-        "FAVA_TRAILS_AGENT_ID": "claude-code",
-        "OPENROUTER_API_KEY": "sk-or-v1-..."
+        "FAVA_TRAILS_AGENT_ID": "claude-code"
       }
     }
   }
 }
 ```
 
-**If installed from source (authoring):**
+Authoring endpoints must set a stable `FAVA_TRAILS_AGENT_ID`, and the server rejects writes without one. Omit it only for deliberate governed-read-only setups. Supply reviewer credentials through the environment of the process that runs the server or through a `trust_gate_api_key_file`, as described in [Choose a reviewer](#choose-a-reviewer), and never as literal values in a client configuration or a repository.
 
-```json
-{
-  "mcpServers": {
-    "fava-trails": {
-      "type": "stdio",
-      "command": "uv",
-      "args": ["run", "--directory", "/path/to/fava-trails", "fava-trails-server"],
-      "env": {
-        "FAVA_TRAILS_DATA_REPO": "/path/to/fava-trails-data",
-        "FAVA_TRAILS_AGENT_ID": "claude-code",
-        "OPENROUTER_API_KEY": "sk-or-v1-..."
-      }
-    }
-  }
-}
-```
+FAVA uses MCP SDK 2.2 or later within the 2.x series. `initialize` advertises FAVA's product version in `serverInfo.version`, which is not the SDK distribution version. Restart a configured server after updating its package, because installing alone does not update a running process.
 
-For Claude Desktop on Windows (accessing WSL, authoring):
+## Client registration examples
+
+These examples show the registration shape for clients that [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) does not cover. Each sets an absolute `FAVA_TRAILS_DATA_REPO` and a stable `FAVA_TRAILS_AGENT_ID` for that authoring process, and none holds a credential. A reviewer credential comes from the server process's own environment or from a credential file named in the Trust Gate configuration. Add `XDG_CONFIG_HOME` to the `env` block only when you deliberately isolate per-machine overrides.
+
+**Claude Desktop on Windows, with FAVA Trails installed in WSL (authoring).** The client launches `wsl.exe`, which starts the server in a WSL login shell. Because `bash -lc` loads your WSL login environment, a reviewer credential exported there reaches the server without appearing in this configuration.
 
 ```json
 {
@@ -234,197 +145,95 @@ For Claude Desktop on Windows (accessing WSL, authoring):
       "command": "wsl.exe",
       "args": [
         "-e", "bash", "-lc",
-        "FAVA_TRAILS_DATA_REPO=/path/to/fava-trails-data FAVA_TRAILS_AGENT_ID=claude-code OPENROUTER_API_KEY=sk-or-v1-... fava-trails-server"
+        "FAVA_TRAILS_DATA_REPO=/path/to/fava-trails-data FAVA_TRAILS_AGENT_ID=claude-code fava-trails-server"
       ]
     }
   }
 }
 ```
 
-**OpenAI Codex CLI** (authoring): `~/.codex/config.toml`
+**OpenAI Codex CLI (authoring).** Add this to `~/.codex/config.toml`, and restart Codex after editing it.
 
 ```toml
 [mcp_servers.fava-trails]
 command = "fava-trails-server"
+# Only if the reviewer credential comes from an environment variable:
+env_vars = ["LOCAL_REVIEW_KEY"]
 
 [mcp_servers.fava-trails.env]
 FAVA_TRAILS_DATA_REPO = "/path/to/fava-trails-data"
 FAVA_TRAILS_AGENT_ID = "codex-cli"
-OPENROUTER_API_KEY = "sk-or-v1-..."
 ```
 
-**Other MCP clients** (Crush, OpenCode, etc.): check your client's MCP config docs — most accept this JSON format (authoring):
+For a reviewer that needs a credential, exporting it in the shell that starts Codex is not enough on its own, because Codex gives the server only the variables it is configured to pass. If you use an environment credential, name the variable in `env_vars` as shown, so that Codex forwards it from its parent environment (the Codex [MCP documentation](https://developers.openai.com/codex/mcp) describes `env_vars`), and set `trust_gate_api_key_env` in the FAVA Trails Trust Gate configuration to the same name. Otherwise, point `trust_gate_api_key_file` at an owner-only credential file. Never put a credential value in the TOML or on a command line. Codex's `tool_timeout_sec` is a separate client setting from FAVA Trails' server and review timers, so a slow local reviewer may need a client budget that is compatible with `trust_gate_timeout_secs`.
 
-```json
-{
-  "mcpServers": {
-    "fava-trails": {
-      "type": "stdio",
-      "command": "fava-trails-server",
-      "env": {
-        "FAVA_TRAILS_DATA_REPO": "/path/to/fava-trails-data",
-        "FAVA_TRAILS_AGENT_ID": "my-agent",
-        "OPENROUTER_API_KEY": "sk-or-v1-..."
-      }
-    }
-  }
-}
-```
+**Other MCP clients** such as Crush and OpenCode accept the JSON shape shown under [Quick start](#quick-start). Check your client's MCP configuration documentation for where it goes.
 
-> **The Trust Gate uses an LLM (or explicit human) review step:** Thoughts can be reviewed before promotion. The reviewer applies a configured rubric or a typed Noul question with limited context — it does **not** independently verify project facts, your agent safety policy, or ground truth. A convincing false claim can still be approved. With no Trust Gate settings, FAVA Trails uses [OpenRouter](https://openrouter.ai/) Decisions with TypeSafe Jev (`~typesafe/jev-latest`); get a free API key at [openrouter.ai/keys](https://openrouter.ai/keys). Data repositories created by `fava-trails bootstrap` from 0.9.0 review through a local OpenAI-compatible server instead, with no hosted account (see [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md)). **Provider selection is a data-egress choice:** under `decisions`, the full prompt, candidate content, selected metadata, and Noul question are transmitted to the configured destination *before* a verdict exists (a remote reject still means the text already left the process). Jev returns no reasoning. A local [obvious-secret preflight](docs/secret-preflight.md) refuses a bounded set of known credential shapes before persist or transmit; it is not complete DLP and does not erase already-stored drafts. Run `fava-trails doctor` to see the effective destination/model and which candidate fields are sent (API secrets are never printed). You can point Trust Gate at a local OpenAI-compatible endpoint (e.g. [Unsloth Studio](https://unsloth.ai/docs/new/studio)) via `~/.config/fava-trails/config.yaml` with explicit `llm-oneshot`, or promote without LLM transmission using operator `propose_truth(..., approval="human")` — see [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md).
+## Choose a reviewer
 
-To run the full draft, rejection, revision, approval and correction loop against a local reviewer, see [docs/local-review-walkthrough.md](docs/local-review-walkthrough.md).
+The Trust Gate decides whether a proposed thought becomes an approved record. It is process control with limited context, not independent verification. Choosing a reviewer is a data-egress decision, because the candidate is sent to the configured destination before a verdict exists.
 
-### Use it
+- **`llm-oneshot`** applies a rubric through a chat model. From 0.9.0 source, `fava-trails bootstrap` can write it for a local OpenAI-compatible server you name, using `--review-endpoint`, `--review-model` and `--review-key-env` together. With no review options, or with only some of them, bootstrap writes only the policy. On a fresh configuration that is incomplete, review fails closed until you finish it. Existing per-machine Trust Gate fields can complete or override the policy key by key, and a missing flag does not disable a reviewer that machine already has. When the effective destination differs from what the flags asked for, bootstrap reports it and can exit nonzero after it has created the data repository, so run `fava-trails doctor` and read the destination before the first promotion. The walkthrough records this route with Unsloth serving `unsloth/Qwen3.6-27B-GGUF`.
+- **`decisions`** sends one typed question to OpenRouter's Decisions API with TypeSafe's [Jev](https://openrouter.ai/blog/insights/what-is-jev/). A probability at or above `trust_gate_noul_threshold` approves. Jev returns a probability and no rejection rationale, so the record shows the probability and threshold and never an invented explanation. A repository or process with no Trust Gate settings keeps this behavior as the compatibility default, and a hosted Jev review needs an OpenRouter credential.
+- **Operator approval** through `propose_truth(..., approval="human")` on a separate operator-controlled endpoint records an explicit operator action and transmits nothing to a reviewer.
 
-Agents call MCP tools. Core workflow:
+There is no pass-through mode and no silent fallback between reviewers. An unreachable endpoint, a missing credential, a timeout or an invalid response fails closed without approving anything. If a reviewer completes with an error verdict, FAVA stores `validation_status: error` and returns `status: error`.
 
-```
-save_thought(trail_name="myorg/eng/my-project", content="My finding about X", source_type="observation")
-  → creates a draft in drafts/ (not visible under default governed recall)
+The effective destination comes from the merged configuration, where the per-machine file at `$XDG_CONFIG_HOME/fava-trails/config.yaml` overrides the data repository's Trust Gate fields. `fava-trails doctor` prints the effective destination, model and the candidate fields that are sent, without secrets. Successful review paths return a `trust_gate_egress` description of the same facts. A destination is reported as `local_endpoint` only when its address is `localhost` or a numeric loopback IP as seen from the calling process. That classification cannot see through a tunnel or port forward, so a loopback address can still forward text to another machine, and calling an endpoint local does not prove that the model runs on the same host. An explicit custom `api_base` that is not loopback is reported as `custom_endpoint`. A hosted provider used without an `api_base` is reported as `remote_provider`. Selecting a provider by name does not by itself keep text on your machine, and no provider label is a privacy guarantee. Configuration merges key by key, so one key set in the per-machine file can override the repository's value while the other keys keep coming from the repository.
 
-propose_truth(trail_name="myorg/eng/my-project", thought_id=thought_id)
-  → Trust Gate / operator review, then promotes to observations/ when approved
+[AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) owns the configuration reference, provider settings and credentials, and the [Review gate Blueprint](blueprints/modules/review_gate.blueprint.md) records the contract and its reasons.
 
-recall(trail_name="myorg/eng/my-project", query="X")
-  → finds the promoted thought because token "x" appears in the content
-  → query "finding about X" also matches (whitespace tokens, AND)
-  → query "discovery regarding X" misses unless those words appear in the record
-```
+## Sharing across machines
 
-Agents interact through MCP tools — they never see VCS commands. Matching rules and
-a shareable synthetic matrix: [docs/retrieval-baseline.md](docs/retrieval-baseline.md).
+Cross-machine sharing is optional. It requires a configured, reachable Git remote that every machine can fetch and, when pushing, write to. Plan for that remote as an operational dependency: who can read private thoughts, how credentials rotate, how you revoke a machine, and how you recover from permission or connectivity failures. A missing remote makes `sync` report `not_configured`, which means local-only. A configured remote that is unreachable or denies permission is an error.
 
-## Local scope reader
+Publishing and syncing are separate steps.
 
-Generate a private, read-only dashboard from a FAVA scope and its descendants, then follow thought provenance, lineage, and typed relationships. [Generate and serve Rich Views locally](docs/rich-views.md). Source Markdown remains canonical.
+| Setting or tool | Behavior |
+| --- | --- |
+| `push_strategy: manual` (the `bootstrap` default) | Nothing is pushed automatically. The operator runs `jj bookmark set main -r @-` and then `jj git push --bookmark main` in the data repository. |
+| `push_strategy: immediate` | After a successful write operation the server advances `main` and runs `jj git push`. Push failures are non-fatal warnings. |
+| `sync` tool | Fetches and rebases from the remote. It does not commit dirty local files and is not a deliberate publication step. Under `immediate`, a successful `sync` counts as a write operation, so the after-write push can run once it finishes. |
 
-## Cross-Machine Sync
+For multi-machine authoring, set `push_strategy: immediate` or publish manually after writes, and have peers call `sync` to pull. Do not use `git push origin main` after JJ colocates, because it misses thought commits. The push procedure is in [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md#pushing-to-remote).
 
-Cross-machine sharing is optional. It requires a configured, reachable git
-remote that every machine can fetch and, when using push, write to. Before
-encouraging `sync`, plan for that remote as an operational dependency:
+To set up a second machine, install FAVA Trails and JJ as above, clone the same data repository with `fava-trails clone`, and register the MCP server with local paths and that machine's own `FAVA_TRAILS_AGENT_ID`.
 
-- Hosting and access: who can read private thoughts, how credentials rotate,
-  and how you revoke a machine.
-- Maintenance: keep the remote URL reachable, monitor disk/hosting cost, and
-  recover from permission or connectivity failures yourself.
-- Failure modes: a missing remote is `not_configured` (local-only). A
-  configured remote that is unreachable or denies permission is an error, not
-  local-only. Required startup sync (`--sync-on-start`) stays fail-closed in
-  every non-`ok` case.
+## Operating FAVA Trails
 
-FAVA does not create hosted repositories, push private content, or change
-remote settings automatically. Add a remote yourself (`git remote add origin
-<url>`) or clone an existing shared repository with `fava-trails clone`.
+- **Setup, providers, credentials, hooks and per-trail overrides:** [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md)
+- **Visibility modes, agent identity, replacement approval and interrupted-write recovery:** [docs/governed-recall.md](docs/governed-recall.md)
+- **Runtime identity and upgrades:** [docs/runtime-and-upgrade.md](docs/runtime-and-upgrade.md)
+- **A recorded run against a local reviewer:** [docs/local-review-walkthrough.md](docs/local-review-walkthrough.md)
+- **A private ChatGPT connection, readiness checks and `--sync-on-start` (required startup sync stays fail-closed, and a local-only repository should not enable it):** [docs/secure-mcp-tunnel.md](docs/secure-mcp-tunnel.md)
+- **Credential preflight, with its data flow, detection limits and false positives:** [docs/secret-preflight.md](docs/secret-preflight.md)
+- **Retrieval matching rules:** [docs/retrieval-baseline.md](docs/retrieval-baseline.md)
+- **JJ version support:** [docs/jj-compatibility.md](docs/jj-compatibility.md)
+- **Reduced context overhead for MCP sessions, including the compact surface:** [docs/mcp-context-overhead.md](docs/mcp-context-overhead.md)
+- **Client registration for Windows with WSL and OpenAI Codex CLI:** [Client registration examples](#client-registration-examples)
+- **Empty scaffolding scopes created by a client:** [Remove empty scaffolding scopes](#remove-empty-scaffolding-scopes)
+- **Duplicate maintenance.** `fava-trails duplicates` produces a read-only exact-body report and a digest-bound, reviewed migration plan. Applying or rolling back needs an explicit operator command and keeps a JJ recovery point and before images: [docs/duplicate-migration.md](docs/duplicate-migration.md)
+- **Local scope reader.** Generate a private, read-only dashboard from a scope and its descendants and follow provenance, lineage and typed relationships. Source Markdown remains canonical: [docs/rich-views.md](docs/rich-views.md)
 
-`fava-trails bootstrap` writes `push_strategy: manual` by default — local
-commits stay local until you publish them. Publishing is **not** what the
-`sync` MCP tool does:
+### Remove empty scaffolding scopes
 
-| Path | Behavior |
-|------|----------|
-| `push_strategy: immediate` | After each successful write, the server advances `main` and runs `jj git push` (push failures are non-fatal warnings). |
-| `push_strategy: manual` (bootstrap default) | No auto-push. Operator must `jj bookmark set main -r @-` then `jj git push --bookmark main` (or set `immediate`). |
-| `sync` MCP tool | Fetches/rebases from the remote. Does **not** commit dirty local files and is not a publication step. Under `push_strategy: immediate`, a successful `sync` counts as a write operation, so the server's after-write push can run once it finishes. Missing remotes return `not_configured`. |
-
-For multi-machine authoring, set `push_strategy: immediate` in the data repo `config.yaml` (or publish manually after writes). Peers still call `sync` to pull. Local-only repositories should keep `push_strategy: manual`.
-
-### Setting up a second machine
-
-```bash
-# 1. Install FAVA Trails
-pip install fava-trails
-
-# 2. Install JJ (storage engine; runs alongside Git in colocate mode)
-fava-trails install-jj
-
-# 3. Clone the SAME data repo (handles colocated mode + bookmark tracking)
-fava-trails clone https://github.com/YOUR-ORG/fava-trails-data.git fava-trails-data
-
-# 4. Register MCP (same config as above, with local paths + FAVA_TRAILS_AGENT_ID)
-```
-
-Both machines share the same git remote. The writing machine must publish before peers can fetch (`immediate`, or manual `jj bookmark set main -r @-` then `jj git push --bookmark main`); the reading machine calls `sync` to fetch/rebase.
-
-### ChatGPT tunnel freshness
-
-`fava-trails-tunnel start` runs the private MCP runtime behind the OpenAI Secure
-MCP Tunnel. Tunnel-managed data repo sync is disabled by default; use the
-normal `sync` MCP tool when you want to fetch/rebase shared trail data.
-
-```bash
-fava-trails-tunnel start --data-repo /path/to/fava-trails-data --profile fava-trails
-```
-
-The `/healthz` readiness probe is bounded and non-mutating. It validates the
-data repository config and required `trails` directory, traverses at most
-100,000 scope-tree entries within two seconds, and parses one representative
-thought (up to 512 KiB) when records exist. A structurally valid empty repository
-is ready. Missing, unreadable, over-limit, timed-out, or malformed data returns
-HTTP 503 with a stable reason code. The response contains counts and status only;
-it never includes filesystem paths, credentials, thought bodies, or repository
-content.
-
-Readiness proves local data readability by the runtime identity. It does **not**
-prove remote freshness, perform a sync, contact the network, or validate that a
-write would succeed. A deployment that requires fresh startup data can request
-one bounded, fail-closed sync inside the gateway before it exposes the tunnel:
-
-```bash
-fava-trails-tunnel start --data-repo /path/to/fava-trails-data --profile fava-trails --sync-on-start
-```
-
-With `--sync-on-start`, a non-ok result, timeout, or exception prevents HTTP and
-tunnel exposure. Keep `--sync-interval-seconds` at its default `0` when no
-later autosync is wanted; a positive interval additionally starts the recurring
-worker without repeating the initial sync.
-
-Before starting the external tunnel, deployments can validate the private
-runtime without exposing it:
-
-```bash
-fava-trails-tunnel preflight --data-repo /path/to/fava-trails-data --profile fava-trails
-```
-
-`preflight` starts only the loopback HTTP runtime, waits for `/healthz`, and
-always stops the private runtime before returning. It never starts the external
-tunnel.
-
-The tunnel startup wait and `status` command consume `/healthz`; `status` exits
-non-zero when the supervisor is running but its data is not ready:
-
-```bash
-curl http://127.0.0.1:8765/healthz
-fava-trails-tunnel status --data-repo /path/to/fava-trails-data --profile fava-trails --json
-```
-
-If ChatGPT guessed scopes before the read-only guard was installed, remove only
-verified scaffolding-only scopes with an explicit dry run first:
+If a client such as ChatGPT guessed scopes before the read-only guard was installed, `fava-trails cleanup-empty-scopes` removes only scopes it verifies hold scaffolding and no records. Run the dry run first, read what it reports, and add `--apply` only for scopes you accept. Run both with `FAVA_TRAILS_DATA_REPO` set to the absolute path of the data repository you mean to change.
 
 ```bash
 fava-trails cleanup-empty-scopes --scope mw/headspace --scope mw
 fava-trails cleanup-empty-scopes --scope mw/headspace --scope mw --apply
 ```
 
-### Manual push (required when `push_strategy: manual`)
-
-Bootstrap defaults to `manual`. Under that setting, approved local records stay on the writing machine until an operator publishes. The `sync` tool does not publish them under `manual`.
-
-```bash
-cd /path/to/fava-trails-data
-jj bookmark set main -r @-
-jj git push --bookmark main
-```
-
-Prefer setting `push_strategy: immediate` for multi-machine authoring so successful writes auto-publish. **NEVER use `git push origin main`** after JJ colocates — it misses thought commits. See [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md#pushing-to-remote).
+The scope names are examples. Substitute the scopes you found.
 
 ## Architecture
+
+FAVA Trails separates an engine from the data it serves.
 
 ```
 fava-trails (this repo)        fava-trails-data (your repo)
 ├── src/fava_trails/           ├── config.yaml
-│   ├── server.py  ←── MCP ──→├── .gitignore
+│   ├── server.py  ←── MCP ──→ ├── .gitignore
 │   ├── cli.py                 └── trails/
 │   ├── trail.py                   └── myorg/eng/project/
 │   ├── config.py                      └── thoughts/
@@ -437,51 +246,27 @@ fava-trails (this repo)        fava-trails-data (your repo)
 └── tests/
 ```
 
-- **Engine** (`fava-trails`) — MCP server process, Apache-2.0. Install via `pip install fava-trails`. Runtime retains managers, backend handles, locks, and loaded hooks between calls; it does not store the durable corpus in-package.
-- **Fuel** (`fava-trails-data`) — your organization's trail data (the durable memory graph), private.
+- **Engine** (`fava-trails`) is the MCP server process, licensed Apache-2.0. It retains managers, backend handles, locks and loaded hooks between calls, and it does not store the durable corpus in the package.
+- **Fuel** (`fava-trails-data`) is your organization's private trail data, the durable memory graph, in a repository you control.
+
+Each saved thought is committed to a local Jujutsu repository, and every thought carries who wrote it, when, and why it changed. The design documents are the [Blueprints](blueprints/README.md), including the [review-and-recall lifecycle](blueprints/features/review_and_recall_lifecycle.blueprint.md).
 
 ## Configuration
 
 Environment variables:
 
 | Variable | Read by | Purpose | Default |
-|----------|---------|---------|---------|
-| `FAVA_TRAILS_DATA_REPO` | Server | Root directory for trail data (monorepo root) | `~/.fava-trails` |
-| `FAVA_TRAILS_DIR` | Server | Override trails directory location (absolute path) | `$FAVA_TRAILS_DATA_REPO/trails` |
-| `FAVA_TRAILS_SCOPE_HINT` | Server | Broad scope hint baked into tool descriptions | *(none)* |
-| `FAVA_TRAILS_MCP_SURFACE` | Server | `full` (default) or `compact` advertised instructions/tool text | `full` |
-| `FAVA_TRAILS_SCOPE` | Agent | Optional process override for project scope. Read if set; `fava-trails init` does not write application `.env` files unless `--write-env` is passed. | *(none)* |
-| `OPENROUTER_API_KEY` | Server | Default Trust Gate API key env (OpenRouter). Override the env var *name* via `trust_gate_api_key_env` / legacy `openrouter_api_key_env` in `config.yaml`. | *(none — required for `propose_truth` under the default `decisions` policy, and for explicit `llm-oneshot`)* |
+| --- | --- | --- | --- |
+| `FAVA_TRAILS_DATA_REPO` | Server | Root directory for trail data | `~/.fava-trails` |
+| `FAVA_TRAILS_DIR` | Server | Override the trails directory (absolute path) | `$FAVA_TRAILS_DATA_REPO/trails` |
+| `FAVA_TRAILS_AGENT_ID` | Server | Stable identity of an authoring process. Writes are rejected without it. | none |
+| `FAVA_TRAILS_OPERATOR` | Server | Set to `1` only on a separate operator-controlled endpoint | none |
+| `FAVA_TRAILS_SCOPE_HINT` | Server | Broad scope hint baked into tool descriptions | none |
+| `FAVA_TRAILS_MCP_SURFACE` | Server | `full` or `compact` advertised instructions and tool text | `full` |
+| `FAVA_TRAILS_SCOPE` | Agent | Optional process override for project scope. `fava-trails init` writes application `.env` files only with `--write-env`. | none |
+| `OPENROUTER_API_KEY` | Server | Default credential variable for hosted Decisions review (override the variable name with `trust_gate_api_key_env`) | none |
 
-**LLM Provider:** FAVA Trails uses [any-llm-sdk](https://github.com/mozilla-ai/any-llm) for unified LLM access. OpenRouter is the default Trust Gate provider. To use a local OpenAI-compatible server (Unsloth Studio, vLLM, etc.) on one machine, put its Trust Gate runtime fields in `$XDG_CONFIG_HOME/fava-trails/config.yaml` (default `~/.config/fava-trails/config.yaml`). A credential file configured with `trust_gate_api_key_file` takes precedence over the environment and must be a regular, non-symlink, owner-only file. Slow local quantized models may need a higher `trust_gate_timeout_secs` (still below `tool_timeout_secs`). There is no automatic fallback between providers — misconfigured or unavailable endpoints fail closed without auto-approving. `fava-trails doctor` prints a secret-free Data egress notice; successful LLM or operator `propose_truth` paths (and credential/timeout failures after disclosure begins) include `trust_gate_egress` describing destination, model, and which candidate fields are sent. Early validation failures omit that field.
-
-**Decisions policy (OpenRouter Jev, the built-in default when unstated; local Unsloth Laya optional):** Where the policy is `decisions`, promotions are reviewed through [OpenRouter's Decisions API](https://openrouter.ai/blog/insights/what-is-jev/) using TypeSafe's Jev (`~typesafe/jev-latest` tracking, or pin `typesafe/jev-1.13`). Supply an existing OpenRouter credential; you do not have to design a Noul question. One typed **Noul** question — the probability that a yes/no proposition holds — is submitted per review with the full scope-resolved Trust Gate prompt, full thought body, and the selected metadata (`agent_id` and `metadata.extra` excluded). Probabilities at or above `trust_gate_noul_threshold` approve; lower probabilities reject. Jev returns no reasoning, so provenance records the calibrated probability and threshold — never fabricated rationale. Invalid responses, missing answers, out-of-range probabilities, authentication/connection failures, and timeouts fail closed; there is no fallback to another reviewer. Optional reasoning is not generated and must not be invented. Select exactly one backend; FAVA does not probe localhost or switch providers.
-
-Shipped question and threshold come from the [ticket 03 aggregate calibration report](https://github.com/MachineWisdomAI/fava-trails/issues/126#issuecomment-5894849724). The private calibration corpus is available upon request.
-
-```yaml
-trust_gate: decisions
-trust_gate_provider: openrouter
-trust_gate_model: ~typesafe/jev-latest
-trust_gate_decisions_config:
-  trust_gate_noul_question: "Should this candidate be promoted as durable, high-quality institutional memory under the supplied Trust Gate policy?"
-  trust_gate_noul_threshold: 0.45
-```
-
-Local Unsloth Laya is the no-per-request-cost alternative for the same `decisions` policy. Reuse the existing local `openai` provider, credential file or env, and timeout used by local `llm-oneshot`. Documentation recommends `laya-typed-decisions`; do not select the generic `laya` alias. Requests go to the configured Unsloth base at `/v1/systemone`:
-
-```yaml
-trust_gate: decisions
-trust_gate_provider: openai
-trust_gate_model: laya-typed-decisions
-trust_gate_api_base: http://127.0.0.1:<unsloth-api-port>/v1
-trust_gate_api_key_file: /path/to/owner-only/runtime/api-key
-trust_gate_timeout_secs: 240
-```
-
-The Decisions endpoint defaults to `https://openrouter.ai/api/alpha/decisions`; `trust_gate_api_base` overrides the API root (for a test double, or for local Unsloth the loopback Decision API). Credentials reuse `trust_gate_api_key_env` / `trust_gate_api_key_file`. `trust_gate_decisions_config` is a Trust Gate runtime field: the per-machine config may override the whole block, while the data repo owns durable defaults. Explicit `trust_gate: llm-oneshot` remains fully operational (set a chat-completions model such as `google/gemini-2.5-flash`); operator `propose_truth(..., approval="human")` is unchanged. `fava-trails doctor` and tunnel gateway startup disclose the destination (OpenRouter as `remote_provider`, loopback Unsloth as `local_endpoint`) without secrets. Missing OpenRouter credentials for Decisions review also present local Unsloth Laya as an alternative.
-
-The server reads `$FAVA_TRAILS_DATA_REPO/config.yaml` for global settings. Minimal `config.yaml`:
+The server reads `$FAVA_TRAILS_DATA_REPO/config.yaml` for global settings. A minimal file:
 
 ```yaml
 trails_dir: trails          # relative to FAVA_TRAILS_DATA_REPO
@@ -489,152 +274,48 @@ remote_url: null            # git remote URL (optional)
 push_strategy: manual       # manual | immediate
 ```
 
-The standard per-machine config overrides only Trust Gate runtime fields. Repository settings such as `trails_dir`, `remote_url`, `push_strategy`, hooks, and trail definitions remain owned by the data repo. Effective precedence is machine config, then data-repo config, then defaults.
+The per-machine file `$XDG_CONFIG_HOME/fava-trails/config.yaml` (normally `~/.config/fava-trails/config.yaml`) overrides only Trust Gate runtime fields. Repository settings such as `trails_dir`, `remote_url`, `push_strategy`, hooks and trail definitions stay with the data repository. Effective precedence is machine config, then data-repo config, then defaults. A credential file set with `trust_gate_api_key_file` takes precedence over the environment and must be a regular, non-symlink, owner-only file. A slow local model may need a higher `trust_gate_timeout_secs`, kept below `tool_timeout_secs`.
 
-When `push_strategy: immediate`, the server auto-pushes after every successful write operation, including a successful `sync` (advances `main` to `@-` then pushes). Push failures are non-fatal. When `manual` (bootstrap default), writes commit locally only; use the full manual protocol above (`jj bookmark set main -r @-` then `jj git push --bookmark main`). The `sync` tool's own work is fetch and rebase, so it never substitutes for a deliberate push under `manual`.
-
-See [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) for full config reference including trust gate and per-trail overrides.
+FAVA Trails reaches models through [any-llm-sdk](https://github.com/mozilla-ai/any-llm). Provider fields, the Decisions question and threshold, and per-trail overrides are documented in [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md). The built-in default values are defined in `src/fava_trails/models.py`.
 
 ## Protocols
 
-FAVA Trails supports optional **lifecycle protocols** — hook modules that run custom logic at key points in the thought lifecycle (save, promote, recall). Protocols are registered in your data repo's `config.yaml` and loaded at server startup.
+FAVA Trails supports optional lifecycle protocols: hook modules that run custom logic when a thought is saved, promoted or recalled. You register them in the data repository's `config.yaml`, and the server loads them at startup. [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md#lifecycle-hooks) describes the hook system.
 
-### SECOM — Compression at Promote Time
+- **SECOM** compresses a thought once at promote time with extractive token-level compression from [LLMLingua-2](https://github.com/microsoft/LLMLingua), based on the [SECOM paper](https://arxiv.org/abs/2502.05589) (Tsinghua University and Microsoft, ICLR 2025). Only original tokens survive. Token-level compression can destroy JSON, YAML and fenced code, so tag such thoughts `secom-skip`. Install with `pip install fava-trails[secom]`, then `fava-trails secom setup --write`. Configuration and model options are in [the SECOM README](src/fava_trails/protocols/secom/README.md).
+- **ACE** (Agentic Context Engineering) reranks recalled thoughts and detects anti-patterns using playbook rules stored in the `preferences/` namespace, based on [arXiv:2510.04618](https://arxiv.org/abs/2510.04618) (Stanford, UC Berkeley and SambaNova, ICLR 2026). It is included in the base install. Set it up with `fava-trails ace setup --write`.
+- **RLM** supports [MapReduce workflows](https://arxiv.org/abs/2512.24601) from MIT by validating mapper outputs, tracking batch progress and sorting results deterministically for reducer consumption. It is included in the base install. Set it up with `fava-trails rlm setup --write`.
 
-Extractive token-level compression via [LLMLingua-2](https://github.com/microsoft/LLMLingua), based on the [SECOM paper](https://arxiv.org/abs/2502.05589) (Tsinghua University and Microsoft, ICLR 2025). Thoughts are compressed once at promote time (WORM pattern), reducing storage and boosting recall density. Purely extractive — only original tokens survive, no paraphrasing or rewriting.
+Running a setup command without `--write` prints the default configuration so you can review it first.
 
-```bash
-pip install fava-trails[secom]
-```
+## Documentation
 
-Add to your data repo's `config.yaml`:
-
-```yaml
-hooks:
-  - module: fava_trails.protocols.secom
-    points: [before_propose, before_save, on_recall]
-    order: 20
-    fail_mode: open
-    config:
-      compression_threshold_chars: 500
-      target_compress_rate: 0.6
-      compression_engine:
-        type: llmlingua
-```
-
-**Structured data**: SECOM's token-level compression has no notion of syntactic validity — JSON objects, YAML blocks, and fenced code blocks may be silently destroyed at promote time. Tag thoughts with `secom-skip` to opt out:
-
-```python
-save_thought(trail_name="my/scope", content='{"phases": [...]}', metadata={"tags": ["secom-skip"]})
-```
-
-The `before_save` hook warns when structured content is detected without `secom-skip`.
-
-See [protocols/secom/README.md](src/fava_trails/protocols/secom/README.md) for full config reference, model options, and the `secom-skip` opt-out. See [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md#lifecycle-hooks) for the general hooks system.
-
-**Quick setup via CLI:**
-
-```bash
-# Print default config (copy-paste into config.yaml)
-fava-trails secom setup
-
-# Write config directly + commit with jj
-fava-trails secom setup --write
-
-# Pre-download model to avoid first-use delay
-fava-trails secom warmup
-```
-
-### ACE — Agentic Context Engineering
-
-Playbook-driven reranking and anti-pattern detection, based on [ACE (arXiv:2510.04618)](https://arxiv.org/abs/2510.04618) (Stanford, UC Berkeley, and SambaNova, ICLR 2026). Applies multiplicative scoring using rules stored in the `preferences/` namespace.
-
-```bash
-pip install fava-trails  # included in base install
-```
-
-Add to your data repo's `config.yaml`:
-
-```yaml
-hooks:
-  - module: fava_trails.protocols.ace
-    points: [on_startup, on_recall, before_save, after_save, after_propose, after_supersede]
-    order: 10
-    fail_mode: open
-    config:
-      playbook_namespace: preferences
-      telemetry_max_per_scope: 10000
-```
-
-**Quick setup via CLI:**
-
-```bash
-fava-trails ace setup           # print default config
-fava-trails ace setup --write   # write + jj commit
-```
-
-### RLM — MapReduce Orchestration
-
-Lifecycle hooks for [MIT RLM (arXiv:2512.24601)](https://arxiv.org/abs/2512.24601) MapReduce workflows. Validates mapper outputs, tracks batch progress, and sorts results deterministically for reducer consumption.
-
-```bash
-pip install fava-trails  # included in base install
-```
-
-Add to your data repo's `config.yaml`:
-
-```yaml
-hooks:
-  - module: fava_trails.protocols.rlm
-    points: [before_save, after_save, on_recall]
-    order: 15
-    fail_mode: closed
-    config:
-      expected_mappers: 5
-      min_mapper_output_chars: 20
-```
-
-**Quick setup via CLI:**
-
-```bash
-fava-trails rlm setup           # print default config
-fava-trails rlm setup --write   # write + jj commit
-```
-
-## Development
-
-```bash
-uv run pytest -v          # run tests
-uv run pytest --cov       # with coverage
-```
-
-## Docs
-
-- [FAVA Trails and Machine Wisdom AI](docs/attribution.md) — Project authorship, engineering articles, and attribution guidance
-- [AGENTS.md](AGENTS.md) — Agent-facing: MCP tools reference, scope discovery, thought lifecycle, agent conventions
-- [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md) — Canonical usage: scope discovery, session protocol, agent identity
-- [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) — Data repo setup, config reference, trust gate prompts, lifecycle hooks
-- [protocols/secom/README.md](src/fava_trails/protocols/secom/README.md) — SECOM compression protocol: config, models, WORM architecture
-- [docs/fava_trails_faq.md](docs/fava_trails_faq.md) — Detailed FAQ for framework authors and ML engineers
-- [docs/mcp-context-overhead.md](docs/mcp-context-overhead.md) — Measured MCP session-init overhead, compact surface, enforcement vs prompt
-- [docs/secret-preflight.md](docs/secret-preflight.md) — Bounded credential preflight: data flow, detection limits, false positives
+- [AGENTS.md](AGENTS.md): MCP tool reference, scope discovery, thought lifecycle and agent conventions
+- [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md): session protocol, scope discovery and agent identity
+- [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md): data repository setup, configuration reference and lifecycle hooks
+- [docs/governed-recall.md](docs/governed-recall.md), [docs/local-review-walkthrough.md](docs/local-review-walkthrough.md), [docs/runtime-and-upgrade.md](docs/runtime-and-upgrade.md): operating guides
+- [docs/documentation-ownership.md](docs/documentation-ownership.md): which document owns each fact, and the approved wording for claims
+- [blueprints/README.md](blueprints/README.md) and [docs/blueprint-maintenance.md](docs/blueprint-maintenance.md): design documents and how to maintain them
+- [docs/attribution.md](docs/attribution.md): project authorship, engineering articles and attribution guidance
+- Background reading: the [February 2026 two-agent case study](https://fava-trails.org/case-study/) and the [July 2026 local trust gate experiment](https://fava-trails.org/local-trust-gate/), both dated accounts written for earlier versions.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, how to run tests, and PR expectations.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, how to run tests and what a pull request needs. To work from source:
 
-See [CHANGELOG.md](CHANGELOG.md) for release history.
+```bash
+git clone https://github.com/MachineWisdomAI/fava-trails.git
+cd fava-trails
+uv sync
+uv run pytest -v
+```
 
-### Duplicate maintenance
+When behavior changes, update the owning document and its listed summaries in the same change, following [docs/documentation-ownership.md](docs/documentation-ownership.md).
 
-Use `fava-trails duplicates` for a read-only exact-body report and a digest-bound,
-reviewed migration plan. Applying or rolling back requires an explicit operator
-command and preserves a JJ recovery point and before images. See
-[reviewed duplicate maintenance](docs/duplicate-migration.md) for private artifacts,
-lifecycle and lineage blockers, crash recovery, and the real-data approval gate.
+## Release history
+
+Release notes are in [CHANGELOG.md](CHANGELOG.md) and [docs/releases/](docs/releases/).
 
 ## Built by Machine Wisdom AI
 
-FAVA Trails is part of [Machine Wisdom AI's open-source work on production agent systems](https://machine-wisdom.ai/). Read the [agent memory architecture analysis](https://machine-wisdom.ai/writing/agent-memory-landscape/) and [context engineering protocol guide](https://machine-wisdom.ai/writing/agent-memory-protocols/) for the reasoning behind the implementation.
-
-To use the project, start with the installation and setup above. For hands-on help applying these ideas to a production system, see [Machine Wisdom AI's engagement options](https://machine-wisdom.ai/engage/).
+FAVA Trails is part of [Machine Wisdom AI's open-source work on production agent systems](https://machine-wisdom.ai/). The [agent memory architecture analysis](https://machine-wisdom.ai/writing/agent-memory-landscape/) and the [context engineering protocol guide](https://machine-wisdom.ai/writing/agent-memory-protocols/) explain the reasoning behind the implementation. For hands-on help applying these ideas to a production system, see [Machine Wisdom AI's engagement options](https://machine-wisdom.ai/engage/).
