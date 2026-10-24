@@ -56,6 +56,7 @@ All PRs must pass ruff with zero errors.
 - Lint passes (`uv run ruff check src/ tests/` exits 0)
 - **PR title follows [Conventional Commits](https://www.conventionalcommits.org/)** (e.g., `feat: add X`, `fix: resolve Y`, `chore: update Z`) — enforced by CI
 - One logical change per PR — keep PRs focused
+- A behavior change updates its owning document and the summaries that repeat it in the same delivery scope; see [documentation ownership](docs/documentation-ownership.md) and the design records in [blueprints/](blueprints/README.md)
 
 ## Testing and Release Process
 
