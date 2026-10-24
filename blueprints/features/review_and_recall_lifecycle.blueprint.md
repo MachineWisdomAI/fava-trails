@@ -64,8 +64,8 @@ A peer sees a record only after the writer has published it and the peer has syn
 
 | Trigger | Outcome |
 | --- | --- |
-| Missing credential, reviewer timeout, or configuration error | A tool error. No verdict is recorded and the record stays a draft, so the same caller can retry. |
-| Reviewer reachable but failing (HTTP or authentication error, unparsable reply) | Verdict `error` is recorded; nothing is promoted; no other provider is tried. See Rejection and revision for what the agent can do next. |
+| Missing credential, configuration error, or the outer review timeout (`trust_gate_timeout_secs`) firing first | A tool error. No verdict is recorded and the record stays a draft, so the same caller can retry once the cause is fixed. |
+| Reviewer reachable but failing (HTTP or authentication error, a provider-level timeout or connection error returned as a reviewer result, unparsable reply) | Verdict `error` is recorded; nothing is promoted; no other provider is tried. The authoring agent cannot re-propose the record. See Rejection and revision for what the agent can do next. |
 | Draft edited while under review | Approval is refused ("re-review"). |
 | Process killed during `save_thought` or `update_thought` | The file write precedes the Jujutsu commit steps and these writes do not use the governance journal. An interruption can leave an uncommitted file, and later writes to that repository can then refuse with an unexpected-dirty-path error until an operator resolves it. A successful tool return is the durability signal; an in-flight write is not guaranteed to survive. |
 | Process killed after a `propose_truth` or `supersede` write began but before its commit finished | A before-image journal in `.jj/` keeps readers on the old complete state. A read during a live transaction gets a retryable busy error. The next governance writer restores the before-images and commits a recovery change. The approval is rolled back, not completed; propose it again. |
