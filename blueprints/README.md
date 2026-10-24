@@ -33,4 +33,4 @@ A merged document does not approve or implement anything by itself.
 
 ## Authoring
 
-Write for a reader deciding whether the design makes sense. Lead with a before/after example, then responsibilities, interfaces, tradeoffs, failure behavior and verification outcomes. Aim for 500–1,000 words per feature; go longer only when the contract needs it. Keep worker instructions, review chronology and ticket history in the tracker.
+Write for a reader deciding whether the design makes sense. Lead with a before/after example, then responsibilities, interfaces, tradeoffs, failure behavior and verification outcomes. Aim for 500–1,000 words per feature; go longer only when the contract needs it. Keep worker instructions, review chronology and ticket history in the tracker. To change a Blueprint alongside code, tests and documentation, see [Maintaining Blueprints](../docs/blueprint-maintenance.md).
