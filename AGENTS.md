@@ -1,18 +1,6 @@
 # FAVA Trails — Agent Reference 🫛👣
 
-Agent-facing reference for FAVA Trails MCP tools. For project setup and configuration, see [README.md](README.md). For the full session protocol with examples, see [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md).
-
-## Repository Workflow
-
-- **Development**: `~/git/MachineWisdomAI/fava-trails/` (this repo)
-- **Never modify**: `~/git/vendor/fava-trails/` (read-only, pinned for running MCP servers)
-- Feature branches use worktrees: `~/git/MachineWisdomAI/fava-trails-{slug}/`
-- Never commit directly to `main` — always use a feature branch and PR
-- Pre-flight before starting work:
-  ```bash
-  git worktree list && git branch -r
-  ```
-- If another agent or branch is active on this repo, coordinate or use a separate worktree.
+Agent-facing reference for FAVA Trails MCP tools. For project setup and configuration, see [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) and [README.md](README.md). For the ordered session procedure (scope, retrieval, promotion, handling rejected or errored reviews, correction), see [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md). If you are about to change this repository's source, read [CONTRIBUTING.md](CONTRIBUTING.md#working-in-this-repository) first.
 
 ## Governed recall
 
@@ -27,6 +15,7 @@ for identity setup, compatibility, approval provenance, and interrupted-write re
 The operator configures `FAVA_TRAILS_AGENT_ID` on a dedicated process; caller
 `agent_id` must match it. A shared endpoint is one identity boundary. Configure
 `FAVA_TRAILS_OPERATOR=1` only on a separate operator-controlled endpoint.
+`recall` is lexical substring-AND matching, not semantic search.
 
 ## Scope Discovery
 
@@ -40,7 +29,7 @@ Every tool call requires `trail_name` — a slash-separated scope path (e.g. `mw
 
 **If `FAVA_TRAILS_SCOPE` is not set** but `.fava-trails.yaml` exists, read its `scope` field and use that value as `trail_name`. Agents must not silently create or edit application-owned `.env` files. Operators may export `FAVA_TRAILS_SCOPE` as an optional process override. If neither source exists, use the scope hint from tool descriptions and prompt the user to create a `.fava-trails.yaml`.
 
-See [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md) for full scope discovery protocol with examples.
+See [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md) for the full scope discovery procedure with examples.
 
 ## Retrieving Context (On Demand)
 
@@ -88,14 +77,14 @@ Save a thought to the trail. Defaults to `drafts/` namespace. Always creates a *
 | `confidence` | float | no | 0.0 to 1.0 (default: 0.5) |
 | `namespace` | string | no | Override namespace (default: `drafts/`) |
 | `agent_id` | string | no | ID of the agent saving this thought |
-| `parent_id` | string | no | ULID of parent thought |
+| `parent_id` | string | no | ULID of parent thought. To revise an ordinary draft whose `propose_truth` returned `rejected` or `error`, save a fresh draft with `parent_id` set to that record's id. This does not set the replacement link; to retry a failed `supersede` successor, call `supersede` again (see [usage instructions](AGENTS_USAGE_INSTRUCTIONS.md#on-task-completion)) |
 | `intent_ref` | string | no | ULID of intent document this implements |
 | `relationships` | array | no | List of `{type, target_id}` relationships |
 | `metadata` | object | no | `{project, branch, tags}` for filtering |
 
 ### `update_thought`
 
-Update thought content in-place (same file, same ULID). Use for refining wording or adding detail. Frontmatter is preserved (tamper-proof). Content is frozen once approved, rejected, tombstoned, or superseded.
+Update thought content in-place (same file, same ULID). Use for refining wording or adding detail. Frontmatter is preserved (tamper-proof). Content is frozen once approved, rejected, errored, tombstoned, or superseded. On a rejected or errored record the call fails with `Target thought is unavailable to this caller`. For an ordinary draft, save a fresh draft with `parent_id` instead; for a failed `supersede` successor, call `supersede` again on the still-current approved original. See [usage instructions](AGENTS_USAGE_INSTRUCTIONS.md#on-task-completion).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -134,7 +123,16 @@ Each result includes a `source_trail` field indicating which scope it came from.
 
 ### `propose_truth`
 
-Promote a draft thought to its permanent namespace based on `source_type`. Moves from `drafts/` to the target namespace.
+Promote a draft thought to its permanent namespace based on `source_type`. Moves from `drafts/` to the target namespace when the review approves.
+
+Read the response:
+
+- `status: ok` with `thought.validation_status: approved` (top-level status is never `approved`): the record is current for default governed readers. Approval evidence is `metadata.extra.approval.kind="llm_advisory"` (a model's opinion, not human approval or fact verification), or `"human"` after explicit operator approval.
+- top-level `status: rejected`, or `status: error` with a returned `thought.validation_status: error`: the verdict is persisted and the record is frozen. `status: error` alone proves nothing about persistence. Read `trust_gate.reasoning` when present (Jev returns probability and threshold only). For an ordinary draft, revise by `save_thought` with `parent_id` set to this record's id, then `propose_truth` the new draft. For a successor made by `supersede`, call `supersede` again on the still-current approved original and propose the returned successor; `parent_id` alone does not carry the replacement link.
+- `status: error` with no returned thought, from configuration or an outer timeout: this happens before verdict persistence (a timeout may follow transmission of the candidate). No verdict was stored and the draft keeps its prior status, so it can be proposed again once the cause is fixed. If unclear, ask the operator to inspect before retrying or saving a new draft.
+- A tool error about an unexpected dirty path or interrupted write: the response does not show whether a verdict persisted. Tell the operator to inspect; do not retry or reset.
+
+Detail: [usage instructions](AGENTS_USAGE_INSTRUCTIONS.md#on-task-completion) and [local-review-walkthrough.md](docs/local-review-walkthrough.md).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -142,7 +140,7 @@ Promote a draft thought to its permanent namespace based on `source_type`. Moves
 
 ### `supersede`
 
-Propose a corrected draft successor. The original remains current until successor approval atomically persists both the approved replacement and the original backlink. For wording refinements use `update_thought` on mutable authoring records.
+Propose a corrected draft successor. The original remains current until successor approval atomically persists both the approved replacement and the original backlink. A rejected or errored successor never retires the original; to retry, call `supersede` again on the still-current approved original (a `save_thought` with `parent_id` does not set the replacement link). For wording refinements use `update_thought` on mutable authoring records. Use `supersede` only to correct an approved conclusion; see [Replacement lifecycle](docs/governed-recall.md#replacement-lifecycle).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -176,7 +174,7 @@ Discard current reasoning line. Abandons the current JJ change.
 
 ### `sync`
 
-Sync with shared truth. Fetches from remote and rebases. Aborts automatically on conflict.
+Sync with shared truth. Fetches from remote and rebases. Aborts automatically on conflict. It is not a publication step, but with `push_strategy: immediate` a push can follow a successful `sync`.
 Also blocks (status `blocked`) before fetching if the data repo has a dirty working copy or
 tracked paths that collide by case — repair or commit the offending paths, then retry.
 
@@ -271,6 +269,7 @@ Drafts are private authoring material. Approved current thoughts are shared inst
 
 - **Always call `propose_truth`** when work is finalized — treat it as a mandatory "commit" step
 - Do NOT leave finalized work as drafts — other agents and sessions cannot distinguish "in progress" from "done" without promotion
+- Call a record shared and current only after you observe `status: ok` with `thought.validation_status: approved`. With `push_strategy: manual` an operator must also publish before other machines can fetch it (see [usage instructions](AGENTS_USAGE_INSTRUCTIONS.md#on-task-completion)).
 - `learn_preference` captures a draft preference; approval provenance must identify the review or explicit human action.
 - In-progress work stays in `drafts/` — that's fine, drafts are meant for working state
 
@@ -279,7 +278,7 @@ Drafts are private authoring material. Approved current thoughts are shared inst
 ### Content Mutability
 
 Thoughts can be edited in-place via `update_thought` while in `draft` or `proposed` status. Content is **frozen** when:
-- `validation_status` is `approved`, `rejected`, or `tombstoned`
+- `validation_status` is `approved`, `rejected`, `error`, or `tombstoned`
 - `superseded_by` is set (thought has been replaced)
 
 The `supersede` tool creates a new draft with predecessor lineage. Only durable successor approval installs the original backlink atomically.
@@ -325,20 +324,7 @@ The actual thought content in markdown.
 
 ## Development
 
-PRs must pass:
-- `test` — pytest suite (`uv sync --frozen && uv run pytest -v`)
-- Semantic PR title — Conventional Commits format, such as `feat:`, `fix:`, or `chore:`
-
-```bash
-# Run all tests
-uv run pytest -v
-
-# Run specific test file
-uv run pytest tests/test_tools.py -v
-
-# Run with coverage
-uv run pytest --cov=fava_trails
-```
+Before changing source, read [CONTRIBUTING.md](CONTRIBUTING.md#working-in-this-repository). It owns the branch, worktree, test, lint and PR requirements.
 
 ## Version updates
 
