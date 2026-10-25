@@ -8,7 +8,7 @@ It is built from one recorded run, and that run is not a promise. The reviewer r
 
 ## What you need
 
-- A FAVA Trails build that includes the `llm-oneshot` reviewer option, installed in an environment you control.
+- A FAVA Trails build whose `bootstrap` command accepts `--review-endpoint`, `--review-model` and `--review-key-env`, installed in an environment you control. The source on main has them. A published package has them only when its entry in the [release history](../CHANGELOG.md) lists them, so check `fava-trails version` first.
 - An OpenAI-compatible chat endpoint you operate. The recorded run used a model served from the same machine as the FAVA Trails process, at a loopback address.
 - The API key for that endpoint, held in an environment variable. You give FAVA Trails the variable's name, never the key itself. Do not paste a key into a command line, a committed file or a chat.
 - An MCP client that can start a stdio server with environment variables. The recorded run used a plain stdio MCP client.

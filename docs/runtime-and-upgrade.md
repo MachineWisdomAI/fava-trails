@@ -123,6 +123,13 @@ Checklist after an upgrade:
 4. For authoring endpoints, confirm `FAVA_TRAILS_AGENT_ID` is still set on the
    process env the client actually launches.
 
+These steps change a runtime that you own. A maintainer who moves the vendor copy
+to a published release follows the release steps in
+[CONTRIBUTING.md](../CONTRIBUTING.md). Someone developing a feature does the
+opposite: the installed or vendored checkout that a client launches stays
+read-only, and a test client points at the developer's own checkout as described
+under "Dog-food locally" in that guide.
+
 ## Release candidate verification (pre-publish)
 
 Publication is **owner-gated** via `.github/workflows/release.yml`
@@ -130,7 +137,8 @@ Publication is **owner-gated** via `.github/workflows/release.yml`
 `environment: fava-release` with required owner approval). The job:
 
 1. Accepts `tag` only via job `env` (never raw shell interpolation). Validates
-   strict `vMAJOR.MINOR.PATCH` grammar, fetches `refs/tags/<tag>` only (not a
+   the tag grammar (stable `vMAJOR.MINOR.PATCH` or release candidate
+   `vMAJOR.MINOR.PATCHrcN`), fetches `refs/tags/<tag>` only (not a
    same-named branch), and fetches `refs/heads/main`. **Draft-resume state is
    resolved before the main relationship check** so a post-PyPI retry is not
    stranded when protected `main` advances after the tag was cut. First
@@ -138,7 +146,7 @@ Publication is **owner-gated** via `.github/workflows/release.yml`
    an existing **draft** requires the tag commit to be an **ancestor** of
    protected `origin/main` (including equality). Detaches `HEAD` at the tag and
    asserts `git rev-parse HEAD` equals the tag peel (and equals `origin/main` on
-   first publish). Package version must match the tag. Provenance uses that
+   first publish). The package version must equal the tag without its leading `v`. Provenance uses that
    verified `HEAD` SHA — not workflow `GITHUB_SHA` from the dispatch ref.
 2. Refuses a **published** GitHub Release for the tag; a **draft** Release may be
    resumed on rerun only after canonical title/notes/target are regenerated and
@@ -148,7 +156,7 @@ Publication is **owner-gated** via `.github/workflows/release.yml`
    and sdist.
 4. Sets `FAVA_CANDIDATE_WHEEL` / `FAVA_CANDIDATE_SDIST` to those exact files and
    runs `tests/test_packaged_mcp.py` — fresh wheel install, fresh sdist install,
-   real `0.6.0` → candidate upgrade, installed-entrypoint MCP (direct stdio **and**
+   an upgrade from published `fava-trails==0.6.0` to the candidate, installed-entrypoint MCP (direct stdio **and**
    native Inspector registration), two-process identity isolation, and governed
    recall (#72).
 5. **Only after validation succeeds**, stages or normalizes a **draft** GitHub
@@ -192,6 +200,13 @@ sha256sum -c candidate-SHA256SUMS
 builds wheel + sdist itself. Either way it verifies fresh wheel install, sdist
 install, upgrade from published `fava-trails==0.6.0`, and re-runs the installed
 MCP + governance suites against the wheel.
+
+The `0.6.0` starting point is a fixed fixture, not a moving "previous release".
+The test installs published `fava-trails==0.6.0`, asserts that this is what was
+installed, and upgrades it to the exact candidate wheel. That shows one published
+version upgrading to the candidate. It does not name a supported minimum or the
+latest previous release, and it does not show that an upgrade from any other
+version works.
 
 Post-publication proof: download the published wheel/sdist (or use the Release
 asset `candidate-SHA256SUMS`) and confirm SHA-256 matches the tested candidate
