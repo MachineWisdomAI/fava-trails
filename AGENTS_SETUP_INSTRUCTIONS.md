@@ -25,13 +25,14 @@ To work from source (for development), clone the repository and run `uv sync`:
 git clone https://github.com/MachineWisdomAI/fava-trails.git && cd fava-trails && uv sync
 ```
 
-**Version boundaries.** Governed identity and `mode="authoring"` date from 0.7.0, and a release older than 0.7.0 does not match this guide's identity model. The local-reviewer bootstrap options (`--review-endpoint`, `--review-model`, `--review-key-env`) are marked "from 0.9.0" in this guide and are not in a published package until a release announces them. After any install or upgrade, run `fava-trails version` and restart the MCP client so the process loads the intended entrypoint. See [docs/runtime-and-upgrade.md](docs/runtime-and-upgrade.md).
+**Version boundaries.** Governed identity and `mode="authoring"` date from 0.7.0, and a release older than 0.7.0 does not match this guide's identity model. The local-reviewer bootstrap options (`--review-endpoint`, `--review-model`, `--review-key-env`) are in the source on main. A published package has them only when its entry in the [release history](CHANGELOG.md) lists them, so compare `fava-trails version` with that history before you follow the local-review steps below. After any install or upgrade, run `fava-trails version` and restart the MCP client so the process loads the intended entrypoint. See [docs/runtime-and-upgrade.md](docs/runtime-and-upgrade.md).
 
 ### LLM Configuration (for Trust Gate)
 
 The Trust Gate reviews thoughts before promotion using a local
 OpenAI-compatible `llm-oneshot` reviewer that you name (new data repositories
-created by `fava-trails bootstrap` from **0.9.0**), OpenRouter Decisions (Jev),
+created by `fava-trails bootstrap` in a build that includes the local-reviewer
+options), OpenRouter Decisions (Jev),
 or an explicit operator approval path. Releases through 0.8.x and any existing
 configuration keep their current behavior: with no Trust Gate settings, the
 built-in default is still OpenRouter Decisions (Jev). Provider selection is a **data-egress choice**: under the
@@ -62,7 +63,7 @@ that process). Early validation failures — missing `thought_id`, missing promp
 cache, thought not found, or prompt-resolution errors — return before disclosure
 and omit `trust_gate_egress`.
 
-**New installations: local review (0.9.0 and later; no hosted account needed):**
+**New installations: local review (needs a build that includes the local-reviewer options; no hosted account needed):**
 
 `fava-trails bootstrap` selects the `llm-oneshot` policy and asks you to name
 the reviewer. You supply the endpoint and the exact model id your server
@@ -131,10 +132,10 @@ returned to the caller in `trust_gate.reasoning`. Jev (`decisions`) returns a
 probability and threshold only, and none of its reasoning is invented. A slow
 local model needs a higher `trust_gate_timeout_secs`, which now applies to each
 request as well as to the whole review (keep it below `tool_timeout_secs`).
-Fixture tests cover protocol handling. One recorded run of an installed 0.9.0rc1
+Fixture tests cover protocol handling. One recorded run of a locally built 0.9.0rc1
 candidate against one local model (`unsloth/Qwen3.6-27B-GGUF`) showed two
 rejections with reasoning, then an approval and a correction. That is a single
-observation, not a benchmark, and the candidate is not a published release. Whether
+observation, not a benchmark, and the candidate was never published. Whether
 a particular model gives useful rejection feedback is for you to confirm with your
 own server; see the [local review walkthrough](docs/local-review-walkthrough.md).
 
@@ -170,7 +171,7 @@ The default model (`~typesafe/jev-latest`) is OpenRouter Jev via the Decisions
 API. Supply an existing OpenRouter key; you do not have to write a Noul
 question. Missing cloud credentials fail closed — candidates are **not**
 auto-approved. The shipped question and threshold are documented in the
-[ticket 03 calibration report](https://github.com/MachineWisdomAI/fava-trails/issues/126#issuecomment-5894849724);
+[issue #126 calibration report](https://github.com/MachineWisdomAI/fava-trails/issues/126#issuecomment-5894849724);
 the private corpus is available upon request.
 
 Local Unsloth Laya is the no-per-request-cost alternative for the same
@@ -300,8 +301,8 @@ fava-trails bootstrap fava-trails-data \
   --review-key-env LOCAL_REVIEW_KEY
 ```
 
-The three `--review-*` options configure the local reviewer (0.9.0 and later; see
-[LLM Configuration](#llm-configuration-for-trust-gate)). Without them,
+The three `--review-*` options configure the local reviewer (in builds that include
+them; see [LLM Configuration](#llm-configuration-for-trust-gate)). Without them,
 bootstrap tells you what to supply and promotion fails closed until you do.
 
 Save, recall, review, and supersession work without a git remote. `sync`
@@ -406,7 +407,8 @@ push_strategy: manual                     # bootstrap default: local commits onl
                                           # sync MCP tool fetches/rebases; immediate mode also pushes after it succeeds
 
 # Trust Gate (built-in default when unstated: decisions / OpenRouter Jev;
-# `fava-trails bootstrap` 0.9.0+ writes llm-oneshot plus the local reviewer you name)
+# `fava-trails bootstrap` in a build with the local-reviewer options writes llm-oneshot,
+# plus the local reviewer you name when you pass all three options)
 trust_gate: decisions                     # decisions | llm-oneshot
 trust_gate_provider: openrouter           # any-llm provider id (openrouter | openai | ...)
 trust_gate_model: ~typesafe/jev-latest    # tracking alias; pin typesafe/jev-1.13 if desired
@@ -450,7 +452,7 @@ trails:
 | `trails_dir` | string | `trails` | Directory for trail data (relative to repo root) |
 | `remote_url` | string | `null` | Git remote URL for sync |
 | `push_strategy` | string | `manual` | `immediate` auto-pushes after successful writes (advances `main` to `@-` then pushes); `manual` (bootstrap default) keeps commits local until the operator runs `jj bookmark set main -r @-` then `jj git push --bookmark main`. The `sync` tool itself only fetches/rebases; under `immediate`, a successful `sync` is also followed by the after-write push. |
-| `trust_gate` | string | `decisions` | Global trust gate policy. **Built-in default when unstated: `decisions`** (OpenRouter Jev); `bootstrap` from 0.9.0 writes `llm-oneshot` for new data repositories. `llm-oneshot` with a Decisions-only model (`~typesafe/jev-latest`, `typesafe/jev-1.13`) is refused before transmission. `human` is unimplemented (raises `NotImplementedError`). Non-LLM path is per-call `propose_truth(..., approval="human")` on an operator endpoint, not this config field. |
+| `trust_gate` | string | `decisions` | Global trust gate policy. **Built-in default when unstated: `decisions`** (OpenRouter Jev); `bootstrap` in a build that includes the local-reviewer options writes `llm-oneshot` for new data repositories. `llm-oneshot` with a Decisions-only model (`~typesafe/jev-latest`, `typesafe/jev-1.13`) is refused before transmission. `human` is unimplemented (raises `NotImplementedError`). Non-LLM path is per-call `propose_truth(..., approval="human")` on an operator endpoint, not this config field. |
 | `trust_gate_provider` | string | `openrouter` | any-llm provider id (`openrouter`, `openai`, …) |
 | `trust_gate_model` | string | `~typesafe/jev-latest` | Exact model id or alias. Chat-completions models (e.g. `google/gemini-2.5-flash`) are for explicit `llm-oneshot`. |
 | `trust_gate_api_base` | string | `null` | Optional API root. Decisions default is `https://openrouter.ai/api`; OpenAI-compatible local endpoints use `/v1`. |
@@ -583,7 +585,7 @@ Hooks can return a single action, `None` (treated as `Proceed`), or a list of ac
 
 ### Config Injection
 
-If your hook module defines a `configure(config)` function, it's called at startup with the `config` dict from `hooks.yaml` (after env var interpolation):
+If your hook module defines a `configure(config)` function, it's called at startup with the `config` dict from the hook's entry in `config.yaml` (after env var interpolation):
 
 ```python
 _min_confidence = 0.3
@@ -627,7 +629,7 @@ Hooks that need to query trail state receive a `TrailContext` via `event.context
 |-------|------|---------------|
 | `before_save` | Before thought is written to disk | Gating (can reject/mutate/redirect) |
 | `after_save` | After thought is committed | Observer (awaited sequentially through completion or timeout on the caller's task; adds latency before the tool returns; at-most-once, no retry) |
-| `before_propose` | Before promotion from drafts | Gating (can reject/mutate/redirect) |
+| `before_propose` | Inside `propose_truth`, after the reviewer returns a verdict (or the caller supplies an explicit operator approval) and before that verdict or approval is applied and saved. Hooks see the record before the durable approval metadata is written. Runs for reject and error verdicts too. | Gating (can reject/mutate/redirect) |
 | `after_propose` | After promotion is committed | Observer (awaited sequentially like `after_save`) |
 | `after_supersede` | After supersession is committed | Observer (awaited sequentially like `after_save`) |
 | `on_recall` | During single-trail recall search | Gating (can filter/reorder via RecallSelect) |
@@ -654,7 +656,7 @@ FAVA Trails ships with protocol hook modules that can be enabled via `module:` e
 
 | Protocol | Install | Description |
 |----------|---------|-------------|
-| **SECOM** | `pip install fava-trails[secom]` | Extractive compression at promote time via LLMLingua-2 ([docs](../src/fava_trails/protocols/secom/README.md)) |
+| **SECOM** | `pip install fava-trails[secom]` | Extractive compression at promote time via LLMLingua-2 ([docs](src/fava_trails/protocols/secom/README.md)) |
 | **ACE** | included | Playbook-driven reranking and anti-pattern detection (Stanford, UC Berkeley, and SambaNova ACE) |
 | **RLM** | included | MapReduce orchestration hooks for batch workflows (MIT RLM) |
 
@@ -688,6 +690,8 @@ hooks:
       compression_engine:
         type: llmlingua
 ```
+
+Inside `propose_truth`, the reviewer reads the draft as saved before this attempt, which can already contain compressed text if an earlier step stored it. SECOM runs afterwards as the `before_propose` hook, before the verdict is applied and saved, so this attempt's compressed output is not reviewed again. A record that is compressed is stored in its compressed form and the original draft stays in version history. The hook also runs when the verdict is a rejection or an error. The SECOM hook fails open on errors: with `fail_mode: open` (the default), an error in the hook lets the promotion continue uncompressed. The accepted values are `open` and `closed`.
 
 After installing and configuring, restart the MCP server. The first `propose_truth` that triggers compression will download the LLMLingua-2 model (~700MB) from HuggingFace Hub. Pre-download with:
 

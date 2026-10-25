@@ -125,30 +125,44 @@ but unreleased**.
 
 Once dog-fooding confirms the changes work:
 
-Release candidates use the same flow with a PEP 440 tag `vX.Y.ZrcN` that equals
-the `pyproject.toml` version (for example `v0.8.4rc1`). The Release workflow
-publishes it as a GitHub prerelease (never `latest`); installers get it only with
-`pip install --pre` or an exact pin. The version is set in the source PR by
-`scripts/mw-version.py` (see `docs/version-policy.md`), never at tag time.
-Promotion to stable uses the `chore(release): promote version` PR.
+A release is either stable, tagged `vX.Y.Z`, or a release candidate, tagged with
+the PEP 440 form `vX.Y.ZrcN` (for example `v0.8.4rc1`). In both cases the tag
+without its leading `v` must equal the `pyproject.toml` version exactly, and
+`scripts/release-tag.py` checks that and derives the channel. A stable Release is
+marked `latest`. A candidate is published as a GitHub prerelease, never `latest`,
+and installers get it only with `pip install --pre` or an exact pin. The version
+is set in the source PR by `scripts/mw-version.py` (see `docs/version-policy.md`),
+never at tag time, so you tag the version that the reviewed `main` tip already
+carries. A candidate becomes the stable version through a
+`chore(release): promote version` PR. This guide names no version in advance.
 
-1. Bump version in `pyproject.toml`
-2. Push the version bump via PR, merge to `main`
+1. Set the version in the source PR with `scripts/mw-version.py`, not by editing
+   `pyproject.toml` by hand
+2. Merge the PR to `main` after review and required checks. Merge every change
+   intended for the release now: first publication accepts only a tag on the
+   current `origin/main` tip, so a merge after tagging leaves the tag behind
+   `main` and the Release workflow refuses it
 3. Create and push an immutable tag on the reviewed commit:
-   `git tag vX.Y.Z <sha> && git push origin vX.Y.Z`
+   `git tag vX.Y.Z <sha> && git push origin vX.Y.Z` (`vX.Y.ZrcN` for a candidate)
    Do **not** create the GitHub Release yet — validation must run first.
 4. Owner runs the **Release** workflow (`workflow_dispatch`, GitHub Environment
-   `fava-release`) with input `tag=vX.Y.Z`. CI resolves draft-resume state first,
+   `fava-release`) with input `tag` set to the tag from step 3. CI resolves draft-resume state first,
    then proves `refs/tags/vX.Y.Z` peels to checked-out `HEAD` and either equals
    current protected `origin/main` (first publish) or is an ancestor of it
    (draft resume after main may have advanced), builds once, runs packaged gates
-   on the exact wheel+sdist (including sdist install and 0.6.0 upgrade), stages
+   on the exact wheel+sdist (including sdist install and the upgrade test from the
+   fixed published 0.6.0 baseline), stages
    or normalizes a **draft** GitHub Release (with `candidate-SHA256SUMS` and
    verified title/notes/target), publishes those same artifacts to PyPI,
    verifies published PyPI SHA-256 against `candidate-SHA256SUMS` (fail closed),
    then undrafts the Release only after that proof (reruns may resume a matching
    draft after metadata normalize; provenance env is `$GITHUB_ENV`-inherited, not
    expression-remapped).
+Steps 5 to 7 are for the maintainer who owns the vendor copy and the client
+registration, and they upgrade that runtime to a release you have published. They
+are not part of feature development, where an installed or vendored checkout
+that a client launches stays read-only (see "Working in this repository", item 3).
+
 5. Update the vendor copy:
    ```bash
    cd ~/git/vendor/fava-trails
