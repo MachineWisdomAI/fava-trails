@@ -1,36 +1,8 @@
-# FAVA Trails Development
+# FAVA Trails: Claude Code adapter
 
-## Where to Work
+This file points to the owning documents. It adds no rules of its own.
 
-- **Development**: `~/git/MachineWisdomAI/fava-trails/` (this repo)
-- **NEVER modify**: `~/git/vendor/fava-trails/` (read-only, pinned at v0.4.12 for MCP)
-- Vendor copy serves running MCP servers — modifying it risks breaking active tooling
-
-## Worktree Conventions
-
-- Feature branches use worktrees: `~/git/MachineWisdomAI/fava-trails-{slug}/`
-- Never commit directly to `main` — always use a feature branch + PR
-- Pre-flight check before starting work:
-  ```bash
-  git worktree list && git branch -r
-  ```
-- If another agent/branch is active on this repo, coordinate or use a separate worktree
-
-## CI Requirements
-
-PRs must pass:
-- **test** — pytest suite (`uv sync --frozen && uv run pytest -v`)
-- **Semantic PR title** — Conventional Commits format (e.g., `feat:`, `fix:`, `chore:`)
-
-## Local Development
-
-```bash
-uv sync --frozen
-uv run ruff check
-uv run pytest -v
-```
-
-## Reference
-
-- [AGENTS.md](AGENTS.md) — MCP tools, scope discovery, thought lifecycle
-- [README.md](README.md) — Project documentation, architecture, configuration
+- **Using the MCP tools in a session:** follow [AGENTS_USAGE_INSTRUCTIONS.md](AGENTS_USAGE_INSTRUCTIONS.md). Tool parameters and the thought lifecycle are in [AGENTS.md](AGENTS.md).
+- **Before changing this repository's source** (branches, worktrees, tests, version bump, release): read [CONTRIBUTING.md](CONTRIBUTING.md#working-in-this-repository). In short: never commit directly to `main`, and treat any installed or vendored FAVA Trails runtime as read-only.
+- **Install, reviewer choice, client registration:** [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) and [README.md](README.md).
+- **Never** create or edit application `.env` files for FAVA Trails scope; see the scope section of the usage instructions.

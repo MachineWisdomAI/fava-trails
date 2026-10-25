@@ -16,6 +16,20 @@ fava-trails install-jj
 
 This **reuses** any already-installed JJ at or above the supported minimum (**0.28.0**), including newer versions. It never silently downgrades or overwrites a user-managed `jj`. When installation is needed, it resolves the current official GitHub stable release into the managed path `~/.local/bin/jj` (override with `--version` / `JJ_VERSION` for reproducible environments). Supports Linux (x86_64, aarch64) and macOS (x86_64, arm64). Make sure `~/.local/bin` is in your `PATH` if you rely on the managed binary. From a source checkout you can also run `scripts/install-jj.sh` (thin wrapper around the same Python installer). Alternatively, install manually from [jj-vcs.github.io/jj](https://jj-vcs.github.io/jj/). See [docs/jj-compatibility.md](docs/jj-compatibility.md).
 
+## Working in this repository
+
+Read this section before you change source, whether you are a person or an agent.
+
+1. **Preflight.** From your checkout, run:
+   ```bash
+   git worktree list && git branch -r
+   ```
+   Done when you know every active worktree and remote branch. If another agent or branch is already working in this repository, coordinate with it or use a separate worktree.
+2. **Work on a feature branch in your own worktree,** for example `git worktree add ../fava-trails-<slug> -b <type>/<slug>`. Never commit directly to `main`; land changes through a pull request.
+3. **Leave installed runtimes alone.** Treat any installed or vendored FAVA Trails checkout that a running MCP client launches as read-only. Do not edit it, and do not touch live FAVA Trails instances you did not create. Develop in your own checkout and point a test client at it only as described under "Dog-food locally" below.
+4. **Version bump.** Follow [docs/version-policy.md](docs/version-policy.md): bump affected product versions in the original change PR and run the repository-local updater before review. Documentation, tests, CI and development checks alone need no bump. Editing `AGENTS_USAGE_INSTRUCTIONS.md` does need one: it is shipped in the package.
+5. **Open the pull request** with a Conventional Commits title, as described under "PR Expectations".
+
 ## Setup
 
 ```bash
@@ -45,7 +59,7 @@ All PRs must pass ruff with zero errors.
 
 ## Making Changes
 
-1. Fork the repo and create a branch: `git checkout -b fix/my-fix`
+1. Run the preflight in [Working in this repository](#working-in-this-repository), then fork the repo (or use a worktree) and create a branch: `git checkout -b fix/my-fix`
 2. Make your changes
 3. Run tests and linting to verify everything passes
 4. Push your branch and open a pull request
@@ -78,7 +92,7 @@ After merging to `main`, point your MCP server at the dev copy to test with real
 // In ~/.claude.json, change the fava-trails server entry:
 "args": [
   "run", "--directory",
-  "/home/younes/git/MachineWisdomAI/fava-trails",  // dev copy
+  "<path-to-your-fava-trails-checkout>",  // dev copy
   "fava-trails-server"
 ]
 ```

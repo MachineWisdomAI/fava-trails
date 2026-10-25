@@ -1,5 +1,20 @@
 # Runtime versions, identity, and upgrade behavior
 
+This page explains how to find out which FAVA Trails runtime a client actually launches, what an upgrade changes, and how a release candidate is verified before publication. It does not name a current release. The package you have is the one `fava-trails version` reports, and [CHANGELOG.md](../CHANGELOG.md) and [docs/releases/](releases/) list what each published version contains.
+
+To install or upgrade, then confirm and restart:
+
+```bash
+pip install --upgrade fava-trails
+fava-trails version
+```
+
+Restart the MCP client registration afterwards, because installing does not update a running process. Source on `main` can describe behavior that no published package contains yet.
+
+## Release history example: 0.7.0
+
+The following is a dated historical record, kept because later sections use its version number in examples. It is not a statement about the latest release.
+
 FAVA Trails **0.7.0 was published on September 13, 2026** to
 [PyPI](https://pypi.org/project/fava-trails/0.7.0/) and
 [GitHub](https://github.com/MachineWisdomAI/fava-trails/releases/tag/v0.7.0).
@@ -21,7 +36,7 @@ fava-trails version
 fava-trails doctor   # prints the same runtime block first
 ```
 
-Example (values vary by install):
+Illustrative output (the 0.7.0 values below are an example from the release-history section above; your install prints its own):
 
 ```text
 FAVA Trails product: fava-trails
@@ -187,6 +202,8 @@ unreleased**. After publication, confirm PyPI and GitHub release metadata match
 the tested candidate, then install with:
 
 ```bash
-pip install -U 'fava-trails>=0.7.0'
+pip install --upgrade fava-trails
 fava-trails version
 ```
+
+The printed package version should equal the version component of the published tag (the tag adds a leading `v`: tag `v1.2.3` corresponds to printed `1.2.3`), or the release's package version. A release candidate (`rcN`) is a pre-release, which a default `pip install` skips; to test a candidate, pin its exact version, for example `pip install 'fava-trails==<version>'`.

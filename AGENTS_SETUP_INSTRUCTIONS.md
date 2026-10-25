@@ -4,32 +4,28 @@ Instructions for creating and configuring a FAVA Trails data repo. For day-to-da
 
 ## Prerequisites
 
-Install [Jujutsu (JJ)](https://jj-vcs.github.io/jj/):
+Install FAVA Trails, confirm what loaded, then install [Jujutsu (JJ)](https://jj-vcs.github.io/jj/). `install-jj` is a `fava-trails` command, so the package comes first:
 
 ```bash
-fava-trails install-jj
-```
-
-Install FAVA Trails:
-
-```bash
-# From PyPI (recommended) — currently resolves published **0.6.0**
-pip install fava-trails
+# From PyPI (recommended)
+pip install --upgrade fava-trails
 
 # Confirm the loaded runtime (package + module + MCP product version):
 fava-trails version
 
-# Or from source (for development)
+# Install JJ (or reuse a supported one):
+fava-trails install-jj
+```
+
+Compare the version that `fava-trails version` prints with the [release history](CHANGELOG.md). The printed version, not this guide, tells you which behavior you have.
+
+To work from source (for development), clone the repository and run `uv sync`:
+
+```bash
 git clone https://github.com/MachineWisdomAI/fava-trails.git && cd fava-trails && uv sync
 ```
 
-**Version boundary:** [FAVA Trails 0.7.0 is published](https://github.com/MachineWisdomAI/fava-trails/releases/tag/v0.7.0).
-Governed identity, `mode="authoring"`, and related isolation behavior described in
-this guide and the usage guide ship in **0.7.0**. Older **0.6.0** does **not** match that model. After any
-install or upgrade, run `fava-trails version` and restart the MCP client so the
-process loads the intended entrypoint. See
-[docs/runtime-and-upgrade.md](docs/runtime-and-upgrade.md) and the README
-publication note.
+**Version boundaries.** Governed identity and `mode="authoring"` date from 0.7.0, and a release older than 0.7.0 does not match this guide's identity model. The local-reviewer bootstrap options (`--review-endpoint`, `--review-model`, `--review-key-env`) are marked "from 0.9.0" in this guide and are not in a published package until a release announces them. After any install or upgrade, run `fava-trails version` and restart the MCP client so the process loads the intended entrypoint. See [docs/runtime-and-upgrade.md](docs/runtime-and-upgrade.md).
 
 ### LLM Configuration (for Trust Gate)
 
@@ -47,11 +43,14 @@ content already left this process. There is no automatic pass-through/off mode
 and no silent fallback to another provider. Jev returns no reasoning; do not
 invent one. Timeouts, auth failures, and invalid answers fail closed.
 
-Before the first promotion on a machine, run:
+Before the first promotion on a machine, point `doctor` at the data repository you mean to inspect, then run it. It resolves the repository from `FAVA_TRAILS_DATA_REPO` (default `~/.fava-trails`), so without an absolute path it can inspect an unrelated repository at the default location.
 
 ```bash
+export FAVA_TRAILS_DATA_REPO=/absolute/path/to/fava-trails-data
 fava-trails doctor
 ```
+
+Per-machine overrides come from `$XDG_CONFIG_HOME/fava-trails/config.yaml`. If you isolate them with a separate `XDG_CONFIG_HOME`, export the same value before `doctor` and give the MCP client's server process the same value (see [After setup](#after-setup)). Otherwise the server reads your normal per-machine file and can send review text to a different destination than the one `doctor` reported.
 
 Doctor prints the effective policy, provider, model, destination, and a plain
 **Data egress** explanation of which candidate fields will be sent. API keys and
@@ -70,13 +69,25 @@ the reviewer. You supply the endpoint and the exact model id your server
 serves. FAVA does not assume hardware, download a model, probe localhost, or
 read a default credential variable.
 
+Prepare the credential source first, because `fava-trails doctor` needs it. The secret never appears in these commands, a client configuration or a repository file. Choose one route:
+
+- **Process environment.** Populate the variable named by `--review-key-env` (here `LOCAL_REVIEW_KEY`) in the environment of every process that reviews: the shell that runs `fava-trails doctor` and the MCP server process. A desktop client does not inherit your shell, so use the client's explicit environment-forwarding mechanism (for Codex, `env_vars`, shown in the README) rather than writing the value into its configuration. Use the secret mechanism you already trust, and keep the value out of shell history. A server that ignores authentication still needs some value in the variable.
+- **Owner-only key file.** Keep the key in a regular, non-symlink file that you own with mode `0600`, outside any repository, and set `trust_gate_api_key_file: <path-to-owner-only-key-file>` in the per-machine config. The file takes precedence over the variable and is reread for each promotion. Bootstrap has no key-file option, so still pass `--review-key-env`.
+
+Then bootstrap and check:
+
 ```bash
-export LOCAL_REVIEW_KEY=placeholder   # a server that ignores authentication still needs a value
 fava-trails bootstrap fava-trails-data \
   --review-endpoint http://127.0.0.1:8080/v1 \
   --review-model <exact-model-id-your-server-serves> \
   --review-key-env LOCAL_REVIEW_KEY
+export FAVA_TRAILS_DATA_REPO="$PWD/fava-trails-data"
+fava-trails doctor
 ```
+
+`--review-key-env` names the variable; bootstrap neither reads nor stores its value.
+
+Done when `fava-trails doctor` prints the effective policy, provider, model and destination with no key value and no key-file path.
 
 With all three options, bootstrap writes `trust_gate: llm-oneshot`,
 `trust_gate_provider: openai`, `trust_gate_api_base`, `trust_gate_model` and
@@ -88,9 +99,12 @@ and may be pushed. Bootstrap warns when a loopback endpoint is combined with
 `--remote`, since every clone inherits it.
 
 With any option missing, bootstrap writes only `trust_gate: llm-oneshot`, tells
-you which options to supply, and finishes. Until the endpoint and model are set
-(in that `config.yaml` or the per-machine config below), `propose_truth` and
-`fava-trails doctor` stop with guidance and nothing is transmitted. A repository
+you which options to supply, and finishes. Review fails closed only when the
+*effective* configuration is still incomplete: until the endpoint and model are
+set (in that `config.yaml` or the per-machine config below), `propose_truth` and
+`fava-trails doctor` stop with guidance and nothing is transmitted. A missing
+flag never disables a reviewer the machine already has through its per-machine
+config, which merges key by key and overrides the repository's fields. A repository
 bootstrapped this way behaves differently on a release without the new check:
 0.8.x posts the Decisions model as a chat request to OpenRouter when
 `OPENROUTER_API_KEY` is set, and 0.7 and earlier use hosted
@@ -101,8 +115,13 @@ repository on the machine and overrides it key by key. After writing, bootstrap
 loads the effective configuration and reports the policy, model, endpoint,
 destination kind and every Trust Gate key a per-machine file overrides. It exits
 non-zero when the effective destination differs from the one you requested (the
-repository is still created). "No request leaves the machine" therefore holds
-only when that report shows no override that redirects it.
+repository is still created). Whether review text stays on this machine depends on
+two things: the effective destination in that report, and where the
+endpoint actually routes. The report shows the configured destination only; no
+override in the report does not by itself show that requests stay local. A
+`local_endpoint` label means only that the address is `localhost` or a numeric
+loopback address as the calling process sees it. It cannot see a tunnel or port
+forward behind that address.
 
 Failures never fall back to a hosted provider. A server that is down, returns
 401, or sends a malformed reply produces a recorded `error` verdict and
@@ -112,8 +131,12 @@ returned to the caller in `trust_gate.reasoning`. Jev (`decisions`) returns a
 probability and threshold only, and none of its reasoning is invented. A slow
 local model needs a higher `trust_gate_timeout_secs`, which now applies to each
 request as well as to the whole review (keep it below `tool_timeout_secs`).
-Evidence so far is fixture tests; whether a particular model gives useful
-rejection feedback is for you to confirm with your own server.
+Fixture tests cover protocol handling. One recorded run of an installed 0.9.0rc1
+candidate against one local model (`unsloth/Qwen3.6-27B-GGUF`) showed two
+rejections with reasoning, then an approval and a correction. That is a single
+observation, not a benchmark, and the candidate is not a published release. Whether
+a particular model gives useful rejection feedback is for you to confirm with your
+own server; see the [local review walkthrough](docs/local-review-walkthrough.md).
 
 **Existing configurations are not rewritten.** Built-in defaults and per-key
 fallback are unchanged, so an existing explicit Jev (`decisions`) selection, a
@@ -135,8 +158,13 @@ resolves exactly as before. Two additions apply:
 
 1. Create a free account at https://openrouter.ai/
 2. Generate an API key at https://openrouter.ai/keys
-3. Pass it to the MCP server via the `OPENROUTER_API_KEY` environment variable
-   (in your MCP client config `env` block, or in your shell profile)
+3. Give the key to every process that reviews, through the named
+   `OPENROUTER_API_KEY` process environment or an owner-only key file
+   (`trust_gate_api_key_file` in the per-machine config, mode `0600`, outside any
+   repository). A client that starts the server in its own process needs its
+   explicit environment-forwarding mechanism for that variable. Never write the key value into a client
+   configuration or repository file. Do this before running `fava-trails doctor`,
+   which needs the same source.
 
 The default model (`~typesafe/jev-latest`) is OpenRouter Jev via the Decisions
 API. Supply an existing OpenRouter key; you do not have to write a Noul
@@ -152,7 +180,7 @@ alias), and `trust_gate_api_base` to your Unsloth Decision API (requests go
 to `/v1/systemone`). FAVA does not probe localhost, discover Unsloth, or fall
 back between providers. Select exactly one backend.
 
-**Local OpenAI-compatible endpoint (local-only egress, e.g. Unsloth Studio):**
+**Local OpenAI-compatible endpoint (e.g. Unsloth Studio):**
 
 Unsloth Studio (and similar local servers) expose authenticated OpenAI-compatible
 `/v1/chat/completions` endpoints. Point Trust Gate at them on one machine via
@@ -171,10 +199,16 @@ trust_gate_extra_body:
   enable_thinking: false
 ```
 
-Verify with `fava-trails doctor` — destination kind should be `local_endpoint`
-and `api_base` should match your loopback URL. If that endpoint is unavailable
-or misconfigured, promotion fails closed. There is **no automatic fallback** to
-OpenRouter.
+Check with `fava-trails doctor`: the destination kind should be `local_endpoint`
+and `api_base` should match your loopback URL. `doctor` reports the effective
+destination and model. It does not test that the endpoint is reachable, that the
+model is good, or that review text stays on this host: `local_endpoint` only
+classifies `localhost` and numeric loopback addresses, and a tunnel or port
+forward behind that address is invisible to it. Confirm where the address
+actually routes. A non-loopback `trust_gate_api_base` is classified
+`custom_endpoint`, and a hosted provider with no `trust_gate_api_base` is
+`remote_provider`. If the endpoint is unavailable or misconfigured, promotion
+fails closed. There is **no automatic fallback** to OpenRouter.
 
 The key file must be a regular, non-symlink file owned by the current user with
 no group or other permissions (mode `0600`). It is read for every promotion. If
@@ -334,7 +368,13 @@ jj bookmark track main@origin
 
 ### After setup
 
-Register the MCP server with `fava-trails register` (see [README.md](README.md#quick-start)), then use MCP tools (`save_thought`, `recall`, etc.) for all trail operations. Do not use `git` commands to manage thought files. Direct stdio testing does not register the server for native sessions.
+Register the MCP server, then use MCP tools (`save_thought`, `recall`, etc.) for all trail operations. Do not use `git` commands to manage thought files. Direct stdio testing does not register the server for native sessions.
+
+1. Export the absolute path of the data repository, as in [LLM Configuration](#llm-configuration-for-trust-gate), then print registration instructions for your client: `fava-trails register --agent-id <stable-agent-id>`. This prints only. `--write` updates a client configuration while preserving unrelated settings and keeping a backup. `--verify` runs a direct smoke test and a configuration load check.
+2. For Claude Code, Claude Desktop and any client that takes the standard JSON shape, use the printed instructions or the registration shape in [README Quick start](README.md#quick-start).
+3. For Windows with WSL, OpenAI Codex CLI and other MCP clients, use [README Client registration examples](README.md#client-registration-examples). For empty scaffolding scopes that a client created, use [README Remove empty scaffolding scopes](README.md#remove-empty-scaffolding-scopes). Follow those sections as written.
+
+Whatever the client, its server process carries the same absolute `FAVA_TRAILS_DATA_REPO`, a stable `FAVA_TRAILS_AGENT_ID`, and `XDG_CONFIG_HOME` when you isolate per-machine overrides. A desktop client may not inherit your shell exports. Reviewer credentials reach the server through its environment or a `trust_gate_api_key_file`, never as literal values in the client configuration. Done when the client lists the FAVA Trails tools after a restart.
 
 ## Setting Up a Second Machine
 
@@ -352,6 +392,8 @@ Use the `sync` MCP tool to **pull** (fetch/rebase) latest shared truth; it is no
 a publication step. (Under `push_strategy: immediate`, the server's after-write
 push also runs after a successful `sync`.) Completed writes sit at `@-`; a bare
 `jj git push` without advancing `main` can miss them.
+
+On the second machine, set `FAVA_TRAILS_AGENT_ID` deliberately on that machine's server process. It is a stable role identifier, not a host fingerprint, so a new host does not need a new value, and the value must not be derived from the hostname. Copying a client registration does not create an independent identity. Processes that share an identity share its authoring view; if they need independent authoring privacy, configure separate identities and endpoints. See [docs/governed-recall.md](docs/governed-recall.md).
 
 ## Global Config Reference (`config.yaml`)
 

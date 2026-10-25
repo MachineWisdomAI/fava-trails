@@ -110,7 +110,7 @@ Print registration instructions for your MCP client with an ordinary server-conf
 fava-trails register --agent-id claude-code
 ```
 
-This prints only. `--write` updates a client configuration while preserving unrelated settings and keeping a backup, and `--verify` runs a direct smoke test and a configuration load check. A desktop client starts the server in its own process and may not inherit your shell exports. Its registration therefore carries the same absolute `FAVA_TRAILS_DATA_REPO` and, when you deliberately isolate per-machine overrides, the intended `XDG_CONFIG_HOME`. [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) covers Claude Code and Claude Desktop, and [Client registration examples](#client-registration-examples) covers Windows with WSL, OpenAI Codex CLI and other MCP clients.
+This prints only. `--write` updates a client configuration while preserving unrelated settings and keeping a backup, and `--verify` runs a direct smoke test and a configuration load check. A desktop client starts the server in its own process and may not inherit your shell exports. Its registration therefore carries the same absolute `FAVA_TRAILS_DATA_REPO` and, when you deliberately isolate per-machine overrides, the intended `XDG_CONFIG_HOME`. The printed instructions and the registration shape below serve Claude Code, Claude Desktop and clients that take the standard JSON shape. [Client registration examples](#client-registration-examples) covers Windows with WSL, OpenAI Codex CLI and other MCP clients.
 
 A registration has this shape, with the `command` field and paths adapted to your install:
 
@@ -134,7 +134,7 @@ FAVA uses MCP SDK 2.2 or later within the 2.x series. `initialize` advertises FA
 
 ## Client registration examples
 
-These examples show the registration shape for clients that [AGENTS_SETUP_INSTRUCTIONS.md](AGENTS_SETUP_INSTRUCTIONS.md) does not cover. Each sets an absolute `FAVA_TRAILS_DATA_REPO` and a stable `FAVA_TRAILS_AGENT_ID` for that authoring process, and none holds a credential. A reviewer credential comes from the server process's own environment or from a credential file named in the Trust Gate configuration. Add `XDG_CONFIG_HOME` to the `env` block only when you deliberately isolate per-machine overrides.
+These examples show the registration shape for clients whose setup differs from the standard JSON shown under [Quick start](#quick-start). Each sets an absolute `FAVA_TRAILS_DATA_REPO` and a stable `FAVA_TRAILS_AGENT_ID` for that authoring process, and none holds a credential. A reviewer credential comes from the server process's own environment or from a credential file named in the Trust Gate configuration. Add `XDG_CONFIG_HOME` to the `env` block only when you deliberately isolate per-machine overrides.
 
 **Claude Desktop on Windows, with FAVA Trails installed in WSL (authoring).** The client launches `wsl.exe`, which starts the server in a WSL login shell. Because `bash -lc` loads your WSL login environment, a reviewer credential exported there reaches the server without appearing in this configuration.
 

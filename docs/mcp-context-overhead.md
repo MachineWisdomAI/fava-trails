@@ -59,8 +59,8 @@ Candidate (this head, live `mcp.Client`):
 | full (default) | 606 | 5913 | 6519 | 26074 |
 | compact | 209 | 3200 | 3409 | 13635 |
 
-`get_usage_guide` body on this candidate (on demand, not in session-init): 2965
-heuristic tokens (11860 chars). An evaluator previously estimated about 6000 tokens
+`get_usage_guide` body on this candidate (on demand, not in session-init): 3737
+heuristic tokens (14947 chars). An evaluator previously estimated about 6000 tokens
 of schemas and instructions versus about 1600 for a committed agent guide; that
 estimate was client-specific and is not reproduced here as a universal number.
 
