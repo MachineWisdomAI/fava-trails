@@ -2,24 +2,18 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 4,
-    "uniques": 3
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/CLAUDE.md",
-    "title": "/blob/main/CLAUDE.md",
-    "count": 3,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/issues",
-    "title": "/issues",
-    "count": 2,
-    "uniques": 2
+    "count": 6,
+    "uniques": 5
   },
   {
     "path": "/machinewisdomai/fava-trails",
     "title": "Overview",
+    "count": 4,
+    "uniques": 4
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/issues",
+    "title": "/issues",
     "count": 2,
     "uniques": 2
   },
@@ -54,8 +48,14 @@
     "uniques": 1
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/CONTRIBUTING.md",
-    "title": "/blob/main/CONTRIBUTING.md",
+    "path": "/MachineWisdomAI/fava-trails/blob/main/docs/jj-compatibility.md",
+    "title": "/blob/main/docs/jj-compatibility.md",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/blob/main/docs/mcp-context-overhead.md",
+    "title": "/blob/main/docs/mcp-context-overhead.md",
     "count": 1,
     "uniques": 1
   }
