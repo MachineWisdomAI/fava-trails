@@ -4,6 +4,17 @@ All notable changes to FAVA Trails are documented here.
 
 ## Unreleased
 
+## [0.9.2] — 2026-10-25
+
+Published on [GitHub](https://github.com/MachineWisdomAI/fava-trails/releases/tag/v0.9.2)
+and [PyPI](https://pypi.org/project/fava-trails/0.9.2/) from tag commit
+`5b7256f6ba9a16a25b893011a38321f338b8898a`. The gated release workflow built the
+candidate once, ran the packaged checks on that exact wheel and sdist, and
+matched the published PyPI hashes to the candidate before the GitHub release
+was made public. This section lists the changes made on main since 0.8.0,
+including the development candidates 0.9.0rc1 through 0.9.2rc1, which were
+never published. See [runtime and upgrade guidance](docs/runtime-and-upgrade.md).
+
 ### Added
 - Release-candidate publication route (#144): the existing `Release` workflow now accepts PEP 440 `vMAJOR.MINOR.PATCHrcN` tags alongside stable tags. The tag must equal the package version; RC GitHub Releases are marked prerelease and never `latest`. The updater enters the rc channel from a stable baseline only via a `Release-Channel: rc` PR-body line (0.8.3 -> 0.8.4rc1) and keeps suffix-only promotion.
 - Local review for new installations (tracking issue fava-trails.org#33): `fava-trails bootstrap` now writes `trust_gate: llm-oneshot` and accepts `--review-endpoint`, `--review-model` and `--review-key-env`. With all three it writes the complete local OpenAI-compatible selection to the data repository's `config.yaml`; with any missing it writes only the policy and prints what to supply, and promotion fails closed with guidance. Endpoints with credentials, a query, a fragment or extra path segments are refused. Bootstrap never writes the per-machine config, never contacts the endpoint, and reports the effective selection and any per-machine override, exiting non-zero if the effective destination differs from the one requested. Existing configurations resolve exactly as before.
