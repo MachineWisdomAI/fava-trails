@@ -2,14 +2,20 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 6,
-    "uniques": 5
+    "count": 7,
+    "uniques": 6
   },
   {
     "path": "/machinewisdomai/fava-trails",
     "title": "Overview",
     "count": 4,
     "uniques": 4
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/actions/runs/27089813125",
+    "title": "/actions/runs/27089813125",
+    "count": 1,
+    "uniques": 1
   },
   {
     "path": "/MachineWisdomAI/fava-trails/actions/runs/27413285726/workflow",
@@ -50,12 +56,6 @@
   {
     "path": "/MachineWisdomAI/fava-trails/blob/main/docs/mcp-context-overhead.md",
     "title": "/blob/main/docs/mcp-context-overhead.md",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/docs/releases/v0.8.0.md",
-    "title": "/blob/main/docs/releases/v0.8.0.md",
     "count": 1,
     "uniques": 1
   }
