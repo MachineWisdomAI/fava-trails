@@ -12,6 +12,12 @@
     "uniques": 4
   },
   {
+    "path": "/MachineWisdomAI/fava-trails/blob/main/CHANGELOG.md",
+    "title": "/blob/main/CHANGELOG.md",
+    "count": 2,
+    "uniques": 2
+  },
+  {
     "path": "/MachineWisdomAI/fava-trails/actions/runs/27089813125",
     "title": "/actions/runs/27089813125",
     "count": 1,
@@ -42,20 +48,14 @@
     "uniques": 1
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/AGENTS_SETUP_INSTRUCTIONS.md",
-    "title": "/blob/main/AGENTS_SETUP_INSTRUCTIONS.md",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/CHANGELOG.md",
-    "title": "/blob/main/CHANGELOG.md",
-    "count": 1,
-    "uniques": 1
-  },
-  {
     "path": "/MachineWisdomAI/fava-trails/blob/main/docs/jj-compatibility.md",
     "title": "/blob/main/docs/jj-compatibility.md",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/blob/main/docs/mcp-context-overhead.md",
+    "title": "/blob/main/docs/mcp-context-overhead.md",
     "count": 1,
     "uniques": 1
   }
