@@ -1,8 +1,8 @@
 [
   {
     "referrer": "aocr.org",
-    "count": 16,
-    "uniques": 16
+    "count": 22,
+    "uniques": 22
   },
   {
     "referrer": "github.com",
@@ -16,6 +16,11 @@
   },
   {
     "referrer": "news.ycombinator.com",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "referrer": "vuink.com",
     "count": 1,
     "uniques": 1
   }
