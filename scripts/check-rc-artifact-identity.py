@@ -121,6 +121,10 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _hashes(directory: Path) -> dict[str, str]:
+    return {p.name: _sha256(p) for p in sorted(directory.iterdir()) if p.suffix == ".whl" or p.name.endswith(".tar.gz")}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-ref", required=True, help="commit whose product bytes the candidate must keep")
@@ -141,8 +145,8 @@ def main(argv: list[str] | None = None) -> int:
             "candidate_ref": args.candidate_ref,
             "base_version": base_version,
             "candidate_version": cand_version,
-            "candidate_artifacts": {p.name: _sha256(p) for p in sorted(cand_dir.iterdir())},
-            "base_artifacts": {p.name: _sha256(p) for p in sorted(base_dir.iterdir())},
+            "candidate_artifacts": _hashes(cand_dir),
+            "base_artifacts": _hashes(base_dir),
             "problems": problems,
         }
     print(json.dumps(report, indent=2))
