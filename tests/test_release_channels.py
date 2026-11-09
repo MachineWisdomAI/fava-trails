@@ -368,10 +368,10 @@ def test_same_base_marker_changes_only_version_values(tmp_path):
     assert changed == {"pyproject.toml", "uv.lock", "src/pkg/__init__.py"}
     # Every non-version byte equals the base: stripping the version leaves no diff.
     diff = _git(repo, "diff", "-U0").splitlines()
-    removed = [l for l in diff if l.startswith("-") and not l.startswith("---")]
-    added = [l for l in diff if l.startswith("+") and not l.startswith("+++")]
+    removed = [ln for ln in diff if ln.startswith("-") and not ln.startswith("---")]
+    added = [ln for ln in diff if ln.startswith("+") and not ln.startswith("+++")]
     assert len(removed) == len(added) == 3
-    assert all("0.9.3" in l for l in removed) and all("0.9.3rc1" in l for l in added)
+    assert all("0.9.3" in ln for ln in removed) and all("0.9.3rc1" in ln for ln in added)
 
 
 @pytest.mark.parametrize(
