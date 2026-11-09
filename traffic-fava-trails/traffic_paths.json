@@ -2,20 +2,14 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 13,
-    "uniques": 12
+    "count": 12,
+    "uniques": 11
   },
   {
     "path": "/machinewisdomai/fava-trails",
     "title": "Overview",
     "count": 4,
     "uniques": 4
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/CHANGELOG.md",
-    "title": "/blob/main/CHANGELOG.md",
-    "count": 2,
-    "uniques": 2
   },
   {
     "path": "/MachineWisdomAI/fava-trails/issues/104",
@@ -54,8 +48,14 @@
     "uniques": 1
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/AGENTS.md",
-    "title": "/blob/main/AGENTS.md",
+    "path": "/MachineWisdomAI/fava-trails/blob/main/CHANGELOG.md",
+    "title": "/blob/main/CHANGELOG.md",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/blob/main/codev/resources/commands/agent-farm.md",
+    "title": "/blob/main/codev/resources/commands/agent-farm.md",
     "count": 1,
     "uniques": 1
   }
