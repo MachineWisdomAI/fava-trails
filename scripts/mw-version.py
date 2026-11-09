@@ -113,6 +113,18 @@ channel (`0.8.4-rc.1` becomes `0.8.5-rc.1`) and is promoted only by the exact
 promotion title above. Release tags must equal `v` plus the PEP 440 package
 version (`v0.8.4rc1`, `v0.8.4`); the Release workflow rejects any mismatch.
 
+A stable baseline whose product change already carries its bump (so it was
+merged but never published) enters the candidate channel without a second
+increment only when the PR body has a line exactly `Release-Channel: rc-same-base`:
+`0.9.3` becomes `0.9.3-rc.1` (`0.9.3rc1` in Python metadata). The case is
+metadata-only: after stripping the configured version values, every changed path
+must be a non-release path (documentation, tests, CI, version scripts); any
+remaining product difference from the base is rejected. It needs a stable
+baseline, is mutually exclusive with `Release-Channel: rc`, is ignored by the
+promotion title, and never writes a tag, release, or publication. Tag the merged
+main tip as `v0.9.3rc1`; the same version is later promoted by the exact
+promotion title (`0.9.3rc1` becomes `0.9.3`) with no base increment.
+
 For a new versioned component, run the toolkit bootstrap again or run
 `python3 scripts/mw-version.py enroll --repo PATH --unit COMPONENT_PATH` from an
 installed copy. Review the generated configuration and add any runtime/plugin
@@ -122,6 +134,7 @@ POINTER = '\n## Version updates\n\nFollow [the version policy](docs/version-poli
 
 
 START_RC_MARKER = re.compile(r"^Release-Channel: rc[ \t]*$", re.MULTILINE)
+SAME_BASE_RC_MARKER = re.compile(r"^Release-Channel: rc-same-base[ \t]*$", re.MULTILINE)
 
 
 class PolicyError(ValueError):
@@ -381,6 +394,9 @@ def evaluate(root: Path, args) -> list[tuple[Path, str]]:
     level = intent(title, body, [c.strip() for c in commits if c.strip()])
     promote = title == "chore(release): promote version"
     start_rc = bool(START_RC_MARKER.search(body)) and not promote
+    same_base = bool(SAME_BASE_RC_MARKER.search(body)) and not promote
+    if start_rc and same_base:
+        raise PolicyError("Release-Channel markers rc and rc-same-base are mutually exclusive")
     raw_changes = set(git(root, "diff", "--name-only", "--no-renames", base).splitlines())
     raw_changes.update(git(root, "ls-files", "--others", "--exclude-standard").splitlines())
     changes = {p for p in raw_changes if not any(fnmatch.fnmatchcase(p, pat) for pat in config.get("exclude_paths", []))}
@@ -393,6 +409,13 @@ def evaluate(root: Path, args) -> list[tuple[Path, str]]:
     if not promote:
         changes = substantive_changes(root, base, changes, configured_files(root, units))
         changes = release_changes(changes, config)
+    if same_base and changes:
+        # Version values were already stripped by substantive_changes, so anything left is a
+        # real difference from the base: the candidate must carry the base's exact product bytes.
+        raise PolicyError(
+            "a same-base release candidate may change configured version values only; "
+            "product changes: " + ", ".join(sorted(changes))
+        )
     all_patterns = [p for u in units for p in u["paths"]]
     shared = any(not any(fnmatch.fnmatchcase(p, pat) for pat in all_patterns) for p in changes)
     today = dt.datetime.now(ZoneInfo("America/Toronto")).date()
@@ -426,7 +449,13 @@ def evaluate(root: Path, args) -> list[tuple[Path, str]]:
             target = baseline
             if promote and not raw_changes:
                 affected = bool(baseline[3])
-            if affected:
+            if same_base:
+                if baseline[3]:
+                    raise PolicyError("a same-base release candidate requires a stable baseline; the prerelease channel is already set")
+                # Same base, no increment: 0.9.3 becomes 0.9.3-rc.1 (0.9.3rc1 in Python metadata).
+                affected = True
+                target = (*baseline[:3], "rc.1", None)
+            elif affected:
                 if promote:
                     if not baseline[3]:
                         raise PolicyError("promotion requires a prerelease baseline")
