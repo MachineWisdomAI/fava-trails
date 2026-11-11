@@ -49,6 +49,31 @@ and changes only configured version values: `0.1.1-rc.1` becomes `0.1.1`, withou
 another base increment. Existing release review and publication authority still
 apply. The updater never creates a tag, release, publication, or deployment.
 
+A stable baseline enters the release-candidate channel only when the PR body has
+a line exactly `Release-Channel: rc`: `0.8.3` becomes `0.8.4-rc.1` (`0.8.4rc1`
+in Python metadata) for a patch, using the normal largest-increment rule. The
+marker is rejected on a baseline that is already a prerelease, which keeps its
+channel (`0.8.4-rc.1` becomes `0.8.5-rc.1`) and is promoted only by the exact
+promotion title above. Release tags must equal `v` plus the PEP 440 package
+version (`v0.8.4rc1`, `v0.8.4`); the Release workflow rejects any mismatch.
+
+A stable baseline whose product change already carries its bump (so it was
+merged but never published) enters the candidate channel without a second
+increment only when the PR body has a line exactly `Release-Channel: rc-same-base`:
+`0.9.3` becomes `0.9.3-rc.1` (`0.9.3rc1` in Python metadata). The case is
+metadata-only: after stripping the configured version values, every changed path
+must be a non-release path (documentation, tests, CI, version scripts); any
+remaining product difference from the base is rejected. It needs a stable
+baseline, is mutually exclusive with `Release-Channel: rc`, is ignored by the
+promotion title, and never writes a tag, release, or publication. Tag the merged
+main tip as `v0.9.3rc1`; the same version is later promoted by the exact
+promotion title (`0.9.3rc1` becomes `0.9.3`) with no base increment.
+
+To prove the candidate artifacts, run
+`python3 scripts/check-rc-artifact-identity.py --base-ref REF`. It builds the base
+commit and the candidate with `uv build` and fails unless the wheel and sdist
+differ only in version metadata and renamed files.
+
 For a new versioned component, run the toolkit bootstrap again or run
 `python3 scripts/mw-version.py enroll --repo PATH --unit COMPONENT_PATH` from an
 installed copy. Review the generated configuration and add any runtime/plugin
