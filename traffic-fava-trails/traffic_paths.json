@@ -3,7 +3,7 @@
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
     "count": 12,
-    "uniques": 11
+    "uniques": 12
   },
   {
     "path": "/machinewisdomai/fava-trails",
@@ -12,14 +12,14 @@
     "uniques": 4
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/issues/104",
-    "title": "/issues/104",
+    "path": "/MachineWisdomAI/fava-trails/blob/main/CHANGELOG.md",
+    "title": "/blob/main/CHANGELOG.md",
     "count": 2,
     "uniques": 2
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/pull/111",
-    "title": "/pull/111",
+    "path": "/MachineWisdomAI/fava-trails/issues/104",
+    "title": "/issues/104",
     "count": 2,
     "uniques": 2
   },
@@ -42,8 +42,8 @@
     "uniques": 1
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/CHANGELOG.md",
-    "title": "/blob/main/CHANGELOG.md",
+    "path": "/MachineWisdomAI/fava-trails/blob/ed59cd47e64ca8f79ac1735fe1b352305a0bde91/docs/secret-preflight.md",
+    "title": "/blob/ed59cd47e64ca8f79ac1735fe1b352305a0bde91/docs/secret-preflight.md",
     "count": 1,
     "uniques": 1
   },
@@ -54,8 +54,8 @@
     "uniques": 1
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/docs/mcp-context-overhead.md",
-    "title": "/blob/main/docs/mcp-context-overhead.md",
+    "path": "/MachineWisdomAI/fava-trails/blob/main/src/fava_trails/protocols/secom/README.md",
+    "title": "/blob/main/src/fava_trails/protocols/secom/README.md",
     "count": 1,
     "uniques": 1
   }
