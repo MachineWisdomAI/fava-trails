@@ -1,13 +1,13 @@
 [
   {
-    "referrer": "aocr.org",
-    "count": 9,
-    "uniques": 9
-  },
-  {
     "referrer": "vuink.com",
     "count": 7,
     "uniques": 7
+  },
+  {
+    "referrer": "aocr.org",
+    "count": 6,
+    "uniques": 6
   },
   {
     "referrer": "news.ycombinator.com",
