@@ -2,8 +2,8 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 13,
-    "uniques": 13
+    "count": 15,
+    "uniques": 15
   },
   {
     "path": "/MachineWisdomAI/fava-trails/blob/main/CHANGELOG.md",
@@ -30,12 +30,6 @@
     "uniques": 1
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/actions/runs/27413285726/workflow",
-    "title": "/actions/runs/27413285726/workflow",
-    "count": 1,
-    "uniques": 1
-  },
-  {
     "path": "/MachineWisdomAI/fava-trails/blob/ed59cd47e64ca8f79ac1735fe1b352305a0bde91/docs/secret-preflight.md",
     "title": "/blob/ed59cd47e64ca8f79ac1735fe1b352305a0bde91/docs/secret-preflight.md",
     "count": 1,
@@ -56,6 +50,12 @@
   {
     "path": "/MachineWisdomAI/fava-trails/blob/main/src/fava_trails/protocols/secom/README.md",
     "title": "/blob/main/src/fava_trails/protocols/secom/README.md",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/compare/v0.5.8...v0.5.9",
+    "title": "/compare/v0.5.8...v0.5.9",
     "count": 1,
     "uniques": 1
   }
