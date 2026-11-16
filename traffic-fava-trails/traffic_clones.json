@@ -1228,14 +1228,14 @@
       "uniques": 17
     },
     {
-      "timestamp": "2026-11-01T00:00:00Z",
-      "count": 30,
-      "uniques": 21
-    },
-    {
       "timestamp": "2026-11-02T00:00:00Z",
       "count": 45,
       "uniques": 25
+    },
+    {
+      "timestamp": "2026-11-01T00:00:00Z",
+      "count": 30,
+      "uniques": 21
     },
     {
       "timestamp": "2026-11-03T00:00:00Z",
