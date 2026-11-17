@@ -2,7 +2,7 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 15,
+    "count": 17,
     "uniques": 15
   },
   {
@@ -18,8 +18,8 @@
     "uniques": 2
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/actions/runs/27089813125",
-    "title": "/actions/runs/27089813125",
+    "path": "/MachineWisdomAI/fava-trails/actions",
+    "title": "/actions",
     "count": 1,
     "uniques": 1
   },
@@ -32,6 +32,12 @@
   {
     "path": "/MachineWisdomAI/fava-trails/blob/ed59cd47e64ca8f79ac1735fe1b352305a0bde91/docs/secret-preflight.md",
     "title": "/blob/ed59cd47e64ca8f79ac1735fe1b352305a0bde91/docs/secret-preflight.md",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/blob/main/CONTRIBUTING.md",
+    "title": "/blob/main/CONTRIBUTING.md",
     "count": 1,
     "uniques": 1
   },
@@ -50,12 +56,6 @@
   {
     "path": "/MachineWisdomAI/fava-trails/blob/main/src/fava_trails/protocols/secom/README.md",
     "title": "/blob/main/src/fava_trails/protocols/secom/README.md",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/compare/v0.5.8...v0.5.9",
-    "title": "/compare/v0.5.8...v0.5.9",
     "count": 1,
     "uniques": 1
   }
