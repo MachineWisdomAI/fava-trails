@@ -11,8 +11,8 @@
   },
   {
     "referrer": "news.ycombinator.com",
-    "count": 5,
-    "uniques": 3
+    "count": 4,
+    "uniques": 2
   },
   {
     "referrer": "github.com",
@@ -20,7 +20,7 @@
     "uniques": 2
   },
   {
-    "referrer": "machine-wisdom.ai",
+    "referrer": "fava-trails.org",
     "count": 1,
     "uniques": 1
   }
