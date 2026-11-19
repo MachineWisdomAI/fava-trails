@@ -2,14 +2,8 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 15,
-    "uniques": 13
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/CHANGELOG.md",
-    "title": "/blob/main/CHANGELOG.md",
-    "count": 2,
-    "uniques": 2
+    "count": 16,
+    "uniques": 14
   },
   {
     "path": "/MachineWisdomAI/fava-trails/issues/104",
@@ -24,8 +18,20 @@
     "uniques": 1
   },
   {
+    "path": "/MachineWisdomAI/fava-trails/actions/workflows/dependabot/update-graph",
+    "title": "/actions/workflows/dependabot/update-graph",
+    "count": 1,
+    "uniques": 1
+  },
+  {
     "path": "/MachineWisdomAI/fava-trails/blob/ed59cd47e64ca8f79ac1735fe1b352305a0bde91/docs/secret-preflight.md",
     "title": "/blob/ed59cd47e64ca8f79ac1735fe1b352305a0bde91/docs/secret-preflight.md",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/blob/main/CHANGELOG.md",
+    "title": "/blob/main/CHANGELOG.md",
     "count": 1,
     "uniques": 1
   },
@@ -50,12 +56,6 @@
   {
     "path": "/MachineWisdomAI/fava-trails/blob/main/docs/documentation-ownership.md",
     "title": "/blob/main/docs/documentation-ownership.md",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/docs/fava_trails_faq.md",
-    "title": "/blob/main/docs/fava_trails_faq.md",
     "count": 1,
     "uniques": 1
   }
