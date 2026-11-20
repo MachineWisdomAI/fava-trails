@@ -2,12 +2,24 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 16,
-    "uniques": 14
+    "count": 15,
+    "uniques": 13
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/issues/104",
-    "title": "/issues/104",
+    "path": "/MachineWisdomAI/fava-trails/blob/main/CHANGELOG.md",
+    "title": "/blob/main/CHANGELOG.md",
+    "count": 2,
+    "uniques": 2
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/blob/main/src/fava_trails/protocols/secom/README.md",
+    "title": "/blob/main/src/fava_trails/protocols/secom/README.md",
+    "count": 2,
+    "uniques": 2
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/pulls",
+    "title": "/pulls",
     "count": 2,
     "uniques": 2
   },
@@ -30,12 +42,6 @@
     "uniques": 1
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/CHANGELOG.md",
-    "title": "/blob/main/CHANGELOG.md",
-    "count": 1,
-    "uniques": 1
-  },
-  {
     "path": "/MachineWisdomAI/fava-trails/blob/main/CONTRIBUTING.md",
     "title": "/blob/main/CONTRIBUTING.md",
     "count": 1,
@@ -50,12 +56,6 @@
   {
     "path": "/MachineWisdomAI/fava-trails/blob/main/codev/resources/commands/agent-farm.md",
     "title": "/blob/main/codev/resources/commands/agent-farm.md",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/docs/documentation-ownership.md",
-    "title": "/blob/main/docs/documentation-ownership.md",
     "count": 1,
     "uniques": 1
   }
