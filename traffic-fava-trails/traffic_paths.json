@@ -2,8 +2,8 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 15,
-    "uniques": 13
+    "count": 13,
+    "uniques": 11
   },
   {
     "path": "/MachineWisdomAI/fava-trails/blob/main/CHANGELOG.md",
@@ -42,20 +42,20 @@
     "uniques": 1
   },
   {
+    "path": "/MachineWisdomAI/fava-trails/blob/main/AGENTS_SETUP_INSTRUCTIONS.md",
+    "title": "/blob/main/AGENTS_SETUP_INSTRUCTIONS.md",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/blob/main/AGENTS_USAGE_INSTRUCTIONS.md",
+    "title": "/blob/main/AGENTS_USAGE_INSTRUCTIONS.md",
+    "count": 1,
+    "uniques": 1
+  },
+  {
     "path": "/MachineWisdomAI/fava-trails/blob/main/CONTRIBUTING.md",
     "title": "/blob/main/CONTRIBUTING.md",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/blueprints/features/review_and_recall_lifecycle.blueprint.md",
-    "title": "/blob/main/blueprints/features/review_and_recall_lifecycle.blueprint.md",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/codev/resources/commands/agent-farm.md",
-    "title": "/blob/main/codev/resources/commands/agent-farm.md",
     "count": 1,
     "uniques": 1
   }
