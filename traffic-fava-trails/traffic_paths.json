@@ -12,12 +12,6 @@
     "uniques": 2
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/src/fava_trails/protocols/secom/README.md",
-    "title": "/blob/main/src/fava_trails/protocols/secom/README.md",
-    "count": 2,
-    "uniques": 2
-  },
-  {
     "path": "/MachineWisdomAI/fava-trails/pulls",
     "title": "/pulls",
     "count": 2,
@@ -56,6 +50,12 @@
   {
     "path": "/MachineWisdomAI/fava-trails/blob/main/CONTRIBUTING.md",
     "title": "/blob/main/CONTRIBUTING.md",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/blob/main/blueprints/features/local_review_default.blueprint.md",
+    "title": "/blob/main/blueprints/features/local_review_default.blueprint.md",
     "count": 1,
     "uniques": 1
   }
