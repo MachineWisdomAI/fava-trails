@@ -1,13 +1,13 @@
 [
   {
-    "referrer": "vuink.com",
-    "count": 4,
-    "uniques": 4
-  },
-  {
     "referrer": "news.ycombinator.com",
     "count": 4,
     "uniques": 2
+  },
+  {
+    "referrer": "vuink.com",
+    "count": 3,
+    "uniques": 3
   },
   {
     "referrer": "github.com",
