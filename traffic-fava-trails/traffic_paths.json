@@ -2,14 +2,8 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 11,
-    "uniques": 9
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/CHANGELOG.md",
-    "title": "/blob/main/CHANGELOG.md",
-    "count": 2,
-    "uniques": 2
+    "count": 9,
+    "uniques": 7
   },
   {
     "path": "/MachineWisdomAI/fava-trails/pulls",
@@ -30,12 +24,6 @@
     "uniques": 1
   },
   {
-    "path": "/MachineWisdomAI/fava-trails/blob/ed59cd47e64ca8f79ac1735fe1b352305a0bde91/docs/secret-preflight.md",
-    "title": "/blob/ed59cd47e64ca8f79ac1735fe1b352305a0bde91/docs/secret-preflight.md",
-    "count": 1,
-    "uniques": 1
-  },
-  {
     "path": "/MachineWisdomAI/fava-trails/blob/main/AGENTS_SETUP_INSTRUCTIONS.md",
     "title": "/blob/main/AGENTS_SETUP_INSTRUCTIONS.md",
     "count": 1,
@@ -48,6 +36,12 @@
     "uniques": 1
   },
   {
+    "path": "/MachineWisdomAI/fava-trails/blob/main/CHANGELOG.md",
+    "title": "/blob/main/CHANGELOG.md",
+    "count": 1,
+    "uniques": 1
+  },
+  {
     "path": "/MachineWisdomAI/fava-trails/blob/main/CONTRIBUTING.md",
     "title": "/blob/main/CONTRIBUTING.md",
     "count": 1,
@@ -56,6 +50,12 @@
   {
     "path": "/MachineWisdomAI/fava-trails/blob/main/blueprints/features/local_review_default.blueprint.md",
     "title": "/blob/main/blueprints/features/local_review_default.blueprint.md",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/blob/main/blueprints/features/review_and_recall_lifecycle.blueprint.md",
+    "title": "/blob/main/blueprints/features/review_and_recall_lifecycle.blueprint.md",
     "count": 1,
     "uniques": 1
   }
