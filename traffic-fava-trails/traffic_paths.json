@@ -2,14 +2,8 @@
   {
     "path": "/MachineWisdomAI/fava-trails",
     "title": "Overview",
-    "count": 9,
-    "uniques": 7
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/pulls",
-    "title": "/pulls",
-    "count": 2,
-    "uniques": 2
+    "count": 7,
+    "uniques": 5
   },
   {
     "path": "/MachineWisdomAI/fava-trails/actions",
@@ -24,6 +18,36 @@
     "uniques": 1
   },
   {
+    "path": "/MachineWisdomAI/fava-trails/actions/workflows/test.yml",
+    "title": "/actions/workflows/test.yml",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/blob/aff22ae2eb3b0b032fa7c75c9a4d9afadf742dd8/README.md",
+    "title": "/blob/aff22ae2eb3b0b032fa7c75c9a4d9afadf742dd8/README.md",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/blob/aff22ae2eb3b0b032fa7c75c9a4d9afadf742dd8/docs/governed-recall.md",
+    "title": "/blob/aff22ae2eb3b0b032fa7c75c9a4d9afadf742dd8/docs/governed-recall.md",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/blob/aff22ae2eb3b0b032fa7c75c9a4d9afadf742dd8/docs/retrieval-baseline.md",
+    "title": "/blob/aff22ae2eb3b0b032fa7c75c9a4d9afadf742dd8/docs/retrieval-baseline.md",
+    "count": 1,
+    "uniques": 1
+  },
+  {
+    "path": "/MachineWisdomAI/fava-trails/blob/aff22ae2eb3b0b032fa7c75c9a4d9afadf742dd8/src/fava_trails/governance.py",
+    "title": "/blob/aff22ae2eb3b0b032fa7c75c9a4d9afadf742dd8/src/fava_trails/governance.py",
+    "count": 1,
+    "uniques": 1
+  },
+  {
     "path": "/MachineWisdomAI/fava-trails/blob/main/AGENTS_SETUP_INSTRUCTIONS.md",
     "title": "/blob/main/AGENTS_SETUP_INSTRUCTIONS.md",
     "count": 1,
@@ -32,30 +56,6 @@
   {
     "path": "/MachineWisdomAI/fava-trails/blob/main/AGENTS_USAGE_INSTRUCTIONS.md",
     "title": "/blob/main/AGENTS_USAGE_INSTRUCTIONS.md",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/CHANGELOG.md",
-    "title": "/blob/main/CHANGELOG.md",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/CONTRIBUTING.md",
-    "title": "/blob/main/CONTRIBUTING.md",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/blueprints/features/local_review_default.blueprint.md",
-    "title": "/blob/main/blueprints/features/local_review_default.blueprint.md",
-    "count": 1,
-    "uniques": 1
-  },
-  {
-    "path": "/MachineWisdomAI/fava-trails/blob/main/blueprints/features/review_and_recall_lifecycle.blueprint.md",
-    "title": "/blob/main/blueprints/features/review_and_recall_lifecycle.blueprint.md",
     "count": 1,
     "uniques": 1
   }
